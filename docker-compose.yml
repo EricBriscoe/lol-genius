@@ -1,0 +1,105 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: lol-genius-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lol_genius
+      POSTGRES_USER: lol_genius
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lol_genius_dev}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lol_genius"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  riot-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.proxy
+    container_name: lol-genius-proxy
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      - LOL_GENIUS_REGION=na1
+      - LOL_GENIUS_ROUTING=americas
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/riot/v1/health').raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  crawler:
+    build: .
+    container_name: lol-genius-crawler
+    restart: unless-stopped
+    depends_on:
+      riot-proxy:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/models:/app/data/models
+      - ./data/ddragon:/app/data/ddragon
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - LOL_GENIUS_DOCKER=1
+      - RIOT_PROXY_URL=http://riot-proxy:8080
+      - DATABASE_URL=postgresql://lol_genius:${POSTGRES_PASSWORD:-lol_genius_dev}@postgres:5432/lol_genius
+    command: ["crawl"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: lol-genius-dashboard-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/models:/app/data/models
+      - ./data/ddragon:/app/data/ddragon
+      - ./config.yaml:/app/config.yaml:ro
+    environment:
+      - DATABASE_URL=postgresql://lol_genius:${POSTGRES_PASSWORD:-lol_genius_dev}@postgres:5432/lol_genius
+      - PROXY_URL=http://riot-proxy:8080
+      - MODEL_DIR=data/models
+      - DDRAGON_CACHE=data/ddragon
+    ports:
+      - "8081:8081"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  dashboard:
+    build:
+      context: ./frontend
+    container_name: lol-genius-dashboard
+    restart: unless-stopped
+    depends_on:
+      - dashboard-api
+    ports:
+      - "3000:80"
+
+volumes:
+  pgdata:

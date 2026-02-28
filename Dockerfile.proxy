@@ -1,0 +1,15 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+COPY requirements.proxy.txt .
+RUN pip install --no-cache-dir -r requirements.proxy.txt
+
+COPY lol_genius/api/client.py lol_genius/api/client.py
+COPY lol_genius/api/__init__.py lol_genius/api/__init__.py
+COPY lol_genius/proxy/ lol_genius/proxy/
+COPY lol_genius/__init__.py lol_genius/__init__.py
+
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "lol_genius.proxy.run"]

@@ -1,0 +1,12 @@
+region: na1
+routing: americas
+queue_type: RANKED_SOLO_5x5
+target_tiers: [IRON, BRONZE, SILVER, GOLD, PLATINUM, EMERALD, DIAMOND]
+target_divisions: [I, II, III, IV]
+patch_filter: null
+crawl_lookback_days: 90
+match_count: 50000
+seed_pages: 3
+database_url: postgresql://lol_genius:lol_genius_dev@localhost:5432/lol_genius
+ddragon_cache: data/ddragon
+model_dir: data/models
