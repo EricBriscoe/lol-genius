@@ -2,6 +2,8 @@ import type {
   StatusData,
   DistributionData,
   ModelRun,
+  TrainingRequest,
+  TrainingStatus,
   PredictLookup,
   PredictResult,
 } from "./types";
@@ -18,15 +20,21 @@ export const fetchStatus = () => get<StatusData>("/status");
 export const fetchDistributions = () => get<DistributionData>("/distributions");
 export const fetchModelRuns = () => get<ModelRun[]>("/model/runs");
 export const fetchModelRun = (id: string) => get<ModelRun>(`/model/runs/${id}`);
-export async function triggerTraining(notes?: string) {
+export async function triggerTraining(req: TrainingRequest = {}) {
   const res = await fetch(`${BASE}/model/train`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ notes: notes || "" }),
+    body: JSON.stringify(req),
   });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
 }
+
+export const fetchPresets = () =>
+  get<Record<string, Record<string, number | string>>>("/model/presets");
+
+export const fetchTrainingStatus = () =>
+  get<TrainingStatus & { stage: string }>("/model/training-status");
 
 export const lookupPlayer = (gameName: string, tagLine: string) =>
   get<PredictLookup>(`/predict/lookup?game_name=${encodeURIComponent(gameName)}&tag_line=${encodeURIComponent(tagLine)}`);

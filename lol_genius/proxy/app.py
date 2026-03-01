@@ -82,7 +82,14 @@ async def _cached_get(
 
     hit, value = cache.get(namespace, cache_key)
     if hit:
-        return JSONResponse({"data": value, "cached": True})
+        if isinstance(value, tuple):
+            data, cached_key_index = value
+        else:
+            data, cached_key_index = value, None
+        resp = {"data": data, "cached": True}
+        if cached_key_index is not None:
+            resp["key_index"] = cached_key_index
+        return JSONResponse(resp)
 
     raw_key_index = request.headers.get("X-Key-Index")
     key_index = int(raw_key_index) if raw_key_index is not None else None
@@ -99,7 +106,7 @@ async def _cached_get(
             {"error": "upstream error", "detail": str(e)}, status_code=502
         )
 
-    cache.set(namespace, cache_key, result, CACHE_TTLS.get(namespace, 3600))
+    cache.set(namespace, cache_key, (result, used_key_index), CACHE_TTLS.get(namespace, 3600))
     return JSONResponse({"data": result, "cached": False, "key_index": used_key_index})
 
 

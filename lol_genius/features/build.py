@@ -10,6 +10,7 @@ from lol_genius.db.queries import MatchDB
 from lol_genius.features.bans import BAN_FEATURE_NAMES, extract_ban_features
 from lol_genius.features.champion import CHAMPION_FEATURE_NAMES, extract_champion_features
 from lol_genius.features.draft import DRAFT_FEATURE_NAMES, POSITION_ORDER, POSITION_SHORT, align_by_position, extract_draft_features
+from lol_genius.features.interactions import INTERACTION_FEATURE_NAMES, extract_interaction_features
 from lol_genius.features.player import PLAYER_FEATURE_NAMES, extract_player_features, compute_tilt_features
 from lol_genius.features.team import TEAM_FEATURE_NAMES, extract_team_features
 
@@ -145,6 +146,11 @@ def _build_match_features(
     )
     features.update(draft)
 
+    interaction = extract_interaction_features(
+        blue_by_pos, red_by_pos, blue_champ_feats_list, red_champ_feats_list, ddragon,
+    )
+    features.update(interaction)
+
     bans = db.get_match_bans(match_id) if match_id else []
     ban_feats = extract_ban_features(bans, blue_top_champs, red_top_champs)
     features.update(ban_feats)
@@ -165,5 +171,6 @@ def get_feature_names() -> list[str]:
         for feat in TEAM_FEATURE_NAMES:
             names.append(f"{side}_{feat}")
     names.extend(DRAFT_FEATURE_NAMES)
+    names.extend(INTERACTION_FEATURE_NAMES)
     names.extend(BAN_FEATURE_NAMES)
     return names

@@ -105,6 +105,17 @@ async def model_run_detail(request: Request, run_id: str):
     return _serialize_model_run(run)
 
 
+@router.get("/model/presets")
+async def model_presets():
+    from lol_genius.model.train import PARAM_PRESETS
+    return PARAM_PRESETS
+
+
+@router.get("/model/training-status")
+async def training_status():
+    return _training_status or {"stage": "idle"}
+
+
 @router.post("/model/train")
 async def trigger_training(request: Request):
     global _training_status
@@ -122,19 +133,34 @@ async def trigger_training(request: Request):
         pass
 
     notes = body.get("notes", "")
+    preset = body.get("preset")
+    custom_params = body.get("params")
+    auto_tune = body.get("auto_tune", False)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+    from lol_genius.model.train import DEFAULT_PARAMS, PARAM_PRESETS
+
+    resolved_params = None
+    if auto_tune:
+        resolved_params = "__auto_tune__"
+    elif custom_params and isinstance(custom_params, dict):
+        resolved_params = {**DEFAULT_PARAMS, **custom_params}
+    elif preset and preset in PARAM_PRESETS:
+        resolved_params = PARAM_PRESETS[preset]
 
     dsn = request.app.state.dsn
     model_dir = request.app.state.model_dir
     ddragon_cache = request.app.state.ddragon_cache
 
     loop = asyncio.get_running_loop()
-    loop.run_in_executor(None, _run_training_pipeline, dsn, model_dir, ddragon_cache, notes, run_id)
+    loop.run_in_executor(
+        None, _run_training_pipeline, dsn, model_dir, ddragon_cache, notes, run_id, resolved_params,
+    )
 
     return {"run_id": run_id, "status": "started"}
 
 
-def _run_training_pipeline(dsn: str, model_dir: str, ddragon_cache: str, notes: str, run_id_hint: str):
+def _run_training_pipeline(dsn: str, model_dir: str, ddragon_cache: str, notes: str, run_id_hint: str, resolved_params=None):
     global _training_status
 
     if not _training_lock.acquire(blocking=False):
@@ -170,14 +196,28 @@ def _run_training_pipeline(dsn: str, model_dir: str, ddragon_cache: str, notes: 
         patches.to_frame().to_parquet(out_dir / "patches.parquet")
         timestamps.to_frame().to_parquet(out_dir / "timestamps.parquet")
 
+        train_params = None
+        if resolved_params == "__auto_tune__":
+            _training_status = {"stage": "tuning", "run_id": run_id_hint, "matches": len(X), "features": X.shape[1]}
+            _push_sse("training_status", {**_training_status})
+
+            from lol_genius.model.train import tune_hyperparameters
+            tuned = tune_hyperparameters(X, y)
+            tuned_num_round = tuned.pop("best_num_round", 1000)
+            train_params = tuned
+        elif isinstance(resolved_params, dict):
+            train_params = resolved_params
+
         _training_status = {"stage": "training", "run_id": run_id_hint, "matches": len(X), "features": X.shape[1]}
         _push_sse("training_status", {**_training_status})
 
         from lol_genius.model.train import train_model
 
-        model, actual_run_id = train_model(
-            X, y, model_dir, patches=patches, timestamps=timestamps, database_url=dsn
-        )
+        train_kwargs = dict(patches=patches, timestamps=timestamps, database_url=dsn, params=train_params)
+        if resolved_params == "__auto_tune__":
+            train_kwargs["num_boost_round"] = tuned_num_round
+
+        model, actual_run_id = train_model(X, y, model_dir, **train_kwargs)
 
         if notes:
             db2 = MatchDB(dsn)
@@ -348,6 +388,7 @@ async def sse_stream(request: Request):
                     db = request.app.state.db
 
                     def _poll():
+                        db.conn.rollback()
                         return {
                             "match_count": db.get_match_count(),
                             "queue_depth": db.get_queue_depth(),

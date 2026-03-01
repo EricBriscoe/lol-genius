@@ -49,8 +49,7 @@ export default function CrawlerStatus({ live }: Props) {
   const queueDepth = live?.queue_depth ?? initial?.queue_depth ?? 0;
 
   const enrichPct = enrichment.total > 0 ? (enrichment.enriched / enrichment.total) * 100 : 0;
-  const TARGET = 100000;
-  const progressPct = Math.min((matchCount / TARGET) * 100, 100);
+
 
   const rankData = dist?.rank_distribution
     ? TIER_ORDER.filter((t) => dist.rank_distribution[t]).map((t) => ({
@@ -84,11 +83,6 @@ export default function CrawlerStatus({ live }: Props) {
           <StatBox label="Total Matches" value={matchCount} color="var(--accent)" />
           <StatBox label="Queue Depth" value={queueDepth} />
           <StatBox
-            label="Enrichment"
-            value={`${enrichPct.toFixed(1)}%`}
-            sub={`${enrichment.enriched.toLocaleString()} / ${enrichment.total.toLocaleString()}`}
-          />
-          <StatBox
             label="Queue Done"
             value={(queueStats.done || 0).toLocaleString()}
             sub={`${(queueStats.pending || 0).toLocaleString()} pending`}
@@ -98,17 +92,17 @@ export default function CrawlerStatus({ live }: Props) {
         <div style={{ marginTop: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
             <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
-              Progress to {TARGET.toLocaleString()}
+              Enrichment Progress
             </span>
             <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-              {progressPct.toFixed(1)}%
+              {enrichment.enriched.toLocaleString()} / {enrichment.total.toLocaleString()} ({enrichPct.toFixed(1)}%)
             </span>
           </div>
           <div style={{ height: 8, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
             <div
               style={{
                 height: "100%",
-                width: `${progressPct}%`,
+                width: `${enrichPct}%`,
                 background: "linear-gradient(90deg, var(--accent), var(--gold))",
                 borderRadius: 4,
                 transition: "width 0.5s ease",

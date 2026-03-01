@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import xgboost as xgb
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import train_test_split
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +24,27 @@ DEFAULT_PARAMS = {
     "reg_alpha": 0.1,
     "reg_lambda": 1.5,
     "tree_method": "hist",
+}
+
+PARAM_PRESETS = {
+    "default": {**DEFAULT_PARAMS},
+    "aggressive": {
+        **DEFAULT_PARAMS,
+        "max_depth": 6,
+        "learning_rate": 0.08,
+        "subsample": 0.8,
+        "min_child_weight": 5,
+        "gamma": 0.1,
+    },
+    "conservative": {
+        **DEFAULT_PARAMS,
+        "max_depth": 3,
+        "learning_rate": 0.01,
+        "subsample": 0.6,
+        "min_child_weight": 15,
+        "gamma": 0.5,
+        "reg_lambda": 2.0,
+    },
 }
 
 
@@ -91,8 +112,11 @@ def train_model(
     patch_decay: float = 0.85,
     timestamps: "pd.Series | None" = None,
     database_url: str | None = None,
+    params: dict | None = None,
 ) -> tuple[xgb.Booster, str]:
     import pandas as pd
+
+    resolved_params = {**DEFAULT_PARAMS, **(params or {})}
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     model_path = Path(model_dir)
@@ -126,7 +150,7 @@ def train_model(
 
     t0 = time.monotonic()
     model = xgb.train(
-        DEFAULT_PARAMS,
+        resolved_params,
         dtrain,
         num_boost_round=num_boost_round,
         evals=[(dtrain, "train"), (dtest, "eval")],
@@ -164,7 +188,7 @@ def train_model(
                 "patch_min": patch_min,
                 "patch_max": patch_max,
                 "target_mean": float(y.mean()),
-                "hyperparameters": json.dumps(DEFAULT_PARAMS),
+                "hyperparameters": json.dumps(resolved_params),
                 "best_iteration": model.best_iteration,
                 "best_train_score": float(model.best_score),
                 "training_seconds": training_seconds,
@@ -178,11 +202,32 @@ def train_model(
     return model, run_id
 
 
+def _cv_single_combo(args: tuple) -> tuple[float, dict, int]:
+    import os
+    os.nice(10)
+    params, X_values, y_values, feature_names = args
+    dtrain = xgb.DMatrix(X_values, label=y_values, feature_names=feature_names)
+    cv_results = xgb.cv(
+        params,
+        dtrain,
+        num_boost_round=300,
+        nfold=5,
+        early_stopping_rounds=30,
+        verbose_eval=False,
+        stratified=True,
+    )
+    score = cv_results["test-logloss-mean"].min()
+    best_round = int(cv_results["test-logloss-mean"].idxmin()) + 1
+    return score, params, best_round
+
+
 def tune_hyperparameters(
     X: "pd.DataFrame",
     y: "pd.Series",
 ) -> dict:
-    import pandas as pd
+    import os
+    from concurrent.futures import ProcessPoolExecutor
+    from itertools import product
 
     param_grid = {
         "max_depth": [4, 6, 8],
@@ -192,47 +237,46 @@ def tune_hyperparameters(
         "min_child_weight": [3, 5, 10],
     }
 
-    best_score = float("inf")
-    best_params = {}
-
-    from itertools import product
-
     keys = list(param_grid.keys())
     values = list(param_grid.values())
-
-    dtrain = xgb.DMatrix(X, label=y, feature_names=list(X.columns))
 
     total = 1
     for v in values:
         total *= len(v)
-    log.info(f"Grid search: {total} combinations")
 
+    n_workers = os.cpu_count() or 1
+    log.info(f"Grid search: {total} combinations across {n_workers} workers (nice 10)")
+
+    base_params = {
+        "objective": "binary:logistic",
+        "eval_metric": "logloss",
+        "gamma": 0.1,
+        "tree_method": "hist",
+        "nthread": 1,
+    }
+
+    X_values = X.values
+    y_values = y.values
+    feature_names = list(X.columns)
+
+    combos = []
     for combo in product(*values):
-        params = dict(zip(keys, combo))
-        params.update({
-            "objective": "binary:logistic",
-            "eval_metric": "logloss",
-            "gamma": 0.1,
-            "tree_method": "hist",
-        })
+        params = {**base_params, **dict(zip(keys, combo))}
+        combos.append((params, X_values, y_values, feature_names))
 
-        cv_results = xgb.cv(
-            params,
-            dtrain,
-            num_boost_round=300,
-            nfold=5,
-            early_stopping_rounds=30,
-            verbose_eval=False,
-            stratified=True,
-        )
+    best_score = float("inf")
+    best_params = {}
+    best_round = 300
 
-        score = cv_results["test-logloss-mean"].min()
-        if score < best_score:
-            best_score = score
-            best_params = params.copy()
-            best_params["best_num_round"] = cv_results["test-logloss-mean"].idxmin() + 1
-            log.info(f"New best: {score:.4f} with {params}")
+    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+        for score, params, num_round in pool.map(_cv_single_combo, combos):
+            if score < best_score:
+                best_score = score
+                best_params = params.copy()
+                best_round = num_round
+                log.info(f"New best: {score:.4f} with {params}")
 
+    best_params["best_num_round"] = best_round
     log.info(f"Best params: {best_params} (score: {best_score:.4f})")
     return best_params
 
