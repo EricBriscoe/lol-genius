@@ -37,6 +37,13 @@ export interface ModelRun {
   notes: string | null;
 }
 
+export interface TrainingRequest {
+  notes?: string;
+  preset?: string;
+  params?: Record<string, number | string>;
+  auto_tune?: boolean;
+}
+
 export interface TrainingStatus {
   stage: string;
   run_id?: string;
@@ -67,6 +74,9 @@ export interface PredictLookup {
 
 export interface PredictParticipant {
   puuid: string;
+  riot_id: string;
+  game_name: string;
+  tag_line: string;
   champion_id: number;
   champion_name: string;
   team_id: number;

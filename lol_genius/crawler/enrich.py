@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from lol_genius.api.riot_api import RiotAPI
 from lol_genius.crawler.parse import parse_match
 from lol_genius.db.queries import MatchDB
+from lol_genius.features.stats import aggregate_recent_stats, normalize_api_match_row
 
 log = logging.getLogger(__name__)
 
@@ -146,23 +147,7 @@ def _fetch_recent_stats_via_api(
     if not match_ids:
         return None
 
-    games = 0
-    wins = 0
-    total_kills = 0.0
-    total_deaths = 0.0
-    total_assists = 0.0
-    total_cs_per_min = 0.0
-    total_vision = 0.0
-    total_damage_share = 0.0
-    total_wards_placed = 0.0
-    total_wards_killed = 0.0
-    total_damage_taken = 0.0
-    total_gold_spent = 0.0
-    total_cc_score = 0.0
-    total_heal = 0.0
-    total_magic_dmg_share = 0.0
-    total_phys_dmg_share = 0.0
-    total_multikills = 0.0
+    stat_rows: list[dict] = []
     opportunistic_matches: list[tuple[dict, list, list | None, list | None, str | None]] = []
 
     for mid in match_ids:
@@ -180,81 +165,14 @@ def _fetch_recent_stats_via_api(
                 log.debug(f"Failed to serialize match JSON for {mid}: {e}")
             opportunistic_matches.append((match_row, part_rows, bans, objectives, raw_json))
 
-        info = match.get("info", {})
-        duration_min = max(info.get("gameDuration", 1) / 60.0, 1.0)
+        row = normalize_api_match_row(puuid, match)
+        if row:
+            stat_rows.append(row)
 
-        team_damage = {}
-        player_data = None
-
-        for p in info.get("participants", []):
-            tid = p.get("teamId", 0)
-            dmg = p.get("totalDamageDealtToChampions", 0)
-            team_damage[tid] = team_damage.get(tid, 0) + dmg
-
-            if p.get("puuid") == puuid:
-                player_data = p
-
-        if not player_data:
-            continue
-
-        games += 1
-        if player_data.get("win", False):
-            wins += 1
-
-        total_kills += player_data.get("kills", 0)
-        total_deaths += player_data.get("deaths", 0)
-        total_assists += player_data.get("assists", 0)
-
-        cs = player_data.get("totalMinionsKilled", 0) + player_data.get("neutralMinionsKilled", 0)
-        total_cs_per_min += cs / duration_min
-        total_vision += player_data.get("visionScore", 0)
-        total_wards_placed += player_data.get("wardsPlaced", 0)
-        total_wards_killed += player_data.get("wardsKilled", 0)
-        total_damage_taken += player_data.get("totalDamageTaken", 0)
-        total_gold_spent += player_data.get("goldSpent", 0)
-        total_cc_score += player_data.get("timeCCingOthers", 0)
-        total_heal += player_data.get("totalHeal", 0)
-
-        player_tid = player_data.get("teamId", 100)
-        team_total_dmg = team_damage.get(player_tid, 1)
-        if team_total_dmg > 0:
-            total_damage_share += player_data.get("totalDamageDealtToChampions", 0) / team_total_dmg
-
-        player_total_dmg = player_data.get("totalDamageDealtToChampions", 0)
-        if player_total_dmg > 0:
-            total_magic_dmg_share += player_data.get("magicDamageDealtToChampions", 0) / player_total_dmg
-            total_phys_dmg_share += player_data.get("physicalDamageDealtToChampions", 0) / player_total_dmg
-
-        total_multikills += (
-            player_data.get("doubleKills", 0)
-            + player_data.get("tripleKills", 0)
-            + player_data.get("quadraKills", 0)
-            + player_data.get("pentaKills", 0)
-        )
-
-    if games == 0:
+    stats = aggregate_recent_stats(puuid, stat_rows)
+    if not stats:
         return None
 
-    stats = {
-        "puuid": puuid,
-        "games_played": games,
-        "wins": wins,
-        "avg_kills": total_kills / games,
-        "avg_deaths": total_deaths / games,
-        "avg_assists": total_assists / games,
-        "avg_cs_per_min": total_cs_per_min / games,
-        "avg_vision": total_vision / games,
-        "avg_damage_share": total_damage_share / games,
-        "avg_wards_placed": total_wards_placed / games,
-        "avg_wards_killed": total_wards_killed / games,
-        "avg_damage_taken": total_damage_taken / games,
-        "avg_gold_spent": total_gold_spent / games,
-        "avg_cc_score": total_cc_score / games,
-        "avg_heal_total": total_heal / games,
-        "avg_magic_dmg_share": total_magic_dmg_share / games,
-        "avg_phys_dmg_share": total_phys_dmg_share / games,
-        "avg_multikill_rate": total_multikills / games,
-    }
     stats["_opportunistic_matches"] = opportunistic_matches
     return stats
 

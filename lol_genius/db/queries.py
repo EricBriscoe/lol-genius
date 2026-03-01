@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-import json
 import logging
 
 from datetime import datetime, timedelta, timezone
+
+from lol_genius.features.stats import aggregate_recent_stats
 
 from .connection import get_connection, get_connection_fast
 
@@ -403,67 +404,13 @@ class MatchDB:
                 ).fetchall()
                 team_dmg_cache[mid] = {tr["team_id"]: tr["td"] for tr in team_rows}
 
-        games = len(rows)
-        wins = sum(1 for r in rows if r["win"])
-        total_kills = sum(r["kills"] or 0 for r in rows)
-        total_deaths = sum(r["deaths"] or 0 for r in rows)
-        total_assists = sum(r["assists"] or 0 for r in rows)
-        total_cs_per_min = 0.0
-        total_vision = sum(r["vision_score"] or 0 for r in rows)
-        total_damage_share = 0.0
-
-        total_wards_placed = sum(r["wards_placed"] or 0 for r in rows)
-        total_wards_killed = sum(r["wards_killed"] or 0 for r in rows)
-        total_damage_taken = sum(r["total_damage_taken"] or 0 for r in rows)
-        total_gold_spent = sum(r["gold_spent"] or 0 for r in rows)
-        total_cc_score = sum(r["time_ccing_others"] or 0 for r in rows)
-        total_heal = sum(r["total_heal"] or 0 for r in rows)
-        total_magic_dmg_share = 0.0
-        total_phys_dmg_share = 0.0
-        total_multikills = 0
-
+        stat_rows = []
         for r in rows:
-            dur_min = max((r["game_duration"] or 1) / 60.0, 1.0)
-            total_cs_per_min += (r["cs"] or 0) / dur_min
+            row_dict = dict(r)
+            row_dict["team_total_dmg"] = team_dmg_cache.get(r["match_id"], {}).get(r["team_id"], 0)
+            stat_rows.append(row_dict)
 
-            team_total = team_dmg_cache.get(r["match_id"], {}).get(r["team_id"], 1)
-            if team_total > 0:
-                total_damage_share += (r["total_damage"] or 0) / team_total
-
-            player_total_dmg = r["total_damage"] or 0
-            if player_total_dmg > 0:
-                total_magic_dmg_share += (r["magic_damage_to_champions"] or 0) / player_total_dmg
-                total_phys_dmg_share += (r["physical_damage_to_champions"] or 0) / player_total_dmg
-
-            multikills = (r["double_kills"] or 0) + (r["triple_kills"] or 0) + (r["quadra_kills"] or 0) + (r["penta_kills"] or 0)
-            total_multikills += multikills
-
-        kda_per_game = []
-        for r in rows:
-            d = max(r["deaths"] or 1, 1)
-            kda_per_game.append(((r["kills"] or 0) + (r["assists"] or 0)) / d)
-
-        return {
-            "puuid": puuid,
-            "games_played": games,
-            "wins": wins,
-            "avg_kills": total_kills / games,
-            "avg_deaths": total_deaths / games,
-            "avg_assists": total_assists / games,
-            "avg_cs_per_min": total_cs_per_min / games,
-            "avg_vision": total_vision / games,
-            "avg_damage_share": total_damage_share / games,
-            "avg_wards_placed": total_wards_placed / games,
-            "avg_wards_killed": total_wards_killed / games,
-            "avg_damage_taken": total_damage_taken / games,
-            "avg_gold_spent": total_gold_spent / games,
-            "avg_cc_score": total_cc_score / games,
-            "avg_heal_total": total_heal / games,
-            "avg_magic_dmg_share": total_magic_dmg_share / games,
-            "avg_phys_dmg_share": total_phys_dmg_share / games,
-            "avg_multikill_rate": total_multikills / games,
-            "kda_per_game": kda_per_game,
-        }
+        return aggregate_recent_stats(puuid, stat_rows)
 
     def get_player_champion_stats(self, puuid: str, champion_id: int, patch: str | None = None, exclude_match_id: str | None = None, before_time_ms: int | None = None) -> dict:
         conditions = ["p.puuid = %s", "p.champion_id = %s", "p.match_id != %s"]

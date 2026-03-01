@@ -1,5 +1,6 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Activity, Brain, Crosshair } from "lucide-react";
+import { fetchTrainingStatus } from "./api";
 import { useSSE } from "./hooks/useSSE";
 import CrawlerStatus from "./pages/CrawlerStatus";
 import ModelTraining from "./pages/ModelTraining";
@@ -20,6 +21,12 @@ export default function App() {
   const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(
     null
   );
+
+  useEffect(() => {
+    fetchTrainingStatus().then((s) => {
+      if (s.stage !== "idle") setTrainingStatus(s);
+    }).catch(() => {});
+  }, []);
 
   const handleCrawlerStatus = useCallback((data: unknown) => {
     setCrawlerData(data as CrawlerSSE);

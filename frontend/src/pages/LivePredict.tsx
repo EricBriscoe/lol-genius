@@ -26,6 +26,8 @@ const POSITION_LABELS: Record<string, string> = {
   UNKNOWN: "?",
 };
 
+const POSITION_ORDER = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
+
 const TIER_COLORS: Record<string, string> = {
   IRON: "#5c5c5c",
   BRONZE: "#a0522d",
@@ -326,11 +328,14 @@ function TeamCard({
     <Card>
       <h3 style={{ ...sectionTitle, color, marginBottom: 12 }}>{label}</h3>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {players.map((p) => (
+        {[...players].sort((a, b) => (POSITION_ORDER.indexOf(a.position) >>> 0) - (POSITION_ORDER.indexOf(b.position) >>> 0)).map((p) => (
           <div key={p.puuid} style={styles.playerRow}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
               <span style={styles.posTag}>{POSITION_LABELS[p.position] ?? p.position}</span>
               <span style={{ fontSize: 13, fontWeight: 500 }}>{p.champion_name}</span>
+              {p.game_name && (
+                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.game_name}</span>
+              )}
             </div>
             <span
               className="mono"

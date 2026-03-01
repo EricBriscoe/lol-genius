@@ -10,11 +10,24 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { Play, X, Loader2 } from "lucide-react";
+import { Play, X, Loader2, AlertTriangle } from "lucide-react";
 import Card from "../components/Card";
-import { fetchModelRuns, triggerTraining } from "../api";
+import { fetchModelRuns, fetchPresets, triggerTraining } from "../api";
 import { tooltipStyle, sectionTitle, primaryButton } from "../styles";
-import type { ModelRun, TrainingStatus } from "../types";
+import type { ModelRun, TrainingRequest, TrainingStatus } from "../types";
+
+type TrainMode = "preset" | "custom" | "autotune";
+
+const PRESET_DESCRIPTIONS: Record<string, string> = {
+  default: "Balanced regularization, good baseline",
+  aggressive: "Deeper trees, faster learning, less regularization",
+  conservative: "Shallow trees, slow learning, heavy regularization",
+};
+
+const TUNABLE_PARAMS = [
+  "max_depth", "learning_rate", "subsample", "colsample_bytree",
+  "min_child_weight", "gamma", "reg_alpha", "reg_lambda",
+] as const;
 
 interface Props {
   trainingStatus: TrainingStatus | null;
@@ -25,9 +38,23 @@ export default function ModelTraining({ trainingStatus }: Props) {
   const [selected, setSelected] = useState<ModelRun | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [notes, setNotes] = useState("");
+  const [mode, setMode] = useState<TrainMode>("preset");
+  const [preset, setPreset] = useState("default");
+  const [customParams, setCustomParams] = useState<Record<string, number>>({});
+  const [presets, setPresets] = useState<Record<string, Record<string, number | string>>>({});
 
   useEffect(() => {
     loadRuns();
+    fetchPresets().then((p) => {
+      setPresets(p);
+      if (p.default) {
+        const nums: Record<string, number> = {};
+        for (const k of TUNABLE_PARAMS) {
+          nums[k] = Number(p.default[k] ?? 0);
+        }
+        setCustomParams(nums);
+      }
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -38,10 +65,34 @@ export default function ModelTraining({ trainingStatus }: Props) {
     fetchModelRuns().then(setRuns).catch(() => {});
   }
 
+  function onPresetChange(name: string) {
+    setPreset(name);
+    const p = presets[name];
+    if (p) {
+      const nums: Record<string, number> = {};
+      for (const k of TUNABLE_PARAMS) {
+        nums[k] = Number(p[k] ?? 0);
+      }
+      setCustomParams(nums);
+    }
+  }
+
   async function handleTrain() {
-    await triggerTraining(notes);
-    setShowModal(false);
-    setNotes("");
+    const req: TrainingRequest = { notes };
+    if (mode === "preset") {
+      req.preset = preset;
+    } else if (mode === "custom") {
+      req.params = customParams;
+    } else {
+      req.auto_tune = true;
+    }
+    try {
+      await triggerTraining(req);
+      setShowModal(false);
+      setNotes("");
+    } catch {
+      // 409 or other error — modal stays open so user can retry
+    }
   }
 
   const aucTrend = [...runs]
@@ -223,8 +274,106 @@ export default function ModelTraining({ trainingStatus }: Props) {
 
       {showModal && (
         <div style={styles.overlay} onClick={() => setShowModal(false)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+          <div style={{ ...styles.modal, width: 500 }} onClick={(e) => e.stopPropagation()}>
             <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>New Training Run</h3>
+
+            <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+              {(["preset", "custom", "autotune"] as TrainMode[]).map((m) => (
+                <button
+                  key={m}
+                  onClick={() => setMode(m)}
+                  style={{
+                    flex: 1,
+                    padding: "6px 0",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    fontFamily: "inherit",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    cursor: "pointer",
+                    background: mode === m ? "var(--accent)" : "transparent",
+                    color: mode === m ? "var(--bg-primary)" : "var(--text-secondary)",
+                  }}
+                >
+                  {m === "preset" ? "Preset" : m === "custom" ? "Custom" : "Auto-tune"}
+                </button>
+              ))}
+            </div>
+
+            {mode === "preset" && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+                {Object.keys(presets).map((name) => (
+                  <label
+                    key={name}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "10px 12px",
+                      background: preset === name ? "var(--bg-card-hover)" : "var(--bg-primary)",
+                      border: preset === name ? "1px solid var(--accent)" : "1px solid var(--border)",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="preset"
+                      checked={preset === name}
+                      onChange={() => onPresetChange(name)}
+                      style={{ accentColor: "var(--accent)" }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, textTransform: "capitalize" }}>{name}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                        {PRESET_DESCRIPTIONS[name] || ""}
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            {mode === "custom" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                {TUNABLE_PARAMS.map((param) => (
+                  <div key={param}>
+                    <label style={{ fontSize: 11, color: "var(--text-muted)", display: "block", marginBottom: 2 }}>
+                      {param}
+                    </label>
+                    <input
+                      type="number"
+                      step={param === "max_depth" || param === "min_child_weight" ? 1 : 0.01}
+                      value={customParams[param] ?? 0}
+                      onChange={(e) =>
+                        setCustomParams((prev) => ({ ...prev, [param]: parseFloat(e.target.value) || 0 }))
+                      }
+                      style={{ ...styles.input, width: "100%" }}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {mode === "autotune" && (
+              <div style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 10,
+                padding: 12,
+                background: "var(--bg-primary)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                marginBottom: 16,
+              }}>
+                <AlertTriangle size={18} style={{ color: "var(--gold)", flexShrink: 0, marginTop: 2 }} />
+                <div style={{ fontSize: 12, color: "var(--text-secondary)", lineHeight: 1.5 }}>
+                  Auto-tune runs a grid search over 243 hyperparameter combinations with 5-fold cross-validation.
+                  This can take a long time depending on dataset size.
+                </div>
+              </div>
+            )}
+
             <div style={{ marginBottom: 12 }}>
               <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 4 }}>
                 Notes (optional)
@@ -236,9 +385,7 @@ export default function ModelTraining({ trainingStatus }: Props) {
                 style={styles.input}
               />
             </div>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 16 }}>
-              This will build features, train, evaluate, and run SHAP analysis.
-            </p>
+
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setShowModal(false)} style={styles.cancelBtn}>Cancel</button>
               <button onClick={handleTrain} style={primaryButton}>

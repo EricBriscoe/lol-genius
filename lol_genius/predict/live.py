@@ -10,7 +10,9 @@ from lol_genius.db.queries import MatchDB
 from lol_genius.features.bans import extract_ban_features
 from lol_genius.features.champion import CHAMPION_FEATURE_NAMES, extract_champion_features
 from lol_genius.features.draft import POSITION_ORDER, POSITION_SHORT, align_by_position, extract_draft_features
+from lol_genius.features.interactions import extract_interaction_features
 from lol_genius.features.player import PLAYER_FEATURE_NAMES, extract_player_features, compute_tilt_features
+from lol_genius.features.stats import aggregate_recent_stats, normalize_api_match_row
 from lol_genius.features.team import extract_team_features
 from lol_genius.model.explain import explain_single_match
 from lol_genius.model.train import load_model
@@ -18,6 +20,7 @@ from lol_genius.model.train import load_model
 log = logging.getLogger(__name__)
 
 SMITE_ID = 11
+LIVE_MATCH_FETCH_COUNT = 5
 
 
 def infer_positions(participants: list[dict], ddragon: DataDragon) -> list[dict]:
@@ -63,6 +66,53 @@ def infer_positions(participants: list[dict], ddragon: DataDragon) -> list[dict]
     return participants
 
 
+def _compute_stats_from_matches(
+    puuid: str, champion_id: int, matches: list[dict],
+) -> dict:
+    stat_rows: list[dict] = []
+    champ_games = 0
+    champ_wins = 0
+    role_counts: dict[str, int] = {}
+    recent_outcomes = []
+
+    for match in matches:
+        info = match.get("info", {})
+        participants = info.get("participants", [])
+        player = next((p for p in participants if p.get("puuid") == puuid), None)
+        if not player:
+            continue
+
+        row = normalize_api_match_row(puuid, match)
+        if row:
+            stat_rows.append(row)
+
+        if player.get("championId") == champion_id:
+            champ_games += 1
+            if player.get("win"):
+                champ_wins += 1
+
+        pos = player.get("teamPosition", "")
+        if pos:
+            role_counts[pos] = role_counts.get(pos, 0) + 1
+
+        recent_outcomes.append({
+            "win": player.get("win", False),
+            "game_creation": info.get("gameCreation", 0),
+            "game_duration": info.get("gameDuration", 1),
+        })
+
+    return {
+        "recent_stats": aggregate_recent_stats(puuid, stat_rows),
+        "champ_stats": {
+            "games": champ_games,
+            "wins": champ_wins,
+            "winrate": champ_wins / champ_games if champ_games > 0 else 0.0,
+        },
+        "role_dist": role_counts,
+        "recent_outcomes": recent_outcomes,
+    }
+
+
 def _enrich_participant(
     proxy: ProxyClient, db: MatchDB, puuid: str, champion_id: int,
 ) -> dict:
@@ -97,6 +147,32 @@ def _enrich_participant(
     champ_stats = db.get_player_champion_stats(puuid, champion_id)
     role_dist = db.get_player_role_distribution(puuid)
     recent_outcomes = db.get_player_recent_outcomes(puuid)
+
+    needs_api = (
+        not recent_stats
+        or champ_stats.get("games", 0) == 0
+        or not role_dist
+        or not recent_outcomes
+    )
+    if needs_api:
+        log.info(f"Incomplete DB data for {puuid[:8]}…, fetching recent matches from API")
+        match_ids = proxy.get_match_ids(puuid, count=LIVE_MATCH_FETCH_COUNT, queue=420)
+        if match_ids:
+            matches = []
+            for mid in match_ids:
+                m = proxy.get_match(mid)
+                if m:
+                    matches.append(m)
+            if matches:
+                api_stats = _compute_stats_from_matches(puuid, champion_id, matches)
+                if not recent_stats:
+                    recent_stats = api_stats["recent_stats"]
+                if champ_stats.get("games", 0) == 0:
+                    champ_stats = api_stats["champ_stats"]
+                if not role_dist:
+                    role_dist = api_stats["role_dist"]
+                if not recent_outcomes:
+                    recent_outcomes = api_stats["recent_outcomes"]
 
     top_champs = db.get_player_top_champions(puuid, limit=3)
     if not top_champs:
@@ -182,6 +258,11 @@ def _build_live_features(
     draft = extract_draft_features(blue_by_pos, red_by_pos, blue_player_feats, red_player_feats)
     features.update(draft)
 
+    interaction = extract_interaction_features(
+        blue_by_pos, red_by_pos, blue_champ_feats_list, red_champ_feats_list, ddragon,
+    )
+    features.update(interaction)
+
     ban_feats = extract_ban_features(bans, blue_top_champs, red_top_champs)
     features.update(ban_feats)
 
@@ -236,8 +317,13 @@ def predict_live_game(
         champ = ddragon.get_champion(p["champion_id"])
         enr = p.get("_enrichment", {})
         rank = enr.get("rank")
+        riot_id = p.get("riotId", "")
+        game_name, tag_line = (riot_id.split("#", 1) if "#" in riot_id else (riot_id, ""))
         participants_info.append({
             "puuid": p["puuid"],
+            "riot_id": riot_id,
+            "game_name": game_name,
+            "tag_line": tag_line,
             "champion_id": p["champion_id"],
             "champion_name": champ["name"] if champ else f"Champion {p['champion_id']}",
             "team_id": p["team_id"],

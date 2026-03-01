@@ -162,6 +162,7 @@ class TestFetchRecentStatsViaApi:
         assert result["avg_vision"] == 30.0
         assert result["avg_wards_placed"] == 12.0
         assert result["avg_wards_killed"] == 5.0
+        assert result["kda_per_game"] == [(8 + 10) / 4]
 
     def test_computes_stats_from_multiple_matches(self):
         api = MagicMock()

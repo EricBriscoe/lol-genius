@@ -151,66 +151,74 @@ def _drain_unenriched(api: RiotAPI, database_url: str, config: Config, stopper: 
         match_start_time = int(time.time()) - config.crawl_lookback_days * 86400
 
     db = MatchDB(database_url, fast=True)
-    match_ids = db.get_unenriched_matches(limit=batch_size)
+    enrichment_stats = db.get_enrichment_stats()
+    unenriched_total = enrichment_stats["total"] - enrichment_stats["enriched"]
 
-    if not match_ids:
+    if unenriched_total <= 0:
         db.close()
         return 0
 
-    total = len(match_ids)
     enriched_count = 0
-
-    enrichment_stats = db.get_enrichment_stats()
-    unenriched_total = enrichment_stats["total"] - enrichment_stats["enriched"]
 
     if _DOCKER:
         rolling = _RollingRate()
         last_log_time = time.monotonic()
         last_log_count = 0
-        log.info(f"Enriching batch of {total:,} ({unenriched_total:,} total unenriched)")
+        log.info(f"Draining {unenriched_total:,} unenriched matches")
     else:
         from tqdm import tqdm
-        pbar = tqdm(total=total, desc="Enriching", unit="match")
+        pbar = tqdm(total=unenriched_total, desc="Enriching", unit="match")
 
     db.begin_batch()
 
     try:
-        for match_id in match_ids:
-            if stopper.should_stop():
+        while not stopper.should_stop():
+            match_ids = db.get_unenriched_matches(limit=batch_size)
+            if not match_ids:
                 break
 
-            participants = db.get_participants_for_match(match_id)
+            batch_successes = 0
+            for match_id in match_ids:
+                if stopper.should_stop():
+                    break
 
-            all_ok = True
-            try:
-                all_ok = _enrich_match_participants(api, db, participants, match_start_time)
-            except APIKeyExpiredError:
+                participants = db.get_participants_for_match(match_id)
+
+                all_ok = True
+                try:
+                    all_ok = _enrich_match_participants(api, db, participants, match_start_time)
+                except APIKeyExpiredError:
+                    db.flush()
+                    if not _DOCKER:
+                        pbar.close()
+                    raise
+
+                if all_ok:
+                    db.mark_match_enriched(match_id)
+                    enriched_count += 1
+                    batch_successes += 1
+
                 db.flush()
-                if not _DOCKER:
-                    pbar.close()
-                raise
 
-            if all_ok:
-                db.mark_match_enriched(match_id)
-                enriched_count += 1
+                if _DOCKER:
+                    rolling.record()
+                    now = time.monotonic()
+                    if enriched_count - last_log_count >= 10 or now - last_log_time >= 60:
+                        rate_hr = rolling.rate_per_hour()
+                        remaining = unenriched_total - enriched_count
+                        eta_str = f"~{_format_duration(remaining / rate_hr)}" if rate_hr > 0 else "?"
+                        used, budget = api.rate_window_usage()
+                        log.info(
+                            f"Enriching {unenriched_total:,} | {enriched_count} done | {rate_hr:.0f}/hr | ETA {eta_str} | API {used}/{budget} req/2min"
+                        )
+                        last_log_count = enriched_count
+                        last_log_time = now
+                else:
+                    pbar.update(1)
 
-            db.flush()
-
-            if _DOCKER:
-                rolling.record()
-                now = time.monotonic()
-                if enriched_count - last_log_count >= 10 or now - last_log_time >= 60:
-                    rate_hr = rolling.rate_per_hour()
-                    remaining = unenriched_total - enriched_count
-                    eta_str = f"~{_format_duration(remaining / rate_hr)}" if rate_hr > 0 else "?"
-                    used, budget = api.rate_window_usage()
-                    log.info(
-                        f"Enriching {unenriched_total:,} | {enriched_count} done | {rate_hr:.0f}/hr | ETA {eta_str} | API {used}/{budget} req/2min"
-                    )
-                    last_log_count = enriched_count
-                    last_log_time = now
-            else:
-                pbar.update(1)
+            if batch_successes == 0:
+                log.warning("Full batch yielded 0 successes — breaking to avoid infinite loop")
+                break
     finally:
         db.end_batch()
         db.close()
@@ -218,6 +226,7 @@ def _drain_unenriched(api: RiotAPI, database_url: str, config: Config, stopper: 
     if not _DOCKER:
         pbar.close()
 
+    log.info(f"Drain complete: enriched {enriched_count:,} matches")
     return enriched_count
 
 

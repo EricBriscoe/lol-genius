@@ -149,6 +149,6 @@ class TestMethodLimiter:
         expected = {
             "summoner-by-puuid", "league-entries", "league-by-puuid",
             "league-by-summoner", "match-ids", "match", "mastery",
-            "account-by-riot-id", "account-by-puuid",
+            "account-by-riot-id", "account-by-puuid", "spectator",
         }
         assert set(METHOD_RATE_LIMITS.keys()) == expected
