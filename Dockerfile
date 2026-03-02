@@ -7,7 +7,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && chmod +x /usr/local/bin/dbmate \
     && apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home appuser
+RUN useradd --create-home appuser \
+    && mkdir -p /app/data/models /app/data/ddragon \
+    && chown -R appuser:appuser /app/data
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
