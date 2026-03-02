@@ -1,5 +1,3 @@
-import json
-
 import psycopg2
 import psycopg2.extras
 import pytest
@@ -130,7 +128,7 @@ def test_insert_match_with_bans_and_objectives(db):
 
     raw_row = db._execute("SELECT * FROM match_raw_json WHERE match_id = %s", ("NA1_123",)).fetchone()
     assert raw_row is not None
-    assert json.loads(raw_row["raw_json"]) == {"test": 1}
+    assert raw_row["raw_json"] == {"test": 1}
 
     obj_rows = db._execute("SELECT * FROM match_team_objectives WHERE match_id = %s", ("NA1_123",)).fetchall()
     assert len(obj_rows) == 2
@@ -324,15 +322,15 @@ def test_compute_recent_stats_start_time_filter(db):
 def test_raw_json_tables(db):
     db.insert_match_raw_json("NA1_999", '{"metadata": {}}')
     row = db._execute("SELECT * FROM match_raw_json WHERE match_id = %s", ("NA1_999",)).fetchone()
-    assert row["raw_json"] == '{"metadata": {}}'
+    assert row["raw_json"] == {"metadata": {}}
 
     db.insert_league_raw_json("p1", '[{"tier": "GOLD"}]')
     row = db._execute("SELECT * FROM league_raw_json WHERE puuid = %s", ("p1",)).fetchone()
-    assert "GOLD" in row["raw_json"]
+    assert row["raw_json"] == [{"tier": "GOLD"}]
 
     db.insert_mastery_raw_json("p1", 1, '{"championId": 1}')
     row = db._execute("SELECT * FROM mastery_raw_json WHERE puuid = %s AND champion_id = %s", ("p1", 1)).fetchone()
-    assert row is not None
+    assert row["raw_json"] == {"championId": 1}
 
 
 def test_get_player_top_champions(db):

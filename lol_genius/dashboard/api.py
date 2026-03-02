@@ -358,7 +358,7 @@ async def predict_live(request: Request):
         db = MatchDB(dsn)
         ddragon = DataDragon(ddragon_cache)
         try:
-            return predict_live_game(proxy, db, ddragon, model_dir, game_data)
+            return predict_live_game(proxy, db, ddragon, model_dir, game_data, dsn=dsn)
         finally:
             proxy.close()
             db.close()

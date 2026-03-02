@@ -164,13 +164,13 @@ CREATE TABLE IF NOT EXISTS model_runs (
 
 CREATE TABLE IF NOT EXISTS match_raw_json (
     match_id    TEXT PRIMARY KEY,
-    raw_json    TEXT NOT NULL,
+    raw_json    JSONB NOT NULL,
     stored_at   TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
 
 CREATE TABLE IF NOT EXISTS league_raw_json (
     puuid       TEXT NOT NULL,
-    raw_json    TEXT NOT NULL,
+    raw_json    JSONB NOT NULL,
     fetched_at  TIMESTAMP NOT NULL DEFAULT current_timestamp,
     PRIMARY KEY (puuid, fetched_at)
 );
@@ -178,7 +178,7 @@ CREATE TABLE IF NOT EXISTS league_raw_json (
 CREATE TABLE IF NOT EXISTS mastery_raw_json (
     puuid       TEXT NOT NULL,
     champion_id INTEGER NOT NULL,
-    raw_json    TEXT NOT NULL,
+    raw_json    JSONB NOT NULL,
     fetched_at  TIMESTAMP NOT NULL DEFAULT current_timestamp,
     PRIMARY KEY (puuid, champion_id)
 );
@@ -264,13 +264,13 @@ ALTER TABLE player_recent_stats ADD COLUMN IF NOT EXISTS avg_multikill_rate DOUB
 
 CREATE TABLE IF NOT EXISTS match_raw_json (
     match_id    TEXT PRIMARY KEY,
-    raw_json    TEXT NOT NULL,
+    raw_json    JSONB NOT NULL,
     stored_at   TIMESTAMP NOT NULL DEFAULT current_timestamp
 );
 
 CREATE TABLE IF NOT EXISTS league_raw_json (
     puuid       TEXT NOT NULL,
-    raw_json    TEXT NOT NULL,
+    raw_json    JSONB NOT NULL,
     fetched_at  TIMESTAMP NOT NULL DEFAULT current_timestamp,
     PRIMARY KEY (puuid, fetched_at)
 );
@@ -278,10 +278,14 @@ CREATE TABLE IF NOT EXISTS league_raw_json (
 CREATE TABLE IF NOT EXISTS mastery_raw_json (
     puuid       TEXT NOT NULL,
     champion_id INTEGER NOT NULL,
-    raw_json    TEXT NOT NULL,
+    raw_json    JSONB NOT NULL,
     fetched_at  TIMESTAMP NOT NULL DEFAULT current_timestamp,
     PRIMARY KEY (puuid, champion_id)
 );
+
+ALTER TABLE match_raw_json ALTER COLUMN raw_json TYPE JSONB USING raw_json::jsonb;
+ALTER TABLE mastery_raw_json ALTER COLUMN raw_json TYPE JSONB USING raw_json::jsonb;
+ALTER TABLE league_raw_json ALTER COLUMN raw_json TYPE JSONB USING raw_json::jsonb;
 
 CREATE TABLE IF NOT EXISTS match_bans (
     match_id    TEXT NOT NULL REFERENCES matches(match_id),

@@ -160,6 +160,7 @@ def train_model(
     training_seconds = round(time.monotonic() - t0, 1)
 
     model.save_model(str(model_path / "model.json"))
+    invalidate_model_cache(model_dir)
 
     with open(model_path / "feature_names.json", "w") as f:
         json.dump(list(X.columns), f)
@@ -202,11 +203,20 @@ def train_model(
     return model, run_id
 
 
-def _cv_single_combo(args: tuple) -> tuple[float, dict, int]:
+_tune_X: np.ndarray | None = None
+_tune_y: np.ndarray | None = None
+
+
+def _init_tune_worker(X: np.ndarray, y: np.ndarray):
     import os
     os.nice(10)
-    params, X_values, y_values, feature_names = args
-    dtrain = xgb.DMatrix(X_values, label=y_values, feature_names=feature_names)
+    global _tune_X, _tune_y
+    _tune_X = X
+    _tune_y = y
+
+
+def _cv_single_combo(params: dict) -> tuple[float, dict, int]:
+    dtrain = xgb.DMatrix(_tune_X, label=_tune_y)
     cv_results = xgb.cv(
         params,
         dtrain,
@@ -225,9 +235,13 @@ def tune_hyperparameters(
     X: "pd.DataFrame",
     y: "pd.Series",
 ) -> dict:
+    import multiprocessing
     import os
     from concurrent.futures import ProcessPoolExecutor
     from itertools import product
+
+    X_np = X.values
+    y_np = y.values
 
     param_grid = {
         "max_depth": [4, 6, 8],
@@ -244,31 +258,34 @@ def tune_hyperparameters(
     for v in values:
         total *= len(v)
 
-    n_workers = os.cpu_count() or 1
-    log.info(f"Grid search: {total} combinations across {n_workers} workers (nice 10)")
+    n_cpu = os.cpu_count() or 1
+    n_workers = min(n_cpu, 4)
+    nthread = max(1, n_cpu // n_workers)
+    log.info(f"Grid search: {total} combinations, {n_workers} workers × {nthread} threads (nice 10)")
 
     base_params = {
         "objective": "binary:logistic",
         "eval_metric": "logloss",
         "gamma": 0.1,
         "tree_method": "hist",
-        "nthread": 1,
+        "nthread": nthread,
     }
-
-    X_values = X.values
-    y_values = y.values
-    feature_names = list(X.columns)
 
     combos = []
     for combo in product(*values):
-        params = {**base_params, **dict(zip(keys, combo))}
-        combos.append((params, X_values, y_values, feature_names))
+        combos.append({**base_params, **dict(zip(keys, combo))})
 
     best_score = float("inf")
     best_params = {}
     best_round = 300
 
-    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+    ctx = multiprocessing.get_context("spawn")
+    with ProcessPoolExecutor(
+        max_workers=n_workers,
+        mp_context=ctx,
+        initializer=_init_tune_worker,
+        initargs=(X_np, y_np),
+    ) as pool:
         for score, params, num_round in pool.map(_cv_single_combo, combos):
             if score < best_score:
                 best_score = score
@@ -281,12 +298,22 @@ def tune_hyperparameters(
     return best_params
 
 
+_model_cache: dict[str, tuple[xgb.Booster, list[str]]] = {}
+
+
 def load_model(model_dir: str) -> tuple[xgb.Booster, list[str]]:
-    model_path = Path(model_dir)
-    model = xgb.Booster()
-    model.load_model(str(model_path / "model.json"))
+    if model_dir not in _model_cache:
+        model_path = Path(model_dir)
+        model = xgb.Booster()
+        model.load_model(str(model_path / "model.json"))
+        with open(model_path / "feature_names.json") as f:
+            feature_names = json.load(f)
+        _model_cache[model_dir] = (model, feature_names)
+    return _model_cache[model_dir]
 
-    with open(model_path / "feature_names.json") as f:
-        feature_names = json.load(f)
 
-    return model, feature_names
+def invalidate_model_cache(model_dir: str | None = None) -> None:
+    if model_dir:
+        _model_cache.pop(model_dir, None)
+    else:
+        _model_cache.clear()

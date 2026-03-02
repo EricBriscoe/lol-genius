@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import pandas as pd
 
@@ -158,11 +159,9 @@ def _enrich_participant(
         log.info(f"Incomplete DB data for {puuid[:8]}…, fetching recent matches from API")
         match_ids = proxy.get_match_ids(puuid, count=LIVE_MATCH_FETCH_COUNT, queue=420)
         if match_ids:
-            matches = []
-            for mid in match_ids:
-                m = proxy.get_match(mid)
-                if m:
-                    matches.append(m)
+            with ThreadPoolExecutor(max_workers=len(match_ids)) as pool:
+                fetched = list(pool.map(proxy.get_match, match_ids))
+            matches = [m for m in fetched if m is not None]
             if matches:
                 api_stats = _compute_stats_from_matches(puuid, champion_id, matches)
                 if not recent_stats:
@@ -271,7 +270,7 @@ def _build_live_features(
 
 def predict_live_game(
     proxy: ProxyClient, db: MatchDB, ddragon: DataDragon,
-    model_dir: str, spectator_data: dict,
+    model_dir: str, spectator_data: dict, dsn: str | None = None,
 ) -> dict:
     model, feature_names = load_model(model_dir)
 
@@ -280,8 +279,9 @@ def predict_live_game(
         raise ValueError(f"Expected 10 participants, got {len(raw)}")
 
     for p in raw:
-        summoner = proxy.get_summoner_by_puuid(p["puuid"])
-        p["summoner_level"] = summoner.get("summonerLevel", 0) if summoner else 0
+        if not p.get("puuid"):
+            p["puuid"] = f"bot_{p.get('championId', 0)}"
+            p["_is_bot"] = True
         p["summoner1_id"] = p.get("spell1Id", 0)
         p["summoner2_id"] = p.get("spell2Id", 0)
         p["champion_id"] = p.get("championId", 0)
@@ -292,8 +292,28 @@ def predict_live_game(
     blue = [p for p in raw if p["team_id"] == 100]
     red = [p for p in raw if p["team_id"] == 200]
 
-    for p in blue + red:
-        p["_enrichment"] = _enrich_participant(proxy, db, p["puuid"], p["champion_id"])
+    def _enrich_player(p: dict) -> None:
+        if p.get("_is_bot"):
+            p["summoner_level"] = 0
+            p["_enrichment"] = {
+                "rank": None, "mastery": None, "recent_stats": None,
+                "champ_stats": {"games": 0, "wins": 0, "winrate": 0.0},
+                "role_dist": {}, "recent_outcomes": [], "top_champs": [],
+            }
+            return
+        summoner = proxy.get_summoner_by_puuid(p["puuid"])
+        p["summoner_level"] = summoner.get("summonerLevel", 0) if summoner else 0
+        if dsn:
+            thread_db = MatchDB(dsn, fast=True)
+            try:
+                p["_enrichment"] = _enrich_participant(proxy, thread_db, p["puuid"], p["champion_id"])
+            finally:
+                thread_db.close()
+        else:
+            p["_enrichment"] = _enrich_participant(proxy, db, p["puuid"], p["champion_id"])
+
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        list(pool.map(_enrich_player, blue + red))
 
     bans = [
         {"champion_id": b.get("championId", 0), "team_id": b.get("teamId", 0)}

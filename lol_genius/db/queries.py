@@ -116,7 +116,7 @@ class MatchDB:
 
         if raw_json:
             self._execute(
-                "INSERT INTO match_raw_json (match_id, raw_json) VALUES (%s, %s) ON CONFLICT (match_id) DO NOTHING",
+                "INSERT INTO match_raw_json (match_id, raw_json) VALUES (%s, %s::jsonb) ON CONFLICT (match_id) DO NOTHING",
                 (match["match_id"], raw_json),
             )
 
@@ -596,21 +596,21 @@ class MatchDB:
 
     def insert_match_raw_json(self, match_id: str, raw_json: str) -> None:
         self._execute(
-            "INSERT INTO match_raw_json (match_id, raw_json) VALUES (%s, %s) ON CONFLICT (match_id) DO NOTHING",
+            "INSERT INTO match_raw_json (match_id, raw_json) VALUES (%s, %s::jsonb) ON CONFLICT (match_id) DO NOTHING",
             (match_id, raw_json),
         )
         self._maybe_commit()
 
     def insert_league_raw_json(self, puuid: str, raw_json: str) -> None:
         self._execute(
-            "INSERT INTO league_raw_json (puuid, raw_json) VALUES (%s, %s) ON CONFLICT (puuid, fetched_at) DO NOTHING",
+            "INSERT INTO league_raw_json (puuid, raw_json) VALUES (%s, %s::jsonb) ON CONFLICT (puuid, fetched_at) DO NOTHING",
             (puuid, raw_json),
         )
         self._maybe_commit()
 
     def insert_mastery_raw_json(self, puuid: str, champion_id: int, raw_json: str) -> None:
         self._execute(
-            """INSERT INTO mastery_raw_json (puuid, champion_id, raw_json) VALUES (%s, %s, %s)
+            """INSERT INTO mastery_raw_json (puuid, champion_id, raw_json) VALUES (%s, %s, %s::jsonb)
                ON CONFLICT (puuid, champion_id) DO UPDATE SET raw_json = EXCLUDED.raw_json, fetched_at = current_timestamp""",
             (puuid, champion_id, raw_json),
         )
