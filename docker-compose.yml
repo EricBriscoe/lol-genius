@@ -23,6 +23,7 @@ services:
       dockerfile: Dockerfile.proxy
     container_name: lol-genius-proxy
     restart: unless-stopped
+    mem_limit: 1g
     ports:
       - "8080:8080"
     env_file: .env
