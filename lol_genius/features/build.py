@@ -8,10 +8,26 @@ from tqdm import tqdm
 from lol_genius.api.ddragon import DataDragon
 from lol_genius.db.queries import MatchDB
 from lol_genius.features.bans import BAN_FEATURE_NAMES, extract_ban_features
-from lol_genius.features.champion import CHAMPION_FEATURE_NAMES, extract_champion_features
-from lol_genius.features.draft import DRAFT_FEATURE_NAMES, POSITION_ORDER, POSITION_SHORT, align_by_position, extract_draft_features
-from lol_genius.features.interactions import INTERACTION_FEATURE_NAMES, extract_interaction_features
-from lol_genius.features.player import PLAYER_FEATURE_NAMES, extract_player_features, compute_tilt_features
+from lol_genius.features.champion import (
+    CHAMPION_FEATURE_NAMES,
+    extract_champion_features,
+)
+from lol_genius.features.draft import (
+    DRAFT_FEATURE_NAMES,
+    POSITION_ORDER,
+    POSITION_SHORT,
+    align_by_position,
+    extract_draft_features,
+)
+from lol_genius.features.interactions import (
+    INTERACTION_FEATURE_NAMES,
+    extract_interaction_features,
+)
+from lol_genius.features.player import (
+    PLAYER_FEATURE_NAMES,
+    extract_player_features,
+    compute_tilt_features,
+)
 from lol_genius.features.team import TEAM_FEATURE_NAMES, extract_team_features
 
 log = logging.getLogger(__name__)
@@ -53,7 +69,16 @@ def build_feature_matrix(
             continue
 
         game_creation = match.get("game_creation", 0)
-        row = _build_match_features(db, ddragon, blue, red, patch_str=match.get("patch", ""), match_id=match_id, game_creation=game_creation, global_champ_wr=global_champ_wr)
+        row = _build_match_features(
+            db,
+            ddragon,
+            blue,
+            red,
+            patch_str=match.get("patch", ""),
+            match_id=match_id,
+            game_creation=game_creation,
+            global_champ_wr=global_champ_wr,
+        )
         if row is not None:
             rows.append(row)
             targets.append(match["blue_win"])
@@ -61,7 +86,12 @@ def build_feature_matrix(
             timestamps.append(game_creation)
 
     if not rows:
-        return pd.DataFrame(), pd.Series(dtype=float), pd.Series(dtype=str), pd.Series(dtype=int)
+        return (
+            pd.DataFrame(),
+            pd.Series(dtype=float),
+            pd.Series(dtype=str),
+            pd.Series(dtype=int),
+        )
 
     X = pd.DataFrame(rows)
     y = pd.Series(targets, name="blue_win")
@@ -72,8 +102,12 @@ def build_feature_matrix(
 
 
 def _build_match_features(
-    db: MatchDB, ddragon: DataDragon, blue: list[dict], red: list[dict],
-    patch_str: str = "", match_id: str | None = None,
+    db: MatchDB,
+    ddragon: DataDragon,
+    blue: list[dict],
+    red: list[dict],
+    patch_str: str = "",
+    match_id: str | None = None,
     game_creation: int | None = None,
     global_champ_wr: dict[int, dict] | None = None,
 ) -> dict | None:
@@ -93,8 +127,22 @@ def _build_match_features(
     red_top_champs: dict[str, list[int]] = {}
 
     for side, team, pf_by_pos, pf_list, cf_list, top_champs in [
-        ("blue", blue_by_pos, blue_player_feats, blue_player_feats_list, blue_champ_feats_list, blue_top_champs),
-        ("red", red_by_pos, red_player_feats, red_player_feats_list, red_champ_feats_list, red_top_champs),
+        (
+            "blue",
+            blue_by_pos,
+            blue_player_feats,
+            blue_player_feats_list,
+            blue_champ_feats_list,
+            blue_top_champs,
+        ),
+        (
+            "red",
+            red_by_pos,
+            red_player_feats,
+            red_player_feats_list,
+            red_champ_feats_list,
+            red_top_champs,
+        ),
     ]:
         for pos in POSITION_ORDER:
             p = team.get(pos)
@@ -107,17 +155,31 @@ def _build_match_features(
 
                 rank = db.get_latest_rank(puuid)
                 mastery = db.get_champion_mastery_record(puuid, champion_id)
-                recent = db.compute_recent_stats_from_db(puuid, exclude_match_id=match_id, before_time_ms=game_creation)
-                champ_stats = db.get_player_champion_stats(puuid, champion_id, patch=patch_str or None, exclude_match_id=match_id, before_time_ms=game_creation)
-                role_dist = db.get_player_role_distribution(puuid, exclude_match_id=match_id, before_time_ms=game_creation)
+                recent = db.compute_recent_stats_from_db(
+                    puuid, exclude_match_id=match_id, before_time_ms=game_creation
+                )
+                champ_stats = db.get_player_champion_stats(
+                    puuid,
+                    champion_id,
+                    patch=patch_str or None,
+                    exclude_match_id=match_id,
+                    before_time_ms=game_creation,
+                )
+                role_dist = db.get_player_role_distribution(
+                    puuid, exclude_match_id=match_id, before_time_ms=game_creation
+                )
 
-                pf = extract_player_features(p, rank, mastery, recent, champ_stats, role_dist)
+                pf = extract_player_features(
+                    p, rank, mastery, recent, champ_stats, role_dist
+                )
                 cf = extract_champion_features(champion_id, ddragon)
 
                 champ_global = (global_champ_wr or {}).get(champion_id, {})
                 pf["champ_global_wr"] = champ_global.get("winrate", 0.5)
 
-                recent_outcomes = db.get_player_recent_outcomes(puuid, exclude_match_id=match_id, before_time_ms=game_creation)
+                recent_outcomes = db.get_player_recent_outcomes(
+                    puuid, exclude_match_id=match_id, before_time_ms=game_creation
+                )
                 tilt_feats = compute_tilt_features(recent_outcomes)
                 pf.update(tilt_feats)
 
@@ -147,7 +209,11 @@ def _build_match_features(
     features.update(draft)
 
     interaction = extract_interaction_features(
-        blue_by_pos, red_by_pos, blue_champ_feats_list, red_champ_feats_list, ddragon,
+        blue_by_pos,
+        red_by_pos,
+        blue_champ_feats_list,
+        red_champ_feats_list,
+        ddragon,
     )
     features.update(interaction)
 

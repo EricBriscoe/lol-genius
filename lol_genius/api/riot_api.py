@@ -1,6 +1,18 @@
 from __future__ import annotations
 
+import logging
+
 from .client import RiotHTTPClient
+
+log = logging.getLogger(__name__)
+
+
+def _coerce_list(result, context: str) -> list[dict]:
+    if isinstance(result, list):
+        return result
+    if result is not None:
+        log.warning("Expected list from %s, got %s", context, type(result).__name__)
+    return []
 
 
 class RiotAPI:
@@ -28,19 +40,19 @@ class RiotAPI:
         result = self.client.get(
             f"{self.region_url}/lol/league/v4/entries/RANKED_SOLO_5x5/{tier}/{division}?page={page}"
         )
-        return result if isinstance(result, list) else []
+        return _coerce_list(result, "get_league_entries")
 
     def get_league_by_summoner(self, summoner_id: str) -> list[dict]:
         result = self.client.get(
             f"{self.region_url}/lol/league/v4/entries/by-summoner/{summoner_id}"
         )
-        return result if isinstance(result, list) else []
+        return _coerce_list(result, "get_league_by_summoner")
 
     def get_league_by_puuid(self, puuid: str) -> list[dict]:
         result = self.client.get(
             f"{self.region_url}/lol/league/v4/entries/by-puuid/{puuid}"
         )
-        return result if isinstance(result, list) else []
+        return _coerce_list(result, "get_league_by_puuid")
 
     def get_match_ids(
         self,
@@ -56,12 +68,10 @@ class RiotAPI:
         result = self.client.get(
             f"{self.routing_url}/lol/match/v5/matches/by-puuid/{puuid}/ids?{params}"
         )
-        return result if isinstance(result, list) else []
+        return _coerce_list(result, "get_match_ids")
 
     def get_match(self, match_id: str) -> dict | None:
-        return self.client.get(
-            f"{self.routing_url}/lol/match/v5/matches/{match_id}"
-        )
+        return self.client.get(f"{self.routing_url}/lol/match/v5/matches/{match_id}")
 
     def get_champion_mastery(self, puuid: str, champion_id: int) -> dict | None:
         return self.client.get(
@@ -72,7 +82,7 @@ class RiotAPI:
         result = self.client.get(
             f"{self.region_url}/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}/top?count={count}"
         )
-        return result if isinstance(result, list) else []
+        return _coerce_list(result, "get_top_masteries")
 
     def rate_window_usage(self) -> tuple[int, int]:
         return self.client.rate_window_usage()

@@ -63,7 +63,9 @@ class KeyPool:
                 return ks
         return None
 
-    def get(self, url: str, key_index: int | None = None) -> tuple[dict | list | None, int]:
+    def get(
+        self, url: str, key_index: int | None = None
+    ) -> tuple[dict | list | None, int]:
         if key_index is not None:
             with self._lock:
                 ks = self._get_by_index(key_index)
@@ -76,7 +78,9 @@ class KeyPool:
                 except APIKeyExpiredError:
                     with self._lock:
                         self._mark_unhealthy(ks)
-                    log.warning(f"{ks.key_label} marked unhealthy, falling back to round-robin")
+                    log.warning(
+                        f"{ks.key_label} marked unhealthy, falling back to round-robin"
+                    )
 
         attempts = 0
         while attempts < len(self._keys):
@@ -119,13 +123,15 @@ class KeyPool:
                 used, budget = ks.client.rate_window_usage()
                 total_used += used
                 total_budget += budget
-                per_key.append({
-                    "label": ks.key_label,
-                    "healthy": ks.healthy,
-                    "used": used,
-                    "budget": budget,
-                    "total_requests": ks.total_requests,
-                })
+                per_key.append(
+                    {
+                        "label": ks.key_label,
+                        "healthy": ks.healthy,
+                        "used": used,
+                        "budget": budget,
+                        "total_requests": ks.total_requests,
+                    }
+                )
             return {
                 "total_used": total_used,
                 "total_budget": total_budget,

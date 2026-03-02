@@ -39,7 +39,9 @@ def explain_model(
     log.info(f"SHAP summary plot saved to {model_path / 'shap_summary.png'}")
 
     fig = plt.figure(figsize=(12, 8))
-    shap.summary_plot(shap_values, X_sample, plot_type="bar", show=False, max_display=30)
+    shap.summary_plot(
+        shap_values, X_sample, plot_type="bar", show=False, max_display=30
+    )
     plt.tight_layout()
     fig.savefig(model_path / "shap_importance.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -59,19 +61,27 @@ def explain_model(
         shap.dependence_plot(feat, shap_values, X_sample, show=False)
         plt.tight_layout()
         safe_name = feat.replace("/", "_")
-        fig.savefig(model_path / f"shap_dep_{safe_name}.png", dpi=150, bbox_inches="tight")
+        fig.savefig(
+            model_path / f"shap_dep_{safe_name}.png", dpi=150, bbox_inches="tight"
+        )
         plt.close(fig)
 
-    log.info(f"Top 5 features by SHAP importance: {[f['name'] for f in top_features_list[:5]]}")
+    log.info(
+        f"Top 5 features by SHAP importance: {[f['name'] for f in top_features_list[:5]]}"
+    )
 
     if database_url and run_id:
         import json
         from lol_genius.db.queries import MatchDB
+
         db = MatchDB(database_url)
         try:
-            db.update_model_run(run_id, {
-                "top_features": json.dumps(top_features_list),
-            })
+            db.update_model_run(
+                run_id,
+                {
+                    "top_features": json.dumps(top_features_list),
+                },
+            )
         finally:
             db.close()
 
@@ -99,7 +109,7 @@ def explain_single_match(
         reverse=True,
     )
 
-    log.info(f"\nTop 10 factors:")
+    log.info("\nTop 10 factors:")
     for name, impact in feature_impacts[:10]:
         direction = "→ Blue" if impact > 0 else "→ Red"
         log.info(f"  {name:40s} {impact:+.4f} {direction}")
@@ -118,7 +128,11 @@ def explain_single_match(
                 show=False,
             )
             plt.tight_layout()
-            fig.savefig(Path(model_dir) / "single_match_explanation.png", dpi=150, bbox_inches="tight")
+            fig.savefig(
+                Path(model_dir) / "single_match_explanation.png",
+                dpi=150,
+                bbox_inches="tight",
+            )
             plt.close(fig)
         except Exception as e:
             log.debug(f"Failed to save waterfall plot: {e}")

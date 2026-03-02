@@ -6,6 +6,7 @@ import os
 import signal
 import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from lol_genius.api.client import APIKeyExpiredError
 from lol_genius.api.ddragon import DataDragon
@@ -21,12 +22,27 @@ _THREAD_POOL_SIZE = 4
 
 _CHECKPOINTS = [1_000, 5_000, 15_000, 25_000, 50_000, 100_000]
 _ROLLING_WINDOW = 300
+_BAD_REQUEST_ABORT_THRESHOLD = 3
+
+
+class _BadRequestBatchError(Exception):
+    pass
+
+
+def _check_bad_request_abort(consecutive: int) -> None:
+    if consecutive >= _BAD_REQUEST_ABORT_THRESHOLD:
+        log.error(
+            f"Aborting: {consecutive} consecutive matches returned all-400 responses. "
+            "PUUIDs are likely stale from a previous API key. "
+            "Regenerate your Riot API key and re-seed the crawl queue."
+        )
+        raise SystemExit(1)
 
 
 class _RollingRate:
     def __init__(self, window: float = _ROLLING_WINDOW):
         self._window = window
-        self._events: list[float] = []
+        self._events: deque[float] = deque()
 
     def record(self, count: int = 1) -> None:
         now = time.monotonic()
@@ -45,7 +61,7 @@ class _RollingRate:
     def _prune(self) -> None:
         cutoff = time.monotonic() - self._window
         while self._events and self._events[0] < cutoff:
-            self._events.pop(0)
+            self._events.popleft()
 
 
 def _format_duration(hours: float) -> str:
@@ -98,15 +114,23 @@ class _GracefulStop:
 
 def _auto_seed(api: RiotAPI, db: MatchDB, config: Config) -> None:
     from lol_genius.crawler.seed import seed_accounts
+
     log.info("Crawl queue empty. Auto-seeding from League-V4 entries...")
     added = seed_accounts(api, db, config)
     log.info(f"Auto-seeded {added} accounts")
 
 
 def _enrich_match_participants(
-    api: RiotAPI, db: MatchDB, participants: list[dict], match_start_time: int | None,
+    api: RiotAPI,
+    db: MatchDB,
+    participants: list[dict],
+    match_start_time: int | None,
 ) -> bool:
-    from lol_genius.crawler.enrich import check_enrich_needed, fetch_enrichment, write_enrichment
+    from lol_genius.crawler.enrich import (
+        check_enrich_needed,
+        fetch_enrichment,
+        write_enrichment,
+    )
 
     start_time_ms = match_start_time * 1000 if match_start_time else None
 
@@ -114,9 +138,9 @@ def _enrich_match_participants(
     for p in participants:
         puuid = p["puuid"]
         summoner_id = p.get("summoner_id", "")
-        needs, precomputed = check_enrich_needed(db, puuid, summoner_id, start_time_ms=start_time_ms)
-        if precomputed:
-            db.upsert_player_recent_stats(precomputed)
+        needs, _ = check_enrich_needed(
+            db, puuid, summoner_id, start_time_ms=start_time_ms
+        )
         if any(needs.values()):
             work_items.append((puuid, summoner_id, needs))
 
@@ -126,7 +150,9 @@ def _enrich_match_participants(
     results = []
     with ThreadPoolExecutor(max_workers=_THREAD_POOL_SIZE) as pool:
         futures = {
-            pool.submit(fetch_enrichment, api, puuid, sid, needs, start_time=match_start_time): puuid
+            pool.submit(
+                fetch_enrichment, api, puuid, sid, needs, start_time=match_start_time
+            ): puuid
             for puuid, sid, needs in work_items
         }
         all_ok = True
@@ -136,21 +162,32 @@ def _enrich_match_participants(
             except APIKeyExpiredError:
                 raise
             except Exception as e:
-                log.debug(f"Enrich failed for {futures[future]}: {e}")
+                log.warning(f"Enrich failed for {futures[future]}: {e}")
                 all_ok = False
 
     for result in results:
         write_enrichment(db, result)
 
+    if results and all(r.bad_request for r in results):
+        raise _BadRequestBatchError(
+            f"All {len(results)} enrichment requests returned 400"
+        )
+
     return all_ok
 
 
-def _drain_unenriched(api: RiotAPI, database_url: str, config: Config, stopper: _GracefulStop, batch_size: int = 200) -> int:
+def _drain_unenriched(
+    api: RiotAPI,
+    database_url: str,
+    config: Config,
+    stopper: _GracefulStop,
+    batch_size: int = 200,
+) -> int:
     match_start_time: int | None = None
     if config.crawl_lookback_days > 0:
         match_start_time = int(time.time()) - config.crawl_lookback_days * 86400
 
-    db = MatchDB(database_url, fast=True)
+    db = MatchDB(database_url)
     enrichment_stats = db.get_enrichment_stats()
     unenriched_total = enrichment_stats["total"] - enrichment_stats["enriched"]
 
@@ -159,6 +196,7 @@ def _drain_unenriched(api: RiotAPI, database_url: str, config: Config, stopper: 
         return 0
 
     enriched_count = 0
+    consecutive_bad_request = 0
 
     if _DOCKER:
         rolling = _RollingRate()
@@ -167,6 +205,7 @@ def _drain_unenriched(api: RiotAPI, database_url: str, config: Config, stopper: 
         log.info(f"Draining {unenriched_total:,} unenriched matches")
     else:
         from tqdm import tqdm
+
         pbar = tqdm(total=unenriched_total, desc="Enriching", unit="match")
 
     db.begin_batch()
@@ -186,7 +225,15 @@ def _drain_unenriched(api: RiotAPI, database_url: str, config: Config, stopper: 
 
                 all_ok = True
                 try:
-                    all_ok = _enrich_match_participants(api, db, participants, match_start_time)
+                    all_ok = _enrich_match_participants(
+                        api, db, participants, match_start_time
+                    )
+                    consecutive_bad_request = 0
+                except _BadRequestBatchError:
+                    consecutive_bad_request += 1
+                    db.flush()
+                    _check_bad_request_abort(consecutive_bad_request)
+                    continue
                 except APIKeyExpiredError:
                     db.flush()
                     if not _DOCKER:
@@ -203,10 +250,17 @@ def _drain_unenriched(api: RiotAPI, database_url: str, config: Config, stopper: 
                 if _DOCKER:
                     rolling.record()
                     now = time.monotonic()
-                    if enriched_count - last_log_count >= 10 or now - last_log_time >= 60:
+                    if (
+                        enriched_count - last_log_count >= 10
+                        or now - last_log_time >= 60
+                    ):
                         rate_hr = rolling.rate_per_hour()
                         remaining = unenriched_total - enriched_count
-                        eta_str = f"~{_format_duration(remaining / rate_hr)}" if rate_hr > 0 else "?"
+                        eta_str = (
+                            f"~{_format_duration(remaining / rate_hr)}"
+                            if rate_hr > 0
+                            else "?"
+                        )
                         used, budget = api.rate_window_usage()
                         log.info(
                             f"Enriching {unenriched_total:,} | {enriched_count} done | {rate_hr:.0f}/hr | ETA {eta_str} | API {used}/{budget} req/2min"
@@ -217,7 +271,9 @@ def _drain_unenriched(api: RiotAPI, database_url: str, config: Config, stopper: 
                     pbar.update(1)
 
             if batch_successes == 0:
-                log.warning("Full batch yielded 0 successes; breaking to avoid an infinite loop")
+                log.warning(
+                    "Full batch yielded 0 successes; breaking to avoid an infinite loop"
+                )
                 break
     finally:
         db.end_batch()
@@ -242,7 +298,7 @@ def _crawl_batch(
     initial_match_count: int = 0,
     tier_weights: dict[str, int] | None = None,
 ) -> int:
-    db = MatchDB(database_url, fast=True)
+    db = MatchDB(database_url)
     puuids = db.get_pending_puuids(limit=puuid_limit, tier_weights=tier_weights)
     if not puuids:
         _auto_seed(api, db, config)
@@ -254,6 +310,7 @@ def _crawl_batch(
 
     matches_added = 0
     puuids_processed = 0
+    consecutive_bad_request = 0
     batch_start = time.monotonic()
     last_batch_log = batch_start
     rolling = _RollingRate()
@@ -267,14 +324,18 @@ def _crawl_batch(
             db.mark_puuid_processing(puuid)
             db.flush()
 
-            match_ids = api.get_match_ids(puuid, count=20, queue=420, start_time=match_start_time)
+            match_ids = api.get_match_ids(
+                puuid, count=20, queue=420, start_time=match_start_time
+            )
 
             for match_id in match_ids:
                 if db.match_exists(match_id):
                     continue
 
                 match_data = api.get_match(match_id)
-                if not match_data or not _is_valid_match(match_data, config, patch_override=patch_filter):
+                if not match_data or not _is_valid_match(
+                    match_data, config, patch_override=patch_filter
+                ):
                     continue
 
                 parsed = parse_match(match_data)
@@ -287,7 +348,13 @@ def _crawl_batch(
                     raw_json = json.dumps(match_data)
                 except Exception:
                     pass
-                db.insert_match(match_row, participants, bans=bans, objectives=objectives, raw_json=raw_json)
+                db.insert_match(
+                    match_row,
+                    participants,
+                    bans=bans,
+                    objectives=objectives,
+                    raw_json=raw_json,
+                )
                 other_puuids = [p["puuid"] for p in participants if p["puuid"] != puuid]
                 seed_rank = db.get_latest_rank(puuid)
                 seed_tier = seed_rank["tier"] if seed_rank else "UNKNOWN"
@@ -297,7 +364,15 @@ def _crawl_batch(
                 rolling.record()
 
                 try:
-                    all_ok = _enrich_match_participants(api, db, participants, match_start_time)
+                    all_ok = _enrich_match_participants(
+                        api, db, participants, match_start_time
+                    )
+                    consecutive_bad_request = 0
+                except _BadRequestBatchError:
+                    consecutive_bad_request += 1
+                    db.flush()
+                    _check_bad_request_abort(consecutive_bad_request)
+                    continue
                 except APIKeyExpiredError:
                     db.flush()
                     raise
@@ -330,14 +405,20 @@ def _crawl_batch(
     return matches_added
 
 
-def crawl_matches(api: RiotAPI, database_url: str, config: Config, ddragon: DataDragon | None = None) -> None:
-    from lol_genius.crawler.planner import assess_data_quality, plan_next_action, log_assessment
+def crawl_matches(
+    api: RiotAPI, database_url: str, config: Config, ddragon: DataDragon | None = None
+) -> None:
+    from lol_genius.crawler.planner import (
+        assess_data_quality,
+        plan_next_action,
+        log_assessment,
+    )
     from lol_genius.crawler.seed import seed_tier
 
     stopper = _GracefulStop()
     stopper.install()
 
-    db = MatchDB(database_url, fast=True)
+    db = MatchDB(database_url)
     recovered = db.recover_stuck_processing()
     if recovered:
         log.info(f"Recovered {recovered} stuck PUUIDs from previous interrupted run")
@@ -359,6 +440,7 @@ def crawl_matches(api: RiotAPI, database_url: str, config: Config, ddragon: Data
         pbar = None
     else:
         from tqdm import tqdm
+
         pbar = tqdm(total=target, initial=current, desc="Crawling", unit="match")
 
     last_log_time = time.monotonic()
@@ -366,7 +448,7 @@ def crawl_matches(api: RiotAPI, database_url: str, config: Config, ddragon: Data
 
     def _update_progress() -> None:
         nonlocal current, last_log_count, last_log_time
-        db = MatchDB(database_url, fast=True)
+        db = MatchDB(database_url)
         prev = current
         current = db.get_match_count()
         db.close()
@@ -378,7 +460,9 @@ def crawl_matches(api: RiotAPI, database_url: str, config: Config, ddragon: Data
             if current - last_log_count >= 10 or now - last_log_time >= 60:
                 rate_hr = progress_rolling.rate_per_hour()
                 eta = _format_eta(current, rate_hr, target)
-                log.info(f"Progress: {current:,} / {target:,} matches ({current/target:.1%}) | {rate_hr:.0f}/hr | {eta}")
+                log.info(
+                    f"Progress: {current:,} / {target:,} matches ({current / target:.1%}) | {rate_hr:.0f}/hr | {eta}"
+                )
                 last_log_count = current
                 last_log_time = now
         elif pbar:
@@ -390,7 +474,7 @@ def crawl_matches(api: RiotAPI, database_url: str, config: Config, ddragon: Data
 
     try:
         while current < target and not stopper.should_stop():
-            db = MatchDB(database_url, fast=True)
+            db = MatchDB(database_url)
             metrics = assess_data_quality(db, ddragon)
             db.close()
 
@@ -401,20 +485,32 @@ def crawl_matches(api: RiotAPI, database_url: str, config: Config, ddragon: Data
                 _drain_unenriched(api, database_url, config, stopper, batch_size=200)
 
             elif action.action == "reseed":
-                db = MatchDB(database_url, fast=True)
+                db = MatchDB(database_url)
                 seed_tier(api, db, config, tier=action.tier)
                 db.close()
                 _crawl_batch(
-                    api, database_url, config, stopper, match_start_time,
-                    puuid_limit=50, crawl_start_time=start_time, initial_match_count=current,
+                    api,
+                    database_url,
+                    config,
+                    stopper,
+                    match_start_time,
+                    puuid_limit=50,
+                    crawl_start_time=start_time,
+                    initial_match_count=current,
                     tier_weights=metrics.tier_counts,
                 )
 
             else:
                 _crawl_batch(
-                    api, database_url, config, stopper, match_start_time,
-                    puuid_limit=50, patch_filter=action.patch,
-                    crawl_start_time=start_time, initial_match_count=current,
+                    api,
+                    database_url,
+                    config,
+                    stopper,
+                    match_start_time,
+                    puuid_limit=50,
+                    patch_filter=action.patch,
+                    crawl_start_time=start_time,
+                    initial_match_count=current,
                     tier_weights=metrics.tier_counts,
                 )
 
@@ -428,11 +524,13 @@ def crawl_matches(api: RiotAPI, database_url: str, config: Config, ddragon: Data
             pbar.close()
         stopper.uninstall()
 
-    db = MatchDB(database_url, fast=True)
+    db = MatchDB(database_url)
     total = db.get_match_count()
     db.close()
     if stopper.should_stop():
-        log.info(f"Crawl paused. {total:,} matches collected. Run 'crawl' again to resume.")
+        log.info(
+            f"Crawl paused. {total:,} matches collected. Run 'crawl' again to resume."
+        )
     elif config.continuous:
         log.info(f"Target reached ({total:,} matches). Entering maintenance mode.")
         _maintenance_loop(api, database_url, config, ddragon, stopper, match_start_time)
@@ -448,7 +546,11 @@ def _maintenance_loop(
     stopper: _GracefulStop,
     match_start_time: int | None,
 ) -> None:
-    from lol_genius.crawler.planner import assess_data_quality, plan_next_action, log_assessment
+    from lol_genius.crawler.planner import (
+        assess_data_quality,
+        plan_next_action,
+        log_assessment,
+    )
     from lol_genius.crawler.seed import seed_tier
     from lol_genius.crawler.enrich import re_enrich_stale_batch
 
@@ -457,16 +559,23 @@ def _maintenance_loop(
 
     try:
         while not stopper.should_stop():
-            db = MatchDB(database_url, fast=True)
+            db = MatchDB(database_url)
             metrics = assess_data_quality(db, ddragon, maintenance=True)
             db.close()
 
-            action = plan_next_action(metrics, config, maintenance=True, consecutive_healthy=consecutive_healthy)
+            action = plan_next_action(
+                metrics,
+                config,
+                maintenance=True,
+                consecutive_healthy=consecutive_healthy,
+            )
             log_assessment(metrics, action)
 
             if action.action == "sleep":
                 consecutive_healthy += 1
-                log.info(f"Sleeping {action.sleep_seconds}s (consecutive healthy: {consecutive_healthy})")
+                log.info(
+                    f"Sleeping {action.sleep_seconds}s (consecutive healthy: {consecutive_healthy})"
+                )
                 if stopper._stop.wait(timeout=action.sleep_seconds):
                     break
                 continue
@@ -485,7 +594,7 @@ def _maintenance_loop(
 
                 now = time.monotonic()
                 if now - last_prune_time >= config.ddragon_check_interval:
-                    db = MatchDB(database_url, fast=True)
+                    db = MatchDB(database_url)
                     pruned = db.prune_old_ranks()
                     db.close()
                     if pruned:
@@ -496,25 +605,40 @@ def _maintenance_loop(
                 _drain_unenriched(api, database_url, config, stopper, batch_size=200)
 
             elif action.action == "re_enrich":
-                db = MatchDB(database_url, fast=True)
+                db = MatchDB(database_url)
                 db.begin_batch()
-                stale_puuids = db.get_stale_enrichment_puuids(hours=config.stale_enrichment_hours, limit=50)
+                stale_puuids = db.get_stale_enrichment_puuids(
+                    hours=config.stale_enrichment_hours, limit=50
+                )
                 if stale_puuids:
-                    refreshed = re_enrich_stale_batch(api, db, stale_puuids, start_time=match_start_time)
+                    refreshed = re_enrich_stale_batch(api, db, stale_puuids)
                     log.info(f"Re-enriched {refreshed} stale players")
                 db.end_batch()
                 db.close()
 
             elif action.action == "reseed":
-                db = MatchDB(database_url, fast=True)
+                db = MatchDB(database_url)
                 seed_tier(api, db, config, tier=action.tier)
                 db.close()
-                _crawl_batch(api, database_url, config, stopper, match_start_time, puuid_limit=50, tier_weights=metrics.tier_counts)
+                _crawl_batch(
+                    api,
+                    database_url,
+                    config,
+                    stopper,
+                    match_start_time,
+                    puuid_limit=50,
+                    tier_weights=metrics.tier_counts,
+                )
 
             else:
                 _crawl_batch(
-                    api, database_url, config, stopper, match_start_time,
-                    puuid_limit=50, patch_filter=action.patch,
+                    api,
+                    database_url,
+                    config,
+                    stopper,
+                    match_start_time,
+                    puuid_limit=50,
+                    patch_filter=action.patch,
                     tier_weights=metrics.tier_counts,
                 )
 
@@ -525,7 +649,9 @@ def _maintenance_loop(
     log.info("Maintenance mode stopped.")
 
 
-def _is_valid_match(match_data: dict, config: Config, patch_override: str | None = None) -> bool:
+def _is_valid_match(
+    match_data: dict, config: Config, patch_override: str | None = None
+) -> bool:
     info = match_data.get("info", {})
 
     if info.get("queueId") != 420:

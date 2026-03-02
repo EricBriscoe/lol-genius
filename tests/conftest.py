@@ -1,9 +1,10 @@
 import os
+import subprocess
+
 import psycopg2
-import psycopg2.extras
 import pytest
 
-from lol_genius.db.connection import init_db
+from lol_genius.db.connection import dbmate_url
 from lol_genius.db.queries import MatchDB
 
 _TEST_DB_BASE = os.environ.get(
@@ -40,7 +41,11 @@ def _drop_test_db():
 @pytest.fixture(scope="session", autouse=True)
 def _setup_test_db():
     _create_test_db()
-    init_db(_TEST_DSN)
+    subprocess.run(
+        ["dbmate", "up"],
+        env={**os.environ, "DATABASE_URL": dbmate_url(_TEST_DSN)},
+        check=True,
+    )
     yield
     _drop_test_db()
 
@@ -58,7 +63,10 @@ def db(test_dsn):
     cur.execute("""
         DO $$ DECLARE r RECORD;
         BEGIN
-            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = 'public') LOOP
+            FOR r IN (
+                SELECT tablename FROM pg_tables
+                WHERE schemaname = 'public' AND tablename <> 'schema_migrations'
+            ) LOOP
                 EXECUTE 'TRUNCATE TABLE ' || quote_ident(r.tablename) || ' CASCADE';
             END LOOP;
         END $$
@@ -66,6 +74,6 @@ def db(test_dsn):
     cur.close()
     conn.close()
 
-    d = MatchDB(test_dsn, fast=True)
+    d = MatchDB(test_dsn)
     yield d
     d.close()

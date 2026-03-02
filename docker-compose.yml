@@ -30,7 +30,7 @@ services:
       - LOL_GENIUS_REGION=na1
       - LOL_GENIUS_ROUTING=americas
     healthcheck:
-      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8080/riot/v1/health').raise_for_status()"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/riot/v1/health"]
       interval: 30s
       timeout: 10s
       start_period: 10s
@@ -41,6 +41,17 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  migrate:
+    build: .
+    container_name: lol-genius-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://lol_genius:${POSTGRES_PASSWORD:-lol_genius_dev}@postgres:5432/lol_genius
+    command: ["init-db", "--wait"]
+
   crawler:
     build: .
     container_name: lol-genius-crawler
@@ -48,10 +59,10 @@ services:
     depends_on:
       riot-proxy:
         condition: service_healthy
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
-      - ./data/models:/app/data/models
+      - model-data:/app/data/models
       - ./data/ddragon:/app/data/ddragon
       - ./config.yaml:/app/config.yaml:ro
     environment:
@@ -72,10 +83,10 @@ services:
     container_name: lol-genius-dashboard-api
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     volumes:
-      - ./data/models:/app/data/models
+      - model-data:/app/data/models
       - ./data/ddragon:/app/data/ddragon
       - ./config.yaml:/app/config.yaml:ro
     environment:
@@ -85,6 +96,12 @@ services:
       - DDRAGON_CACHE=data/ddragon
     ports:
       - "8081:8081"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8081/api/v1/model/training-status')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
     logging:
       driver: json-file
       options:
@@ -97,9 +114,11 @@ services:
     container_name: lol-genius-dashboard
     restart: unless-stopped
     depends_on:
-      - dashboard-api
+      dashboard-api:
+        condition: service_healthy
     ports:
       - "3000:80"
 
 volumes:
   pgdata:
+  model-data:

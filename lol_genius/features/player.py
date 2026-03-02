@@ -4,12 +4,24 @@ import math
 import time
 
 TIER_MAP = {
-    "IRON": 0, "BRONZE": 4, "SILVER": 8, "GOLD": 12,
-    "PLATINUM": 16, "EMERALD": 20, "DIAMOND": 24,
-    "MASTER": 28, "GRANDMASTER": 29, "CHALLENGER": 30,
+    "IRON": 0,
+    "BRONZE": 4,
+    "SILVER": 8,
+    "GOLD": 12,
+    "PLATINUM": 16,
+    "EMERALD": 20,
+    "DIAMOND": 24,
+    "MASTER": 28,
+    "GRANDMASTER": 29,
+    "CHALLENGER": 30,
 }
 
 DIV_MAP = {"IV": 0, "III": 1, "II": 2, "I": 3}
+
+SMURF_WR_RESIDUAL_WEIGHT = 2.0
+SMURF_RANK_MISMATCH_WEIGHT = 0.5
+SMURF_GAMES_PER_LEVEL_WEIGHT = 1.5
+SMURF_RANK_PER_GAME_WEIGHT = 1.0
 
 FLASH_ID = 4
 SPELL_MAP = {
@@ -30,7 +42,9 @@ def rank_to_numeric(tier: str, division: str, lp: int) -> float:
     return base + div_offset + (lp / 100.0)
 
 
-def _bayesian_winrate(wins: int, games: int, prior_wr: float = 0.5, prior_strength: float = 10.0) -> float:
+def _bayesian_winrate(
+    wins: int, games: int, prior_wr: float = 0.5, prior_strength: float = 10.0
+) -> float:
     return (wins + prior_strength * prior_wr) / (games + prior_strength)
 
 
@@ -68,24 +82,39 @@ def extract_player_features(
 
     if recent_stats:
         games = max(recent_stats.get("games_played", 1), 1)
-        features["recent_winrate"] = _bayesian_winrate(recent_stats.get("wins", 0), games)
+        features["recent_winrate"] = _bayesian_winrate(
+            recent_stats.get("wins", 0), games
+        )
         features["recent_games"] = float(games)
         features["avg_kda"] = (
-            (recent_stats.get("avg_kills", 0) + recent_stats.get("avg_assists", 0))
-            / max(recent_stats.get("avg_deaths", 1), 1.0)
-        )
+            recent_stats.get("avg_kills", 0) + recent_stats.get("avg_assists", 0)
+        ) / max(recent_stats.get("avg_deaths", 1), 1.0)
         features["avg_cs_per_min"] = float(recent_stats.get("avg_cs_per_min", 0) or 0)
         features["avg_vision"] = float(recent_stats.get("avg_vision", 0) or 0)
-        features["avg_damage_share"] = float(recent_stats.get("avg_damage_share", 0) or 0)
-        features["avg_wards_placed"] = float(recent_stats.get("avg_wards_placed", 0) or 0)
-        features["avg_wards_killed"] = float(recent_stats.get("avg_wards_killed", 0) or 0)
-        features["avg_damage_taken"] = float(recent_stats.get("avg_damage_taken", 0) or 0)
+        features["avg_damage_share"] = float(
+            recent_stats.get("avg_damage_share", 0) or 0
+        )
+        features["avg_wards_placed"] = float(
+            recent_stats.get("avg_wards_placed", 0) or 0
+        )
+        features["avg_wards_killed"] = float(
+            recent_stats.get("avg_wards_killed", 0) or 0
+        )
+        features["avg_damage_taken"] = float(
+            recent_stats.get("avg_damage_taken", 0) or 0
+        )
         features["avg_gold_spent"] = float(recent_stats.get("avg_gold_spent", 0) or 0)
         features["avg_cc_score"] = float(recent_stats.get("avg_cc_score", 0) or 0)
         features["avg_heal_total"] = float(recent_stats.get("avg_heal_total", 0) or 0)
-        features["avg_magic_dmg_share"] = float(recent_stats.get("avg_magic_dmg_share", 0) or 0)
-        features["avg_phys_dmg_share"] = float(recent_stats.get("avg_phys_dmg_share", 0) or 0)
-        features["avg_multikill_rate"] = float(recent_stats.get("avg_multikill_rate", 0) or 0)
+        features["avg_magic_dmg_share"] = float(
+            recent_stats.get("avg_magic_dmg_share", 0) or 0
+        )
+        features["avg_phys_dmg_share"] = float(
+            recent_stats.get("avg_phys_dmg_share", 0) or 0
+        )
+        features["avg_multikill_rate"] = float(
+            recent_stats.get("avg_multikill_rate", 0) or 0
+        )
 
         kda_list = recent_stats.get("kda_per_game", [])
         if len(kda_list) >= 3:
@@ -93,8 +122,10 @@ def extract_player_features(
             var = sum((k - mean_kda) ** 2 for k in kda_list) / len(kda_list)
             features["kda_variance"] = var
             features["kda_skewness"] = (
-                (sum((k - mean_kda) ** 3 for k in kda_list) / len(kda_list)) / (var ** 1.5)
-                if var > 0 else 0.0
+                (sum((k - mean_kda) ** 3 for k in kda_list) / len(kda_list))
+                / (var**1.5)
+                if var > 1e-8
+                else 0.0
             )
         else:
             features["kda_variance"] = 0.0
@@ -119,7 +150,9 @@ def extract_player_features(
         features["kda_skewness"] = 0.0
 
     if champ_stats and champ_stats.get("games", 0) > 0:
-        features["champ_winrate"] = _bayesian_winrate(champ_stats["wins"], champ_stats["games"])
+        features["champ_winrate"] = _bayesian_winrate(
+            champ_stats["wins"], champ_stats["games"]
+        )
         features["champ_games"] = float(champ_stats["games"])
     else:
         features["champ_winrate"] = 0.5
@@ -155,7 +188,9 @@ def extract_player_features(
         if total_role_games > 0:
             most_played = max(role_dist, key=role_dist.get)
             features["is_autofill"] = 0.0 if most_played == position else 1.0
-            features["role_experience_ratio"] = role_dist.get(position, 0) / total_role_games
+            features["role_experience_ratio"] = (
+                role_dist.get(position, 0) / total_role_games
+            )
         else:
             features["is_autofill"] = 0.0
             features["role_experience_ratio"] = 0.0
@@ -178,10 +213,10 @@ def extract_player_features(
     features["level_rank_mismatch"] = rn - expected_rank
 
     features["smurf_score"] = (
-        max(features["winrate_rank_residual"], 0) * 2.0
-        + max(features["level_rank_mismatch"], 0) * 0.5
-        + min(features["games_per_level"], 1.0) * 1.5
-        + min(features["rank_per_game"], 1.0) * 1.0
+        max(features["winrate_rank_residual"], 0) * SMURF_WR_RESIDUAL_WEIGHT
+        + max(features["level_rank_mismatch"], 0) * SMURF_RANK_MISMATCH_WEIGHT
+        + min(features["games_per_level"], 1.0) * SMURF_GAMES_PER_LEVEL_WEIGHT
+        + min(features["rank_per_game"], 1.0) * SMURF_RANK_PER_GAME_WEIGHT
     )
 
     s1 = participant.get("summoner1_id", 0) or 0
@@ -196,7 +231,11 @@ def extract_player_features(
 
 def compute_tilt_features(recent_outcomes: list[dict]) -> dict[str, float]:
     if not recent_outcomes:
-        return {"loss_streak": 0.0, "avg_time_between_games_hrs": 24.0, "games_last_24h": 0.0}
+        return {
+            "loss_streak": 0.0,
+            "avg_time_between_games_hrs": 24.0,
+            "games_last_24h": 0.0,
+        }
 
     streak = 0
     for r in recent_outcomes:
@@ -207,7 +246,9 @@ def compute_tilt_features(recent_outcomes: list[dict]) -> dict[str, float]:
 
     gaps = []
     for i in range(len(recent_outcomes) - 1):
-        end_prev = recent_outcomes[i + 1]["game_creation"] + (recent_outcomes[i + 1]["game_duration"] * 1000)
+        end_prev = recent_outcomes[i + 1]["game_creation"] + (
+            recent_outcomes[i + 1]["game_duration"] * 1000
+        )
         gap_ms = recent_outcomes[i]["game_creation"] - end_prev
         if gap_ms > 0:
             gaps.append(gap_ms / 3600000.0)
@@ -218,24 +259,63 @@ def compute_tilt_features(recent_outcomes: list[dict]) -> dict[str, float]:
     return {
         "loss_streak": float(streak),
         "avg_time_between_games_hrs": sum(gaps) / len(gaps) if gaps else 24.0,
-        "games_last_24h": float(sum(1 for r in recent_outcomes if r["game_creation"] > cutoff)),
+        "games_last_24h": float(
+            sum(1 for r in recent_outcomes if r["game_creation"] > cutoff)
+        ),
     }
 
 
 PLAYER_FEATURE_NAMES = [
-    "rank_numeric", "league_points", "ranked_winrate", "ranked_games",
-    "hot_streak", "fresh_blood", "veteran",
-    "recent_winrate", "recent_games", "avg_kda", "avg_cs_per_min",
-    "avg_vision", "avg_damage_share",
-    "avg_wards_placed", "avg_wards_killed", "avg_damage_taken", "avg_gold_spent",
-    "avg_cc_score", "avg_heal_total", "avg_magic_dmg_share", "avg_phys_dmg_share", "avg_multikill_rate",
-    "kda_variance", "kda_skewness",
-    "champ_winrate", "champ_games", "champ_global_wr",
-    "mastery_points", "mastery_points_log", "mastery_above_12k", "mastery_level", "days_since_champ_played",
-    "is_autofill", "role_experience_ratio",
+    "rank_numeric",
+    "league_points",
+    "ranked_winrate",
+    "ranked_games",
+    "hot_streak",
+    "fresh_blood",
+    "veteran",
+    "recent_winrate",
+    "recent_games",
+    "avg_kda",
+    "avg_cs_per_min",
+    "avg_vision",
+    "avg_damage_share",
+    "avg_wards_placed",
+    "avg_wards_killed",
+    "avg_damage_taken",
+    "avg_gold_spent",
+    "avg_cc_score",
+    "avg_heal_total",
+    "avg_magic_dmg_share",
+    "avg_phys_dmg_share",
+    "avg_multikill_rate",
+    "kda_variance",
+    "kda_skewness",
+    "champ_winrate",
+    "champ_games",
+    "champ_global_wr",
+    "mastery_points",
+    "mastery_points_log",
+    "mastery_above_12k",
+    "mastery_level",
+    "days_since_champ_played",
+    "is_autofill",
+    "role_experience_ratio",
     "summoner_level",
-    "winrate_rank_residual", "games_per_level", "rank_per_game", "level_rank_mismatch", "smurf_score",
-    "loss_streak", "avg_time_between_games_hrs", "games_last_24h",
-    "flash_on_d", "has_ignite", "has_teleport", "has_smite", "has_exhaust",
-    "has_heal", "has_barrier", "has_ghost", "has_cleanse",
+    "winrate_rank_residual",
+    "games_per_level",
+    "rank_per_game",
+    "level_rank_mismatch",
+    "smurf_score",
+    "loss_streak",
+    "avg_time_between_games_hrs",
+    "games_last_24h",
+    "flash_on_d",
+    "has_ignite",
+    "has_teleport",
+    "has_smite",
+    "has_exhaust",
+    "has_heal",
+    "has_barrier",
+    "has_ghost",
+    "has_cleanse",
 ]

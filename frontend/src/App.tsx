@@ -1,16 +1,19 @@
 import { useState, useCallback, useEffect } from "react";
-import { Activity, Brain, Crosshair } from "lucide-react";
+import { Activity, Brain, Crosshair, Gamepad2 } from "lucide-react";
 import { fetchTrainingStatus } from "./api";
 import { useSSE } from "./hooks/useSSE";
 import CrawlerStatus from "./pages/CrawlerStatus";
 import ModelTraining from "./pages/ModelTraining";
 import LivePredict from "./pages/LivePredict";
-import type { CrawlerSSE, TrainingStatus } from "./types";
+import LiveGame from "./pages/LiveGame";
+import type { CrawlerSSE, TrainingStatus, LiveGameUpdate } from "./types";
+import { isCrawlerSSE, isTrainingStatus, isLiveGameUpdate } from "./types";
 
 const TABS = [
   { id: "crawler", label: "Crawler", icon: Activity },
   { id: "model", label: "Model", icon: Brain },
   { id: "predict", label: "Predict", icon: Crosshair },
+  { id: "live", label: "Live Game", icon: Gamepad2 },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -18,9 +21,8 @@ type TabId = (typeof TABS)[number]["id"];
 export default function App() {
   const [tab, setTab] = useState<TabId>("crawler");
   const [crawlerData, setCrawlerData] = useState<CrawlerSSE | null>(null);
-  const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(
-    null
-  );
+  const [trainingStatus, setTrainingStatus] = useState<TrainingStatus | null>(null);
+  const [liveGameUpdate, setLiveGameUpdate] = useState<LiveGameUpdate | null>(null);
 
   useEffect(() => {
     fetchTrainingStatus().then((s) => {
@@ -29,16 +31,21 @@ export default function App() {
   }, []);
 
   const handleCrawlerStatus = useCallback((data: unknown) => {
-    setCrawlerData(data as CrawlerSSE);
+    if (isCrawlerSSE(data)) setCrawlerData(data);
   }, []);
 
   const handleTrainingStatus = useCallback((data: unknown) => {
-    setTrainingStatus(data as TrainingStatus);
+    if (isTrainingStatus(data)) setTrainingStatus(data);
+  }, []);
+
+  const handleLiveGameUpdate = useCallback((data: unknown) => {
+    if (isLiveGameUpdate(data)) setLiveGameUpdate(data);
   }, []);
 
   const connected = useSSE({
     crawler_status: handleCrawlerStatus,
     training_status: handleTrainingStatus,
+    live_game_update: handleLiveGameUpdate,
   });
 
   return (
@@ -77,11 +84,10 @@ export default function App() {
       </header>
 
       <main style={styles.main}>
-        {tab === "crawler" && <CrawlerStatus live={crawlerData} />}
-        {tab === "model" && (
-          <ModelTraining trainingStatus={trainingStatus} />
-        )}
+        {tab === "crawler" && <CrawlerStatus live={crawlerData} crawlerMode={crawlerData?.crawler_mode} />}
+        {tab === "model" && <ModelTraining trainingStatus={trainingStatus} />}
         {tab === "predict" && <LivePredict />}
+        {tab === "live" && <LiveGame latestUpdate={liveGameUpdate} />}
       </main>
     </div>
   );

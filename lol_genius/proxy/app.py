@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
-from lol_genius.api.client import APIKeyExpiredError
+from lol_genius.api.client import APIKeyExpiredError, BadRequestError
 from lol_genius.proxy.cache import ProxyCache
 from lol_genius.proxy.key_pool import KeyPool
 
@@ -47,7 +47,9 @@ def _load_api_keys() -> list[str]:
     if single:
         return [single]
 
-    raise RuntimeError("No API keys found. Set RIOT_API_KEYS, RIOT_API_KEY_N, or RIOT_API_KEY.")
+    raise RuntimeError(
+        "No API keys found. Set RIOT_API_KEYS, RIOT_API_KEY_N, or RIOT_API_KEY."
+    )
 
 
 @asynccontextmanager
@@ -65,7 +67,9 @@ async def lifespan(app: FastAPI):
     app.state.region_url = f"https://{region}.api.riotgames.com"
     app.state.routing_url = f"https://{routing}.api.riotgames.com"
 
-    log.info(f"Proxy started: region={region} routing={routing} rate_scale={rate_scale} keys={len(keys)}")
+    log.info(
+        f"Proxy started: region={region} routing={routing} rate_scale={rate_scale} keys={len(keys)}"
+    )
     yield
     pool.close()
     log.info("Proxy shut down")
@@ -97,16 +101,19 @@ async def _cached_get(
     try:
         result, used_key_index = await asyncio.to_thread(pool.get, url, key_index)
     except APIKeyExpiredError:
+        return JSONResponse({"error": "All API keys expired"}, status_code=503)
+    except BadRequestError as e:
+        log.warning(f"Bad request (not cached): {e}")
         return JSONResponse(
-            {"error": "All API keys expired"}, status_code=503
+            {"error": "bad_request", "detail": str(e)}, status_code=400
         )
-    except Exception as e:
-        log.error(f"Upstream error: {e}")
-        return JSONResponse(
-            {"error": "upstream error", "detail": str(e)}, status_code=502
-        )
+    except Exception:
+        log.exception("Upstream error")
+        return JSONResponse({"error": "upstream_error"}, status_code=502)
 
-    cache.set(namespace, cache_key, (result, used_key_index), CACHE_TTLS.get(namespace, 3600))
+    cache.set(
+        namespace, cache_key, (result, used_key_index), CACHE_TTLS.get(namespace, 3600)
+    )
     return JSONResponse({"data": result, "cached": False, "key_index": used_key_index})
 
 
@@ -118,7 +125,11 @@ async def health(request: Request):
     healthy_count = sum(1 for k in key_status if k["healthy"])
     return {
         "status": "ok" if healthy_count > 0 else "degraded",
-        "keys": {"healthy": healthy_count, "total": len(key_status), "detail": key_status},
+        "keys": {
+            "healthy": healthy_count,
+            "total": len(key_status),
+            "detail": key_status,
+        },
         "cache": cache.stats(),
     }
 
@@ -150,7 +161,9 @@ async def reload_keys(request: Request):
     cache: ProxyCache = request.app.state.cache
     flushed = cache.clear()
 
-    log.info(f"Keys reloaded: {old_count} -> {len(new_keys)}, cache flushed ({flushed} entries)")
+    log.info(
+        f"Keys reloaded: {old_count} -> {len(new_keys)}, cache flushed ({flushed} entries)"
+    )
     return {"old_keys": old_count, "new_keys": len(new_keys), "cache_flushed": flushed}
 
 
@@ -168,7 +181,9 @@ async def summoner_by_id(request: Request, summoner_id: str):
 
 @app.get("/riot/v1/league/entries/{tier}/{division}")
 async def league_entries(
-    request: Request, tier: str, division: str,
+    request: Request,
+    tier: str,
+    division: str,
     page: int = Query(1),
 ):
     url = (
@@ -194,9 +209,12 @@ async def league_by_summoner(request: Request, summoner_id: str):
 
 @app.get("/riot/v1/match/ids/{puuid}")
 async def match_ids(
-    request: Request, puuid: str,
-    start: int = Query(0), count: int = Query(20),
-    queue: int = Query(420), start_time: int | None = Query(None),
+    request: Request,
+    puuid: str,
+    start: int = Query(0),
+    count: int = Query(20),
+    queue: int = Query(420),
+    start_time: int | None = Query(None),
 ):
     params = f"start={start}&count={count}&queue={queue}"
     if start_time is not None:
@@ -204,6 +222,12 @@ async def match_ids(
     url = f"{request.app.state.routing_url}/lol/match/v5/matches/by-puuid/{puuid}/ids?{params}"
     cache_key = f"{puuid}:{start}:{count}:{queue}:{start_time}"
     return await _cached_get(request, "match_ids", cache_key, url)
+
+
+@app.get("/riot/v1/match/{match_id}/timeline")
+async def match_timeline(request: Request, match_id: str):
+    url = f"{request.app.state.routing_url}/lol/match/v5/matches/{match_id}/timeline"
+    return await _cached_get(request, "match", f"{match_id}:timeline", url)
 
 
 @app.get("/riot/v1/match/{match_id}")
@@ -223,7 +247,8 @@ async def mastery_by_champion(request: Request, puuid: str, champion_id: int):
 
 @app.get("/riot/v1/mastery/by-puuid/{puuid}/top")
 async def mastery_top(
-    request: Request, puuid: str,
+    request: Request,
+    puuid: str,
     count: int = Query(10),
 ):
     url = (

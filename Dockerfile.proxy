@@ -2,13 +2,21 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home appuser
+
 COPY requirements.proxy.txt .
 RUN pip install --no-cache-dir -r requirements.proxy.txt
 
-COPY lol_genius/api/client.py lol_genius/api/client.py
-COPY lol_genius/api/__init__.py lol_genius/api/__init__.py
-COPY lol_genius/proxy/ lol_genius/proxy/
-COPY lol_genius/__init__.py lol_genius/__init__.py
+COPY --chown=appuser:appuser lol_genius/api/client.py lol_genius/api/client.py
+COPY --chown=appuser:appuser lol_genius/api/__init__.py lol_genius/api/__init__.py
+COPY --chown=appuser:appuser lol_genius/proxy/ lol_genius/proxy/
+COPY --chown=appuser:appuser lol_genius/__init__.py lol_genius/__init__.py
+COPY --chown=appuser:appuser lol_genius/utils.py lol_genius/utils.py
+
+USER appuser
 
 ENV PYTHONUNBUFFERED=1
 

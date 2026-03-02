@@ -63,8 +63,13 @@ def _make_riot_participant(i):
         "quadraKills": 0,
         "pentaKills": 0,
         "largestKillingSpree": 5,
-        "item0": 3071, "item1": 3047, "item2": 3026, "item3": 3053,
-        "item4": 3065, "item5": 3075, "item6": 3340,
+        "item0": 3071,
+        "item1": 3047,
+        "item2": 3026,
+        "item3": 3053,
+        "item4": 3065,
+        "item5": 3075,
+        "item6": 3340,
         "champLevel": 16,
     }
 
@@ -74,7 +79,10 @@ def _make_riot_match(participants=None, blue_win=True):
         participants = [_make_riot_participant(i) for i in range(10)]
     blue_team_win = blue_win
     return {
-        "metadata": {"matchId": "NA1_5000", "participants": [f"puuid_{i}" for i in range(10)]},
+        "metadata": {
+            "matchId": "NA1_5000",
+            "participants": [f"puuid_{i}" for i in range(10)],
+        },
         "info": {
             "gameVersion": "14.10.612.1234",
             "gameDuration": 1800,
@@ -160,7 +168,9 @@ def test_parse_match_happy_path():
     assert blue_bans[0]["pick_turn"] == 1
 
     assert len(objectives) == 4
-    blue_baron = [o for o in objectives if o["team_id"] == 100 and o["objective"] == "baron"][0]
+    blue_baron = [
+        o for o in objectives if o["team_id"] == 100 and o["objective"] == "baron"
+    ][0]
     assert blue_baron["first"] == 1
     assert blue_baron["kills"] == 2
 
@@ -193,7 +203,10 @@ def test_parse_match_empty_perks():
 
 
 def test_parse_match_missing_match_id():
-    data = {"metadata": {}, "info": {"participants": [_make_riot_participant(i) for i in range(10)]}}
+    data = {
+        "metadata": {},
+        "info": {"participants": [_make_riot_participant(i) for i in range(10)]},
+    }
     assert parse_match(data) is None
 
 

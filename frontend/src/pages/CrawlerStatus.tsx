@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import Card from "../components/Card";
 import StatBox from "../components/StatBox";
-import { fetchStatus, fetchDistributions } from "../api";
+import { fetchStatus, fetchDistributions, fetchCrawlerMode, setCrawlerMode } from "../api";
 import { tooltipStyle, sectionTitle, sectionLabel } from "../styles";
 import type { CrawlerSSE, StatusData, DistributionData } from "../types";
 
@@ -32,52 +32,128 @@ const TIER_ORDER = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "
 
 interface Props {
   live: CrawlerSSE | null;
+  crawlerMode?: "crawl" | "fetch_timelines";
 }
 
-export default function CrawlerStatus({ live }: Props) {
+export default function CrawlerStatus({ live, crawlerMode: crawlerModeProp }: Props) {
   const [initial, setInitial] = useState<StatusData | null>(null);
   const [dist, setDist] = useState<DistributionData | null>(null);
+  const [localMode, setLocalMode] = useState<"crawl" | "fetch_timelines" | null>(null);
+  const [timelineRate, setTimelineRate] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const timelineRef = useRef<{ fetched: number; timestamp: number } | null>(null);
 
   useEffect(() => {
-    fetchStatus().then(setInitial).catch(() => {});
-    fetchDistributions().then(setDist).catch(() => {});
+    fetchStatus().then(setInitial).catch((e) => setError(e.message));
+    fetchDistributions().then(setDist).catch((e) => setError(e.message));
+    fetchCrawlerMode().then((r) => setLocalMode(r.mode as "crawl" | "fetch_timelines")).catch((e) => setError(e.message));
   }, []);
+
+  const activeMode = crawlerModeProp ?? localMode ?? "crawl";
+
+  async function handleModeClick(mode: "crawl" | "fetch_timelines") {
+    setLocalMode(mode);
+    try {
+      await setCrawlerMode(mode);
+    } catch {
+      setLocalMode(activeMode);
+    }
+  }
 
   const matchCount = live?.match_count ?? initial?.match_count ?? 0;
   const queueStats = live?.queue_stats ?? initial?.queue_stats ?? {};
   const enrichment = live?.enrichment ?? initial?.enrichment ?? { enriched: 0, total: 0 };
+  const timeline = live?.timeline ?? initial?.timeline ?? { fetched: 0, total: 0 };
   const queueDepth = live?.queue_depth ?? initial?.queue_depth ?? 0;
 
   const enrichPct = enrichment.total > 0 ? (enrichment.enriched / enrichment.total) * 100 : 0;
+  const timelinePct = timeline.total > 0 ? (timeline.fetched / timeline.total) * 100 : 0;
 
+  useEffect(() => {
+    const prev = timelineRef.current;
+    const now = Date.now();
+    if (prev !== null) {
+      const elapsed = (now - prev.timestamp) / 1000;
+      const delta = timeline.fetched - prev.fetched;
+      if (elapsed > 0 && delta >= 0) {
+        setTimelineRate((delta / elapsed) * 60);
+      }
+    }
+    timelineRef.current = { fetched: timeline.fetched, timestamp: now };
+  }, [timeline.fetched]);
 
-  const rankData = dist?.rank_distribution
-    ? TIER_ORDER.filter((t) => dist.rank_distribution[t]).map((t) => ({
-        tier: t,
-        count: dist.rank_distribution[t],
-      }))
-    : [];
-
-  const patchData = dist?.patch_distribution
-    ? Object.entries(dist.patch_distribution).map(([patch, count]) => ({ patch, count }))
-    : [];
-
-  const tierSeedData = dist?.tier_seed_stats
-    ? TIER_ORDER.filter((t) => dist.tier_seed_stats[t]).map((t) => {
-        const stats = dist.tier_seed_stats[t];
-        return {
+  const rankData = useMemo(() =>
+    dist?.rank_distribution
+      ? TIER_ORDER.filter((t) => dist.rank_distribution[t]).map((t) => ({
           tier: t,
-          pending: stats.pending || 0,
-          processing: stats.processing || 0,
-          done: stats.done || 0,
-        };
-      })
-    : [];
+          count: dist.rank_distribution[t],
+        }))
+      : [],
+    [dist?.rank_distribution],
+  );
+
+  const patchData = useMemo(() =>
+    dist?.patch_distribution
+      ? Object.entries(dist.patch_distribution).map(([patch, count]) => ({ patch, count }))
+      : [],
+    [dist?.patch_distribution],
+  );
+
+  const tierSeedData = useMemo(() =>
+    dist?.tier_seed_stats
+      ? TIER_ORDER.filter((t) => dist.tier_seed_stats[t]).map((t) => {
+          const stats = dist.tier_seed_stats[t];
+          return {
+            tier: t,
+            pending: stats.pending || 0,
+            processing: stats.processing || 0,
+            done: stats.done || 0,
+          };
+        })
+      : [],
+    [dist?.tier_seed_stats],
+  );
 
   const ageRange = dist?.match_age_range;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", background: "var(--bg-secondary)", borderRadius: 8, padding: 3, border: "1px solid var(--border)" }}>
+            {(["crawl", "fetch_timelines"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => handleModeClick(m)}
+                style={{
+                  padding: "5px 14px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: "inherit",
+                  borderRadius: 6,
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "all 0.15s",
+                  background: activeMode === m ? "var(--accent)" : "transparent",
+                  color: activeMode === m ? "#000" : "var(--text-secondary)",
+                }}
+              >
+                {m === "crawl" ? "Crawl" : "Fetch Timelines"}
+              </button>
+            ))}
+          </div>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            Takes effect at next batch boundary
+          </span>
+        </div>
+      </div>
+
+      {error && (
+        <div style={{ padding: "8px 12px", fontSize: 12, color: "var(--red)", background: "var(--bg-secondary)", border: "1px solid var(--red)", borderRadius: 6 }}>
+          {error}
+        </div>
+      )}
+
       <Card glow>
         <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 20 }}>
           <StatBox label="Total Matches" value={matchCount} color="var(--accent)" />
@@ -89,27 +165,56 @@ export default function CrawlerStatus({ live }: Props) {
           />
         </div>
 
-        <div style={{ marginTop: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
-              Enrichment Progress
-            </span>
-            <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-              {enrichment.enriched.toLocaleString()} / {enrichment.total.toLocaleString()} ({enrichPct.toFixed(1)}%)
-            </span>
+        {activeMode === "fetch_timelines" ? (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                Timeline Fetching Progress
+              </span>
+              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                {timeline.fetched.toLocaleString()} / {timeline.total.toLocaleString()} ({timelinePct.toFixed(1)}%)
+                {timelineRate !== null && (
+                  <span style={{ marginLeft: 8, color: "var(--text-muted)" }}>
+                    {timelineRate.toFixed(1)} / min
+                  </span>
+                )}
+              </span>
+            </div>
+            <div style={{ height: 8, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${timelinePct}%`,
+                  background: "linear-gradient(90deg, var(--accent), var(--gold))",
+                  borderRadius: 4,
+                  transition: "width 0.5s ease",
+                }}
+              />
+            </div>
           </div>
-          <div style={{ height: 8, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
-            <div
-              style={{
-                height: "100%",
-                width: `${enrichPct}%`,
-                background: "linear-gradient(90deg, var(--accent), var(--gold))",
-                borderRadius: 4,
-                transition: "width 0.5s ease",
-              }}
-            />
+        ) : (
+          <div style={{ marginTop: 20 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                Enrichment Progress
+              </span>
+              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                {enrichment.enriched.toLocaleString()} / {enrichment.total.toLocaleString()} ({enrichPct.toFixed(1)}%)
+              </span>
+            </div>
+            <div style={{ height: 8, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${enrichPct}%`,
+                  background: "linear-gradient(90deg, var(--accent), var(--gold))",
+                  borderRadius: 4,
+                  transition: "width 0.5s ease",
+                }}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>

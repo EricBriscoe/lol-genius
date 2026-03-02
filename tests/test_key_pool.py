@@ -222,30 +222,39 @@ def test_thread_safe_concurrent_access():
 class TestLoadApiKeys:
     def test_csv_format(self):
         from lol_genius.proxy.app import _load_api_keys
+
         with patch.dict(os.environ, {"RIOT_API_KEYS": "key1,key2,key3"}, clear=True):
             keys = _load_api_keys()
         assert keys == ["key1", "key2", "key3"]
 
     def test_csv_with_spaces(self):
         from lol_genius.proxy.app import _load_api_keys
-        with patch.dict(os.environ, {"RIOT_API_KEYS": " key1 , key2 , key3 "}, clear=True):
+
+        with patch.dict(
+            os.environ, {"RIOT_API_KEYS": " key1 , key2 , key3 "}, clear=True
+        ):
             keys = _load_api_keys()
         assert keys == ["key1", "key2", "key3"]
 
     def test_numbered_format(self):
         from lol_genius.proxy.app import _load_api_keys
-        with patch.dict(os.environ, {"RIOT_API_KEY_1": "k1", "RIOT_API_KEY_2": "k2"}, clear=True):
+
+        with patch.dict(
+            os.environ, {"RIOT_API_KEY_1": "k1", "RIOT_API_KEY_2": "k2"}, clear=True
+        ):
             keys = _load_api_keys()
         assert keys == ["k1", "k2"]
 
     def test_single_key_fallback(self):
         from lol_genius.proxy.app import _load_api_keys
+
         with patch.dict(os.environ, {"RIOT_API_KEY": "single"}, clear=True):
             keys = _load_api_keys()
         assert keys == ["single"]
 
     def test_no_keys_raises(self):
         from lol_genius.proxy.app import _load_api_keys
+
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(RuntimeError, match="No API keys found"):
                 _load_api_keys()

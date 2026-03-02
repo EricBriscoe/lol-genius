@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from lol_genius.api.client import APIKeyExpiredError
+from lol_genius.api.client import APIKeyExpiredError, BadRequestError
 from lol_genius.api.proxy_client import ProxyClient
 
 
@@ -33,7 +33,9 @@ class TestPuuidKeyMapping:
 
     def test_get_match_ids_stores_puuid_key(self):
         client = ProxyClient("http://localhost:8080")
-        client.client = _FakeHTTPClient([_mock_response(["NA1_1", "NA1_2"], key_index=1)])
+        client.client = _FakeHTTPClient(
+            [_mock_response(["NA1_1", "NA1_2"], key_index=1)]
+        )
         client.get_match_ids("some-puuid")
 
         assert client._puuid_keys["some-puuid"] == 1
@@ -88,7 +90,9 @@ class TestPuuidKeyMapping:
     def test_get_match_no_key_index_skips_mapping(self):
         client = ProxyClient("http://localhost:8080")
         match_data = {"info": {"participants": [{"puuid": "aaa"}]}}
-        client.client = _FakeHTTPClient([httpx.Response(200, json={"data": match_data, "cached": True})])
+        client.client = _FakeHTTPClient(
+            [httpx.Response(200, json={"data": match_data, "cached": True})]
+        )
         client.get_match("NA1_123")
         assert "aaa" not in client._puuid_keys
 
@@ -105,7 +109,6 @@ class TestPuuidKeyMapping:
         client.client = _FakeHTTPClient([_mock_response(match_data, key_index=1)])
         client.get_match("NA1_123")
         assert len(client._puuid_keys) == 0
-
 
     def test_get_account_stores_puuid_key(self):
         client = ProxyClient("http://localhost:8080")
@@ -153,7 +156,9 @@ class TestPuuidKeyMapping:
 class TestErrorHandling:
     def test_503_raises_api_key_expired(self):
         client = ProxyClient("http://localhost:8080")
-        client.client = _FakeHTTPClient([httpx.Response(503, json={"error": "expired"})])
+        client.client = _FakeHTTPClient(
+            [httpx.Response(503, json={"error": "expired"})]
+        )
         with pytest.raises(APIKeyExpiredError):
             client.get_summoner_by_puuid("aaa")
 
@@ -168,6 +173,14 @@ class TestErrorHandling:
         client.client = _FakeHTTPClient([httpx.Response(404, text="not found")])
         result = client.get_league_by_puuid("aaa")
         assert result == []
+
+    def test_400_raises_bad_request_error(self):
+        client = ProxyClient("http://localhost:8080")
+        client.client = _FakeHTTPClient(
+            [httpx.Response(400, text='{"error":"bad_request","detail":"stale puuid"}')]
+        )
+        with pytest.raises(BadRequestError, match="400 from proxy"):
+            client.get_summoner_by_puuid("stale-puuid")
 
 
 class _FakeHTTPClient:

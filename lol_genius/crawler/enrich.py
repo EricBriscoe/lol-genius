@@ -4,6 +4,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 
+from lol_genius.api.client import BadRequestError
 from lol_genius.api.riot_api import RiotAPI
 from lol_genius.crawler.parse import parse_match
 from lol_genius.db.queries import MatchDB
@@ -37,38 +38,48 @@ class EnrichResult:
     league_raw_json: str | None = None
     mastery_records: list[dict] | None = None
     mastery_raw_entries: list[tuple[str, int, str]] | None = None
-    recent_stats: dict | None = None
-    opportunistic_matches: list[tuple[dict, list, list | None, list | None, str | None]] = field(default_factory=list)
+    opportunistic_matches: list[
+        tuple[dict, list, list | None, list | None, str | None]
+    ] = field(default_factory=list)
+    bad_request: bool = False
 
 
 def check_enrich_needed(
-    db: MatchDB, puuid: str, summoner_id: str, start_time_ms: int | None = None,
+    db: MatchDB,
+    puuid: str,
+    summoner_id: str,
+    start_time_ms: int | None = None,
 ) -> tuple[dict[str, bool], dict | None]:
     needs = {"rank": False, "mastery": False, "stats": False}
-    precomputed_stats = None
 
     if not db.has_recent_rank(puuid):
         needs["rank"] = True
     if not db.has_mastery_data(puuid):
         needs["mastery"] = True
-    if not db.has_recent_stats(puuid):
-        stats = db.compute_recent_stats_from_db(puuid, start_time_ms=start_time_ms)
-        if stats and stats["games_played"] >= 1:
-            precomputed_stats = stats
-        else:
-            needs["stats"] = True
 
-    return needs, precomputed_stats
+    stats = db.compute_recent_stats_from_db(puuid, start_time_ms=start_time_ms)
+    if not stats or stats["games_played"] < 1:
+        needs["stats"] = True
+
+    return needs, None
 
 
 def fetch_enrichment(
-    api: RiotAPI, puuid: str, summoner_id: str, needs: dict[str, bool],
+    api: RiotAPI,
+    puuid: str,
+    summoner_id: str,
+    needs: dict[str, bool],
     start_time: int | None = None,
 ) -> EnrichResult:
     result = EnrichResult(puuid=puuid, summoner_id=summoner_id)
 
     if needs.get("rank"):
-        entries = api.get_league_by_puuid(puuid)
+        try:
+            entries = api.get_league_by_puuid(puuid)
+        except BadRequestError:
+            log.debug(f"400 Bad Request for league data: {puuid}")
+            result.bad_request = True
+            entries = None
         if entries:
             try:
                 result.league_raw_json = json.dumps(entries)
@@ -81,7 +92,12 @@ def fetch_enrichment(
                 break
 
     if needs.get("mastery"):
-        entries = api.get_top_masteries(puuid, count=20)
+        try:
+            entries = api.get_top_masteries(puuid, count=20)
+        except BadRequestError:
+            log.debug(f"400 Bad Request for mastery data: {puuid}")
+            result.bad_request = True
+            entries = None
         if entries:
             result.mastery_records = [
                 {
@@ -90,7 +106,9 @@ def fetch_enrichment(
                     "mastery_level": e.get("championLevel", 0),
                     "mastery_points": e.get("championPoints", 0),
                     "last_play_time": e.get("lastPlayTime"),
-                    "champion_points_until_next_level": e.get("championPointsUntilNextLevel"),
+                    "champion_points_until_next_level": e.get(
+                        "championPointsUntilNextLevel"
+                    ),
                 }
                 for e in entries
             ]
@@ -107,7 +125,6 @@ def fetch_enrichment(
         stats = _fetch_recent_stats_via_api(api, puuid, start_time)
         if stats:
             result.opportunistic_matches = stats.pop("_opportunistic_matches", [])
-            result.recent_stats = stats
 
     return result
 
@@ -130,25 +147,40 @@ def write_enrichment(db: MatchDB, result: EnrichResult) -> None:
             try:
                 db.insert_mastery_raw_json(puuid, champion_id, raw)
             except Exception as e:
-                log.debug(f"Failed to insert mastery raw JSON for {puuid} champ {champion_id}: {e}")
+                log.debug(
+                    f"Failed to insert mastery raw JSON for {puuid} champ {champion_id}: {e}"
+                )
 
-    if result.recent_stats:
-        db.upsert_player_recent_stats(result.recent_stats)
-
-    for match_row, part_rows, bans, objectives, raw_json in result.opportunistic_matches:
+    for (
+        match_row,
+        part_rows,
+        bans,
+        objectives,
+        raw_json,
+    ) in result.opportunistic_matches:
         if not db.match_exists(match_row["match_id"]):
-            db.insert_match(match_row, part_rows, bans=bans, objectives=objectives, raw_json=raw_json)
+            db.insert_match(
+                match_row,
+                part_rows,
+                bans=bans,
+                objectives=objectives,
+                raw_json=raw_json,
+            )
 
 
 def _fetch_recent_stats_via_api(
-    api: RiotAPI, puuid: str, start_time: int | None = None,
+    api: RiotAPI,
+    puuid: str,
+    start_time: int | None = None,
 ) -> dict | None:
     match_ids = api.get_match_ids(puuid, count=20, queue=420, start_time=start_time)
     if not match_ids:
         return None
 
     stat_rows: list[dict] = []
-    opportunistic_matches: list[tuple[dict, list, list | None, list | None, str | None]] = []
+    opportunistic_matches: list[
+        tuple[dict, list, list | None, list | None, str | None]
+    ] = []
 
     for mid in match_ids:
         match = api.get_match(mid)
@@ -163,7 +195,9 @@ def _fetch_recent_stats_via_api(
                 raw_json = json.dumps(match)
             except Exception as e:
                 log.debug(f"Failed to serialize match JSON for {mid}: {e}")
-            opportunistic_matches.append((match_row, part_rows, bans, objectives, raw_json))
+            opportunistic_matches.append(
+                (match_row, part_rows, bans, objectives, raw_json)
+            )
 
         row = normalize_api_match_row(puuid, match)
         if row:
@@ -178,7 +212,9 @@ def _fetch_recent_stats_via_api(
 
 
 def re_enrich_stale_batch(
-    api: RiotAPI, db: MatchDB, stale_puuids: list[dict], start_time: int | None = None,
+    api: RiotAPI,
+    db: MatchDB,
+    stale_puuids: list[dict],
 ) -> int:
     refreshed = 0
     for entry in stale_puuids:
@@ -188,11 +224,6 @@ def re_enrich_stale_batch(
         needs = {"rank": True, "mastery": False, "stats": False}
         result = fetch_enrichment(api, puuid, summoner_id, needs)
         write_enrichment(db, result)
-
-        start_time_ms = start_time * 1000 if start_time else None
-        stats = db.compute_recent_stats_from_db(puuid, start_time_ms=start_time_ms)
-        if stats and stats["games_played"] >= 1:
-            db.upsert_player_recent_stats(stats)
 
         refreshed += 1
 

@@ -1,6 +1,8 @@
-import { useEffect, useRef, useCallback, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type SSEHandler = (data: unknown) => void;
+
+const MAX_RETRIES = 15;
 
 export function useSSE(handlers: Record<string, SSEHandler>) {
   const [connected, setConnected] = useState(false);
@@ -10,16 +12,24 @@ export function useSSE(handlers: Record<string, SSEHandler>) {
   useEffect(() => {
     let es: EventSource | null = null;
     let retryTimer: ReturnType<typeof setTimeout>;
+    let retryCount = 0;
 
     function connect() {
+      if (retryCount >= MAX_RETRIES) return;
+
       es = new EventSource("/api/v1/events");
 
-      es.onopen = () => setConnected(true);
+      es.onopen = () => {
+        setConnected(true);
+        retryCount = 0;
+      };
 
       es.onerror = () => {
         setConnected(false);
         es?.close();
-        retryTimer = setTimeout(connect, 3000);
+        const delay = Math.min(1000 * 2 ** retryCount, 30_000);
+        retryCount++;
+        retryTimer = setTimeout(connect, delay);
       };
 
       for (const eventType of Object.keys(handlersRef.current)) {
@@ -27,7 +37,9 @@ export function useSSE(handlers: Record<string, SSEHandler>) {
           try {
             const data = JSON.parse(e.data);
             handlersRef.current[eventType]?.(data);
-          } catch {}
+          } catch (err) {
+            console.warn("SSE parse error:", err);
+          }
         });
       }
     }

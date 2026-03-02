@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from lol_genius.api.ddragon import DataDragon
 from lol_genius.config import Config
+from lol_genius.crawler.parse import parse_patch
 from lol_genius.db.queries import MatchDB
 
 log = logging.getLogger(__name__)
@@ -27,7 +28,6 @@ class DataMetrics:
     weakest_tier: str | None
     queue_depth: int
     stale_rank_count: int = 0
-    stale_stats_count: int = 0
     total_enriched_players: int = 0
     stale_ratio: float = 0.0
     seconds_since_ddragon_check: float = 0.0
@@ -42,21 +42,18 @@ class CrawlAction:
     sleep_seconds: int = 0
 
 
-def _parse_major_minor(version: str) -> str:
-    parts = version.split(".")
-    return f"{parts[0]}.{parts[1]}" if len(parts) >= 2 else version
-
-
 STALE_ENRICHMENT_THRESHOLD = 0.10
 
 
-def assess_data_quality(db: MatchDB, ddragon: DataDragon, maintenance: bool = False) -> DataMetrics:
+def assess_data_quality(
+    db: MatchDB, ddragon: DataDragon, maintenance: bool = False
+) -> DataMetrics:
     enrichment = db.get_enrichment_stats()
     total = enrichment["total"]
     enriched = enrichment["enriched"]
     enrichment_ratio = enriched / total if total > 0 else 1.0
 
-    current_patch = _parse_major_minor(ddragon.get_latest_version())
+    current_patch = parse_patch(ddragon.get_latest_version())
 
     patch_dist = db.get_patch_distribution()
     current_patch_matches = patch_dist.get(current_patch, 0)
@@ -74,7 +71,6 @@ def assess_data_quality(db: MatchDB, ddragon: DataDragon, maintenance: bool = Fa
     queue_depth = db.get_queue_depth()
 
     stale_rank_count = 0
-    stale_stats_count = 0
     total_enriched_players = 0
     stale_ratio = 0.0
     ddragon_check_seconds = ddragon.seconds_since_version_check()
@@ -82,7 +78,6 @@ def assess_data_quality(db: MatchDB, ddragon: DataDragon, maintenance: bool = Fa
     if maintenance:
         stale = db.get_stale_enrichment_counts()
         stale_rank_count = stale["stale_ranks"]
-        stale_stats_count = stale["stale_stats"]
         total_enriched_players = stale["total_enriched"]
         if total_enriched_players > 0:
             stale_ratio = stale_rank_count / total_enriched_players
@@ -99,7 +94,6 @@ def assess_data_quality(db: MatchDB, ddragon: DataDragon, maintenance: bool = Fa
         weakest_tier=weakest_tier,
         queue_depth=queue_depth,
         stale_rank_count=stale_rank_count,
-        stale_stats_count=stale_stats_count,
         total_enriched_players=total_enriched_players,
         stale_ratio=stale_ratio,
         seconds_since_ddragon_check=ddragon_check_seconds,
@@ -107,12 +101,16 @@ def assess_data_quality(db: MatchDB, ddragon: DataDragon, maintenance: bool = Fa
 
 
 def plan_next_action(
-    metrics: DataMetrics, config: Config,
-    maintenance: bool = False, consecutive_healthy: int = 0,
+    metrics: DataMetrics,
+    config: Config,
+    maintenance: bool = False,
+    consecutive_healthy: int = 0,
 ) -> CrawlAction:
     if maintenance:
         if metrics.seconds_since_ddragon_check >= config.ddragon_check_interval:
-            return CrawlAction(action="refresh_ddragon", reason="periodic DDragon version check")
+            return CrawlAction(
+                action="refresh_ddragon", reason="periodic DDragon version check"
+            )
 
     if metrics.enrichment_ratio < ENRICHMENT_THRESHOLD:
         return CrawlAction(
@@ -123,10 +121,13 @@ def plan_next_action(
     if maintenance and metrics.stale_ratio > STALE_ENRICHMENT_THRESHOLD:
         return CrawlAction(
             action="re_enrich",
-            reason=f"stale enrichment data: {metrics.stale_ratio:.1%} ({metrics.stale_rank_count} stale ranks, {metrics.stale_stats_count} stale stats)",
+            reason=f"stale enrichment data: {metrics.stale_ratio:.1%} ({metrics.stale_rank_count} stale ranks)",
         )
 
-    if metrics.total_matches > 0 and metrics.current_patch_ratio < CURRENT_PATCH_THRESHOLD:
+    if (
+        metrics.total_matches > 0
+        and metrics.current_patch_ratio < CURRENT_PATCH_THRESHOLD
+    ):
         return CrawlAction(
             action="crawl",
             patch=metrics.current_patch,
@@ -155,7 +156,9 @@ def plan_next_action(
 
 
 def log_assessment(metrics: DataMetrics, action: CrawlAction) -> None:
-    tier_str = ", ".join(f"{t}: {c}" for t, c in sorted(metrics.tier_counts.items(), key=lambda x: -x[1]))
+    tier_str = ", ".join(
+        f"{t}: {c}" for t, c in sorted(metrics.tier_counts.items(), key=lambda x: -x[1])
+    )
     lines = [
         "",
         "--- Data Quality Assessment ---",
@@ -166,7 +169,7 @@ def log_assessment(metrics: DataMetrics, action: CrawlAction) -> None:
     ]
     if metrics.total_enriched_players > 0:
         lines.append(
-            f"  Staleness: {metrics.stale_ratio:.1%} ({metrics.stale_rank_count} ranks, {metrics.stale_stats_count} stats) of {metrics.total_enriched_players} players"
+            f"  Staleness: {metrics.stale_ratio:.1%} ({metrics.stale_rank_count} stale ranks) of {metrics.total_enriched_players} players"
         )
     action_line = f"  Action: {action.action.upper()} — {action.reason}"
     if action.sleep_seconds:

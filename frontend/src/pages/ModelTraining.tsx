@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -10,9 +10,9 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { Play, X, Loader2, AlertTriangle } from "lucide-react";
+import { Play, X, Loader2, AlertTriangle, Database } from "lucide-react";
 import Card from "../components/Card";
-import { fetchModelRuns, fetchPresets, triggerTraining } from "../api";
+import { fetchModelRuns, fetchPresets, triggerTraining, buildTimelinesFromDb } from "../api";
 import { tooltipStyle, sectionTitle, primaryButton } from "../styles";
 import type { ModelRun, TrainingRequest, TrainingStatus } from "../types";
 
@@ -42,9 +42,13 @@ export default function ModelTraining({ trainingStatus }: Props) {
   const [preset, setPreset] = useState("default");
   const [customParams, setCustomParams] = useState<Record<string, number>>({});
   const [presets, setPresets] = useState<Record<string, Record<string, number | string>>>({});
+  const [modelType, setModelType] = useState<"pregame" | "live">("pregame");
+  const [buildingTimelines, setBuildingTimelines] = useState(false);
+  const [timelineResult, setTimelineResult] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadRuns();
+    loadRuns(modelType);
     fetchPresets().then((p) => {
       setPresets(p);
       if (p.default) {
@@ -54,15 +58,20 @@ export default function ModelTraining({ trainingStatus }: Props) {
         }
         setCustomParams(nums);
       }
-    }).catch(() => {});
+    }).catch((e) => setError(e.message));
   }, []);
 
   useEffect(() => {
-    if (trainingStatus?.stage === "completed") loadRuns();
-  }, [trainingStatus?.stage]);
+    if (trainingStatus?.stage === "completed") loadRuns(modelType);
+  }, [trainingStatus?.stage, modelType]);
 
-  function loadRuns() {
-    fetchModelRuns().then(setRuns).catch(() => {});
+  useEffect(() => {
+    loadRuns(modelType);
+    setSelected(null);
+  }, [modelType]);
+
+  function loadRuns(type: "pregame" | "live") {
+    fetchModelRuns(type).then(setRuns).catch((e) => setError(e.message));
   }
 
   function onPresetChange(name: string) {
@@ -77,8 +86,21 @@ export default function ModelTraining({ trainingStatus }: Props) {
     }
   }
 
+  async function handleBuildTimelines() {
+    setBuildingTimelines(true);
+    setTimelineResult(null);
+    try {
+      const res = await buildTimelinesFromDb();
+      setTimelineResult(res.saved);
+    } catch {
+      setTimelineResult(-1);
+    } finally {
+      setBuildingTimelines(false);
+    }
+  }
+
   async function handleTrain() {
-    const req: TrainingRequest = { notes };
+    const req: TrainingRequest = { notes, model_type: modelType };
     if (mode === "preset") {
       req.preset = preset;
     } else if (mode === "custom") {
@@ -90,15 +112,16 @@ export default function ModelTraining({ trainingStatus }: Props) {
       await triggerTraining(req);
       setShowModal(false);
       setNotes("");
-    } catch {
-      // A 409 or another error leaves the modal open so the user can retry
-    }
+    } catch {}
   }
 
-  const aucTrend = [...runs]
-    .reverse()
-    .filter((r) => r.auc_roc != null)
-    .map((r, i) => ({ idx: i + 1, auc: r.auc_roc!, run: r.run_id.slice(0, 8) }));
+  const aucTrend = useMemo(() =>
+    [...runs]
+      .reverse()
+      .filter((r) => r.auc_roc != null)
+      .map((r, i) => ({ idx: i + 1, auc: r.auc_roc!, run: r.run_id.slice(0, 8) })),
+    [runs],
+  );
 
   const isTraining = trainingStatus && !["completed", "error"].includes(trainingStatus.stage);
 
@@ -121,6 +144,12 @@ export default function ModelTraining({ trainingStatus }: Props) {
         </Card>
       )}
 
+      {error && (
+        <Card style={{ borderColor: "var(--red)" }}>
+          <div style={{ color: "var(--red)", fontSize: 13 }}>{error}</div>
+        </Card>
+      )}
+
       {trainingStatus?.stage === "error" && (
         <Card style={{ borderColor: "var(--red)" }}>
           <div style={{ color: "var(--red)", fontSize: 13 }}>
@@ -130,11 +159,57 @@ export default function ModelTraining({ trainingStatus }: Props) {
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600 }}>Training Runs</h2>
-        <button onClick={() => setShowModal(true)} disabled={!!isTraining} style={primaryButton}>
-          <Play size={14} />
-          New Training Run
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600 }}>Training Runs</h2>
+          <div style={{ display: "flex", gap: 2, background: "var(--bg-primary)", border: "1px solid var(--border)", borderRadius: 8, padding: 2 }}>
+            {(["pregame", "live"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setModelType(t)}
+                style={{
+                  padding: "4px 14px",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  fontFamily: "inherit",
+                  border: "none",
+                  borderRadius: 6,
+                  cursor: "pointer",
+                  background: modelType === t ? "var(--accent)" : "transparent",
+                  color: modelType === t ? "var(--bg-primary)" : "var(--text-secondary)",
+                  transition: "all 0.15s",
+                }}
+              >
+                {t === "pregame" ? "Pregame" : "Live"}
+              </button>
+            ))}
+          </div>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            {modelType === "pregame" ? "160 draft/player features" : "~20 timeline snapshot features (gold, kills, objectives)"}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {modelType === "live" && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {timelineResult !== null && (
+                <span style={{ fontSize: 11, color: timelineResult >= 0 ? "var(--accent)" : "var(--red)" }}>
+                  {timelineResult >= 0 ? `+${timelineResult.toLocaleString()} snapshots` : "failed"}
+                </span>
+              )}
+              <button
+                onClick={handleBuildTimelines}
+                disabled={buildingTimelines || !!isTraining}
+                style={{ ...primaryButton, background: "var(--bg-secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              >
+                {buildingTimelines ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Database size={14} />}
+                Build Timelines from DB
+              </button>
+            </div>
+          )}
+          <button onClick={() => setShowModal(true)} disabled={!!isTraining} style={primaryButton}>
+            <Play size={14} />
+            New Training Run
+          </button>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: selected ? "1fr 1fr" : "1fr", gap: 20 }}>
@@ -262,9 +337,7 @@ export default function ModelTraining({ trainingStatus }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="run" tick={{ fill: "var(--text-secondary)", fontSize: 10 }} />
                 <YAxis domain={["auto", "auto"]} tick={{ fill: "var(--text-secondary)", fontSize: 10 }} />
-                <Tooltip
-                  contentStyle={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }}
-                />
+                <Tooltip contentStyle={tooltipStyle} />
                 <Line type="monotone" dataKey="auc" stroke="var(--accent)" strokeWidth={2} dot={{ fill: "var(--accent)", r: 4 }} />
               </LineChart>
             </ResponsiveContainer>

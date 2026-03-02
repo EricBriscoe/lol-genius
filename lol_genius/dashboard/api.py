@@ -5,6 +5,7 @@ import json
 import logging
 import threading
 import time
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,19 +14,26 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 
+from lol_genius.db.queries import pooled_db
+
 log = logging.getLogger(__name__)
 
 router = APIRouter()
 
 _training_lock = threading.Lock()
 _training_status: dict | None = None
-_sse_events: list[dict] = []
+_sse_events: deque[dict] = deque(maxlen=500)
+_live_game_poller = None
 
 
 def _push_sse(event_type: str, data: dict):
     _sse_events.append({"event": event_type, "data": data, "ts": time.time()})
-    if len(_sse_events) > 500:
-        _sse_events[:] = _sse_events[-250:]
+
+
+def _set_stage(stage_dict: dict):
+    global _training_status
+    _training_status = stage_dict
+    _push_sse("training_status", {**stage_dict})
 
 
 def _serialize_model_run(run: dict) -> dict:
@@ -42,33 +50,40 @@ def _serialize_model_run(run: dict) -> dict:
 
 @router.get("/status")
 async def status(request: Request):
-    db = request.app.state.db
+    pool = request.app.state.pool
 
     def _query():
-        return {
-            "match_count": db.get_match_count(),
-            "queue_stats": db.get_queue_stats(),
-            "enrichment": db.get_enrichment_stats(),
-            "queue_depth": db.get_queue_depth(),
-        }
+        with pooled_db(pool) as db:
+            return {
+                "match_count": db.get_match_count(),
+                "queue_stats": db.get_queue_stats(),
+                "enrichment": db.get_enrichment_stats(),
+                "timeline": db.get_timeline_stats(),
+                "queue_depth": db.get_queue_depth(),
+            }
 
     return await asyncio.to_thread(_query)
 
 
 @router.get("/distributions")
 async def distributions(request: Request):
-    db = request.app.state.db
+    pool = request.app.state.pool
 
     def _query():
-        rank_dist = db.get_rank_distribution()
-        patch_dist = db.get_patch_distribution()
-        tier_seed_stats = db.get_queue_stats_by_tier()
-        age_range = db.get_match_age_range()
+        with pooled_db(pool) as db:
+            rank_dist = db.get_rank_distribution()
+            patch_dist = db.get_patch_distribution()
+            tier_seed_stats = db.get_queue_stats_by_tier()
+            age_range = db.get_match_age_range()
 
         match_age = None
         if age_range:
-            oldest = datetime.fromtimestamp(age_range[0] / 1000, tz=timezone.utc).isoformat()
-            newest = datetime.fromtimestamp(age_range[1] / 1000, tz=timezone.utc).isoformat()
+            oldest = datetime.fromtimestamp(
+                age_range[0] / 1000, tz=timezone.utc
+            ).isoformat()
+            newest = datetime.fromtimestamp(
+                age_range[1] / 1000, tz=timezone.utc
+            ).isoformat()
             match_age = {"oldest": oldest, "newest": newest}
 
         return {
@@ -82,22 +97,24 @@ async def distributions(request: Request):
 
 
 @router.get("/model/runs")
-async def model_runs(request: Request):
-    db = request.app.state.db
+async def model_runs(request: Request, model_type: str | None = None):
+    pool = request.app.state.pool
 
     def _query():
-        runs = db.get_model_runs(limit=50)
-        return [_serialize_model_run(dict(r)) for r in runs]
+        with pooled_db(pool) as db:
+            runs = db.get_model_runs(limit=50, model_type=model_type)
+            return [_serialize_model_run(dict(r)) for r in runs]
 
     return await asyncio.to_thread(_query)
 
 
 @router.get("/model/runs/{run_id}")
 async def model_run_detail(request: Request, run_id: str):
-    db = request.app.state.db
+    pool = request.app.state.pool
 
     def _query():
-        return db.get_model_run(run_id)
+        with pooled_db(pool) as db:
+            return db.get_model_run(run_id)
 
     run = await asyncio.to_thread(_query)
     if not run:
@@ -108,6 +125,7 @@ async def model_run_detail(request: Request, run_id: str):
 @router.get("/model/presets")
 async def model_presets():
     from lol_genius.model.train import PARAM_PRESETS
+
     return PARAM_PRESETS
 
 
@@ -120,11 +138,12 @@ async def training_status():
 async def trigger_training(request: Request):
     global _training_status
 
-    if _training_lock.locked():
+    if not _training_lock.acquire(blocking=False):
         return JSONResponse(
             {"error": "Training already in progress", "status": _training_status},
             status_code=409,
         )
+    _training_lock.release()
 
     body = {}
     try:
@@ -136,6 +155,7 @@ async def trigger_training(request: Request):
     preset = body.get("preset")
     custom_params = body.get("params")
     auto_tune = body.get("auto_tune", False)
+    model_type = body.get("model_type", "pregame")
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     from lol_genius.model.train import DEFAULT_PARAMS, PARAM_PRESETS
@@ -154,66 +174,99 @@ async def trigger_training(request: Request):
 
     loop = asyncio.get_running_loop()
     loop.run_in_executor(
-        None, _run_training_pipeline, dsn, model_dir, ddragon_cache, notes, run_id, resolved_params,
+        None,
+        _run_training_pipeline,
+        dsn,
+        model_dir,
+        ddragon_cache,
+        notes,
+        run_id,
+        resolved_params,
+        model_type,
     )
 
     return {"run_id": run_id, "status": "started"}
 
 
-def _run_training_pipeline(dsn: str, model_dir: str, ddragon_cache: str, notes: str, run_id_hint: str, resolved_params=None):
+def _run_training_pipeline(
+    dsn: str,
+    model_dir: str,
+    ddragon_cache: str,
+    notes: str,
+    run_id_hint: str,
+    resolved_params=None,
+    model_type: str = "pregame",
+):
     global _training_status
 
     if not _training_lock.acquire(blocking=False):
         return
 
     try:
-        _training_status = {"stage": "building_features", "run_id": run_id_hint, "started_at": time.time()}
-        _push_sse("training_status", {**_training_status})
+        _set_stage({"stage": "building_features", "run_id": run_id_hint, "started_at": time.time()})
 
         import pandas as pd
 
-        from lol_genius.api.ddragon import DataDragon
         from lol_genius.db.queries import MatchDB
-        from lol_genius.features.build import build_feature_matrix
+        from lol_genius.model.train import train_model
 
-        db = MatchDB(dsn)
-        ddragon = DataDragon(ddragon_cache)
+        type_dir = Path(model_dir) / model_type
+        type_dir.mkdir(parents=True, exist_ok=True)
 
-        try:
-            X, y, patches, timestamps = build_feature_matrix(db, ddragon)
-        finally:
-            db.close()
+        if model_type == "live":
+            db = MatchDB(dsn)
+            try:
+                from lol_genius.features.timeline import build_timeline_feature_matrix
+
+                X, y = build_timeline_feature_matrix(db)
+            finally:
+                db.close()
+            patches = None
+            timestamps = None
+        else:
+            from lol_genius.api.ddragon import DataDragon
+            from lol_genius.features.build import build_feature_matrix
+
+            db = MatchDB(dsn)
+            ddragon = DataDragon(ddragon_cache)
+            try:
+                X, y, patches, timestamps = build_feature_matrix(db, ddragon)
+            finally:
+                db.close()
+
+            out_dir = Path(model_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            X.to_parquet(out_dir / "features.parquet")
+            y.to_frame().to_parquet(out_dir / "targets.parquet")
+            patches.to_frame().to_parquet(out_dir / "patches.parquet")
+            timestamps.to_frame().to_parquet(out_dir / "timestamps.parquet")
 
         if X.empty:
-            _training_status = {"stage": "error", "error": "No enriched matches found"}
-            _push_sse("training_status", {**_training_status})
+            _set_stage({"stage": "error", "error": "No training data found"})
             return
 
-        out_dir = Path(model_dir)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        X.to_parquet(out_dir / "features.parquet")
-        y.to_frame().to_parquet(out_dir / "targets.parquet")
-        patches.to_frame().to_parquet(out_dir / "patches.parquet")
-        timestamps.to_frame().to_parquet(out_dir / "timestamps.parquet")
-
         train_params = None
+        tuned_num_round = 1000
         if resolved_params == "__auto_tune__":
-            _training_status = {"stage": "tuning", "run_id": run_id_hint, "matches": len(X), "features": X.shape[1]}
-            _push_sse("training_status", {**_training_status})
+            _set_stage({"stage": "tuning", "run_id": run_id_hint, "matches": len(X), "features": X.shape[1]})
 
             from lol_genius.model.train import tune_hyperparameters
+
             tuned = tune_hyperparameters(X, y)
             tuned_num_round = tuned.pop("best_num_round", 1000)
             train_params = tuned
         elif isinstance(resolved_params, dict):
             train_params = resolved_params
 
-        _training_status = {"stage": "training", "run_id": run_id_hint, "matches": len(X), "features": X.shape[1]}
-        _push_sse("training_status", {**_training_status})
+        _set_stage({"stage": "training", "run_id": run_id_hint, "matches": len(X), "features": X.shape[1]})
 
-        from lol_genius.model.train import train_model
-
-        train_kwargs = dict(patches=patches, timestamps=timestamps, database_url=dsn, params=train_params)
+        train_kwargs = dict(
+            patches=patches,
+            timestamps=timestamps,
+            database_url=dsn,
+            params=train_params,
+            model_type=model_type,
+        )
         if resolved_params == "__auto_tune__":
             train_kwargs["num_boost_round"] = tuned_num_round
 
@@ -226,52 +279,49 @@ def _run_training_pipeline(dsn: str, model_dir: str, ddragon_cache: str, notes: 
             finally:
                 db2.close()
 
-        _training_status = {"stage": "evaluating", "run_id": actual_run_id}
-        _push_sse("training_status", {**_training_status})
+        _set_stage({"stage": "evaluating", "run_id": actual_run_id})
 
         from lol_genius.model.evaluate import evaluate_model
 
-        X_test = pd.read_parquet(out_dir / "X_test.parquet")
-        y_test = pd.read_parquet(out_dir / "y_test.parquet").squeeze()
-        metrics = evaluate_model(model, X_test, y_test, model_dir, database_url=dsn, run_id=actual_run_id)
+        X_test = pd.read_parquet(type_dir / "X_test.parquet")
+        y_test = pd.read_parquet(type_dir / "y_test.parquet").squeeze()
+        metrics = evaluate_model(
+            model, X_test, y_test, str(type_dir), database_url=dsn, run_id=actual_run_id
+        )
 
-        _training_status = {"stage": "explaining", "run_id": actual_run_id}
-        _push_sse("training_status", {**_training_status})
+        _set_stage({"stage": "explaining", "run_id": actual_run_id})
 
         from lol_genius.model.explain import explain_model
 
-        X_full = pd.read_parquet(out_dir / "features.parquet")
-        feature_names_path = out_dir / "feature_names.json"
+        feature_names_path = type_dir / "feature_names.json"
         if feature_names_path.exists():
             feat_names = json.loads(feature_names_path.read_text())
-            X_full = X_full[[c for c in feat_names if c in X_full.columns]]
+            X_shap = X[[c for c in feat_names if c in X.columns]]
+        else:
+            X_shap = X
 
-        explain_model(model, X_full, model_dir, database_url=dsn, run_id=actual_run_id)
+        explain_model(
+            model, X_shap, str(type_dir), database_url=dsn, run_id=actual_run_id
+        )
 
-        _training_status = {
-            "stage": "completed",
-            "run_id": actual_run_id,
-            "metrics": metrics,
-            "completed_at": time.time(),
-        }
-        _push_sse("training_status", {**_training_status})
+        _set_stage({"stage": "completed", "run_id": actual_run_id, "metrics": metrics, "completed_at": time.time()})
 
     except Exception as e:
         log.exception("Training pipeline failed")
-        _training_status = {"stage": "error", "error": str(e)}
-        _push_sse("training_status", {**_training_status})
+        _set_stage({"stage": "error", "error": str(e)})
     finally:
         _training_lock.release()
 
 
 @router.get("/system/health")
 async def system_health(request: Request):
-    db = request.app.state.db
+    pool = request.app.state.pool
     proxy_url = request.app.state.proxy_url
 
     def _db_check():
         try:
-            db.get_match_count()
+            with pooled_db(pool) as db:
+                db.get_match_count()
             return True
         except Exception as e:
             log.warning(f"DB health check failed: {e}")
@@ -279,7 +329,8 @@ async def system_health(request: Request):
 
     def _stale_check():
         try:
-            return db.get_stale_enrichment_counts()
+            with pooled_db(pool) as db:
+                return db.get_stale_enrichment_counts()
         except Exception as e:
             log.warning(f"Stale enrichment check failed: {e}")
             return {}
@@ -305,7 +356,9 @@ async def system_health(request: Request):
 
 
 @router.get("/predict/lookup")
-async def predict_lookup(request: Request, game_name: str = Query(...), tag_line: str = Query(...)):
+async def predict_lookup(
+    request: Request, game_name: str = Query(...), tag_line: str = Query(...)
+):
     proxy_url = request.app.state.proxy_url
 
     def _lookup():
@@ -366,13 +419,127 @@ async def predict_live(request: Request):
     try:
         result = await asyncio.to_thread(_predict)
         return result
-    except Exception as e:
+    except Exception:
         log.exception("Prediction failed")
-        return JSONResponse({"error": str(e)}, status_code=500)
+        return JSONResponse({"error": "Internal error"}, status_code=500)
+
+
+@router.post("/timelines/build-from-db")
+async def build_timelines_from_db(request: Request):
+    dsn = request.app.state.dsn
+
+    def _run():
+        from lol_genius.crawler.fetch_timelines import build_timelines_from_db as _build
+        from lol_genius.db.queries import MatchDB
+
+        db = MatchDB(dsn)
+        try:
+            return _build(db)
+        finally:
+            db.close()
+
+    try:
+        saved = await asyncio.to_thread(_run)
+        return {"saved": saved}
+    except Exception:
+        log.exception("build_timelines_from_db failed")
+        return JSONResponse({"error": "Internal error"}, status_code=500)
+
+
+@router.post("/live-game/start")
+async def live_game_start(request: Request):
+    global _live_game_poller
+
+    body = {}
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        pass
+
+    host = body.get("host", "localhost")
+    port = int(body.get("port", 2999))
+    model_dir = request.app.state.model_dir
+
+    if _live_game_poller is not None:
+        _live_game_poller.stop()
+
+    from lol_genius.predict.live_client import LiveGamePoller
+
+    _live_game_poller = LiveGamePoller(host, port, model_dir, _push_sse)
+    _live_game_poller.start()
+    return {"status": "started", "host": host, "port": port}
+
+
+@router.delete("/live-game/stop")
+async def live_game_stop():
+    global _live_game_poller
+    if _live_game_poller is not None:
+        _live_game_poller.stop()
+        _live_game_poller = None
+    return {"status": "stopped"}
+
+
+@router.get("/live-game/status")
+async def live_game_status():
+    if _live_game_poller is None:
+        return {
+            "connected": False,
+            "host": None,
+            "port": None,
+            "current": None,
+            "history": [],
+        }
+    return {
+        "connected": True,
+        "host": _live_game_poller.host,
+        "port": _live_game_poller.port,
+        "current": _live_game_poller.current,
+        "history": _live_game_poller.history,
+    }
+
+
+@router.get("/crawler/mode")
+async def get_crawler_mode(request: Request):
+    pool = request.app.state.pool
+
+    def _get():
+        with pooled_db(pool) as db:
+            return db.get_setting("crawler_mode", "crawl")
+
+    return {"mode": await asyncio.to_thread(_get)}
+
+
+@router.post("/crawler/mode")
+async def set_crawler_mode(request: Request):
+    body = await request.json()
+    mode = body.get("mode", "crawl")
+    if mode not in ("crawl", "fetch_timelines"):
+        return JSONResponse({"error": "Invalid mode"}, status_code=400)
+    pool = request.app.state.pool
+
+    def _set():
+        with pooled_db(pool) as db:
+            db.set_setting("crawler_mode", mode)
+
+    await asyncio.to_thread(_set)
+    return {"mode": mode}
 
 
 @router.get("/events")
 async def sse_stream(request: Request):
+    pool = request.app.state.pool
+
+    def _poll():
+        with pooled_db(pool) as db:
+            return {
+                "match_count": db.get_match_count(),
+                "queue_depth": db.get_queue_depth(),
+                "enrichment": db.get_enrichment_stats(),
+                "timeline": db.get_timeline_stats(),
+                "queue_stats": db.get_queue_stats(),
+                "crawler_mode": db.get_setting("crawler_mode", "crawl"),
+            }
+
     async def event_generator():
         last_idx = len(_sse_events)
         last_status_time = 0
@@ -385,25 +552,16 @@ async def sse_stream(request: Request):
             if now - last_status_time >= 5:
                 last_status_time = now
                 try:
-                    db = request.app.state.db
-
-                    def _poll():
-                        db.conn.rollback()
-                        return {
-                            "match_count": db.get_match_count(),
-                            "queue_depth": db.get_queue_depth(),
-                            "enrichment": db.get_enrichment_stats(),
-                            "queue_stats": db.get_queue_stats(),
-                        }
-
                     data = await asyncio.to_thread(_poll)
                     yield {"event": "crawler_status", "data": json.dumps(data)}
                 except Exception as e:
                     log.warning(f"SSE crawler poll error: {e}")
 
             current_len = len(_sse_events)
+            if current_len < last_idx:
+                last_idx = 0
             if current_len > last_idx:
-                for evt in _sse_events[last_idx:current_len]:
+                for evt in list(_sse_events)[last_idx:current_len]:
                     yield {"event": evt["event"], "data": json.dumps(evt["data"])}
                 last_idx = current_len
 

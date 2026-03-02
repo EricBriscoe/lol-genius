@@ -5,10 +5,14 @@ import logging
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import xgboost as xgb
 from sklearn.model_selection import train_test_split
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 log = logging.getLogger(__name__)
 
@@ -51,21 +55,29 @@ PARAM_PRESETS = {
 def _compute_patch_weights(
     patches: "pd.Series", decay_factor: float = 0.5
 ) -> np.ndarray:
-    unique = sorted(patches.unique(), key=lambda p: [int(x) for x in p.split(".")] if p else [0])
+    unique = sorted(
+        patches.unique(), key=lambda p: [int(x) for x in p.split(".")] if p else [0]
+    )
     if not unique:
         return np.ones(len(patches))
 
     patch_to_idx = {p: i for i, p in enumerate(unique)}
     latest_idx = len(unique) - 1
-    weights = np.array([
-        decay_factor ** (latest_idx - patch_to_idx.get(p, 0))
-        for p in patches
-    ])
+    weights = np.array(
+        [decay_factor ** (latest_idx - patch_to_idx.get(p, 0)) for p in patches]
+    )
 
     dist = {}
     for p in unique:
         mask = patches == p
-        dist[p] = (int(mask.sum()), float(weights[mask].iloc[0] if hasattr(weights[mask], 'iloc') else weights[mask.values][0]))
+        dist[p] = (
+            int(mask.sum()),
+            float(
+                weights[mask].iloc[0]
+                if hasattr(weights[mask], "iloc")
+                else weights[mask.values][0]
+            ),
+        )
     log.info("Patch weight distribution:")
     for p, (count, w) in dist.items():
         log.info(f"  {p}: {count} matches, weight={w:.3f}")
@@ -74,13 +86,16 @@ def _compute_patch_weights(
 
 
 def select_features(
-    X: "pd.DataFrame", y: "pd.Series",
+    X: "pd.DataFrame",
+    y: "pd.Series",
+    variance_threshold: float = 1e-6,
+    correlation_threshold: float = 0.95,
 ) -> "pd.DataFrame":
     import pandas as pd
     from sklearn.feature_selection import mutual_info_classif
 
     variances = X.var()
-    X = X.loc[:, variances > 1e-6]
+    X = X.loc[:, variances > variance_threshold]
     log.info(f"After variance filter: {X.shape[1]} features")
 
     corr = X.corr().abs()
@@ -90,7 +105,7 @@ def select_features(
 
     to_drop: set[str] = set()
     for col in upper.columns:
-        correlated = upper.index[upper[col] > 0.95].tolist()
+        correlated = upper.index[upper[col] > correlation_threshold].tolist()
         for corr_col in correlated:
             if mi_series.get(col, 0) >= mi_series.get(corr_col, 0):
                 to_drop.add(corr_col)
@@ -113,13 +128,14 @@ def train_model(
     timestamps: "pd.Series | None" = None,
     database_url: str | None = None,
     params: dict | None = None,
+    model_type: str = "pregame",
+    early_stopping_rounds: int = 75,
 ) -> tuple[xgb.Booster, str]:
-    import pandas as pd
 
     resolved_params = {**DEFAULT_PARAMS, **(params or {})}
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    model_path = Path(model_dir)
+    model_path = Path(model_dir) / model_type
     model_path.mkdir(parents=True, exist_ok=True)
 
     X = select_features(X, y)
@@ -142,10 +158,14 @@ def train_model(
             X, y, sample_weights, test_size=0.2, stratify=y, random_state=42
         )
     else:
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, stratify=y, random_state=42
+        )
         w_train = None
 
-    dtrain = xgb.DMatrix(X_train, label=y_train, feature_names=list(X.columns), weight=w_train)
+    dtrain = xgb.DMatrix(
+        X_train, label=y_train, feature_names=list(X.columns), weight=w_train
+    )
     dtest = xgb.DMatrix(X_test, label=y_test, feature_names=list(X.columns))
 
     t0 = time.monotonic()
@@ -154,13 +174,13 @@ def train_model(
         dtrain,
         num_boost_round=num_boost_round,
         evals=[(dtrain, "train"), (dtest, "eval")],
-        early_stopping_rounds=75,
+        early_stopping_rounds=early_stopping_rounds,
         verbose_eval=25,
     )
     training_seconds = round(time.monotonic() - t0, 1)
 
     model.save_model(str(model_path / "model.json"))
-    invalidate_model_cache(model_dir)
+    invalidate_model_cache(model_dir, model_type)
 
     with open(model_path / "feature_names.json", "w") as f:
         json.dump(list(X.columns), f)
@@ -171,32 +191,48 @@ def train_model(
     (model_path / "run_id.txt").write_text(run_id)
 
     log.info(f"Model saved to {model_path / 'model.json'}")
-    log.info(f"Best iteration: {model.best_iteration}, Best score: {model.best_score:.4f}")
+    log.info(
+        f"Best iteration: {model.best_iteration}, Best score: {model.best_score:.4f}"
+    )
     log.info(f"Run ID: {run_id}")
 
     if database_url:
         from lol_genius.db.queries import MatchDB
-        patch_min = str(patches.min()) if patches is not None and len(patches) > 0 else None
-        patch_max = str(patches.max()) if patches is not None and len(patches) > 0 else None
+
+        patch_min = (
+            str(patches.min()) if patches is not None and len(patches) > 0 else None
+        )
+        patch_max = (
+            str(patches.max()) if patches is not None and len(patches) > 0 else None
+        )
         db = MatchDB(database_url)
         try:
-            db.insert_model_run({
-                "run_id": run_id,
-                "total_matches": len(X),
-                "train_count": len(X_train),
-                "test_count": len(X_test),
-                "feature_count": X.shape[1],
-                "patch_min": patch_min,
-                "patch_max": patch_max,
-                "target_mean": float(y.mean()),
-                "hyperparameters": json.dumps(resolved_params),
-                "best_iteration": model.best_iteration,
-                "best_train_score": float(model.best_score),
-                "training_seconds": training_seconds,
-                "accuracy": None, "auc_roc": None, "log_loss": None,
-                "tn": None, "fp": None, "fn": None, "tp": None,
-                "top_features": None, "notes": None,
-            })
+            db.insert_model_run(
+                {
+                    "run_id": run_id,
+                    "model_type": model_type,
+                    "total_matches": len(X),
+                    "train_count": len(X_train),
+                    "test_count": len(X_test),
+                    "feature_count": X.shape[1],
+                    "patch_min": patch_min,
+                    "patch_max": patch_max,
+                    "target_mean": float(y.mean()),
+                    "hyperparameters": json.dumps(resolved_params),
+                    "best_iteration": model.best_iteration,
+                    "best_train_score": float(model.best_score),
+                    "training_seconds": training_seconds,
+                    "accuracy": None,
+                    "auc_roc": None,
+                    "log_loss": None,
+                    "tn": None,
+                    "fp": None,
+                    "fn": None,
+                    "tp": None,
+                    "top_features": None,
+                    "notes": None,
+                }
+            )
         finally:
             db.close()
 
@@ -209,6 +245,7 @@ _tune_y: np.ndarray | None = None
 
 def _init_tune_worker(X: np.ndarray, y: np.ndarray):
     import os
+
     os.nice(10)
     global _tune_X, _tune_y
     _tune_X = X
@@ -261,7 +298,9 @@ def tune_hyperparameters(
     n_cpu = os.cpu_count() or 1
     n_workers = min(n_cpu, 4)
     nthread = max(1, n_cpu // n_workers)
-    log.info(f"Grid search: {total} combinations, {n_workers} workers × {nthread} threads (nice 10)")
+    log.info(
+        f"Grid search: {total} combinations, {n_workers} workers × {nthread} threads (nice 10)"
+    )
 
     base_params = {
         "objective": "binary:logistic",
@@ -298,22 +337,32 @@ def tune_hyperparameters(
     return best_params
 
 
-_model_cache: dict[str, tuple[xgb.Booster, list[str]]] = {}
+_model_cache: dict[tuple[str, str], tuple[xgb.Booster, list[str]]] = {}
 
 
-def load_model(model_dir: str) -> tuple[xgb.Booster, list[str]]:
-    if model_dir not in _model_cache:
-        model_path = Path(model_dir)
+def load_model(
+    model_dir: str, model_type: str = "pregame"
+) -> tuple[xgb.Booster, list[str]]:
+    cache_key = (model_dir, model_type)
+    if cache_key not in _model_cache:
+        model_path = Path(model_dir) / model_type
+        if not (model_path / "model.json").exists():
+            model_path = Path(model_dir)
         model = xgb.Booster()
         model.load_model(str(model_path / "model.json"))
         with open(model_path / "feature_names.json") as f:
             feature_names = json.load(f)
-        _model_cache[model_dir] = (model, feature_names)
-    return _model_cache[model_dir]
+        _model_cache[cache_key] = (model, feature_names)
+    return _model_cache[cache_key]
 
 
-def invalidate_model_cache(model_dir: str | None = None) -> None:
-    if model_dir:
-        _model_cache.pop(model_dir, None)
+def invalidate_model_cache(
+    model_dir: str | None = None, model_type: str | None = None
+) -> None:
+    if model_dir and model_type:
+        _model_cache.pop((model_dir, model_type), None)
+    elif model_dir:
+        for k in [k for k in _model_cache if k[0] == model_dir]:
+            _model_cache.pop(k, None)
     else:
         _model_cache.clear()

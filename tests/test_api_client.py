@@ -1,4 +1,15 @@
-from lol_genius.api.client import RateLimiter, resolve_method, METHOD_RATE_LIMITS
+from unittest.mock import patch
+
+import httpx
+import pytest
+
+from lol_genius.api.client import (
+    BadRequestError,
+    RateLimiter,
+    RiotHTTPClient,
+    resolve_method,
+    METHOD_RATE_LIMITS,
+)
 
 
 def test_rate_limiter_initial_buckets():
@@ -147,8 +158,43 @@ class TestMethodLimiter:
 
     def test_all_methods_have_rate_limits(self):
         expected = {
-            "summoner-by-puuid", "league-entries", "league-by-puuid",
-            "league-by-summoner", "match-ids", "match", "mastery",
-            "account-by-riot-id", "account-by-puuid", "spectator",
+            "summoner-by-puuid",
+            "league-entries",
+            "league-by-puuid",
+            "league-by-summoner",
+            "match-ids",
+            "match",
+            "mastery",
+            "account-by-riot-id",
+            "account-by-puuid",
+            "spectator",
         }
         assert set(METHOD_RATE_LIMITS.keys()) == expected
+
+
+class TestRiotHTTPClientGet:
+    def _make_client(self):
+        with patch("lol_genius.api.client.httpx.Client") as mock_cls:
+            client = RiotHTTPClient("fake-key", auth_backoff=False)
+            client.client = mock_cls.return_value
+            return client
+
+    def test_400_raises_bad_request_error(self):
+        client = self._make_client()
+        client.client.get.return_value = httpx.Response(
+            400, text='{"status":{"message":"Exception decrypting"}}',
+            request=httpx.Request("GET", "https://example.com"),
+        )
+        with pytest.raises(BadRequestError, match="400 Bad Request"):
+            client.get("https://na1.api.riotgames.com/lol/league/v4/entries/by-puuid/stale")
+
+    def test_400_records_rate_limit(self):
+        client = self._make_client()
+        client.client.get.return_value = httpx.Response(
+            400, text="bad",
+            request=httpx.Request("GET", "https://example.com"),
+        )
+        initial_len = len(client.rate_limiter.timestamps.get(1, []))
+        with pytest.raises(BadRequestError):
+            client.get("https://example.com/unknown")
+        assert len(client.rate_limiter.timestamps.get(1, [])) > initial_len

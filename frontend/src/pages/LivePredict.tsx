@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
@@ -61,14 +61,14 @@ export default function LivePredict() {
   const [error, setError] = useState<string | null>(null);
 
   async function handleSearch() {
-    const hash = riotId.indexOf("#");
-    if (hash === -1 || hash === 0 || hash === riotId.length - 1) {
+    const match = riotId.match(/^([^#]+)#([^#]+)$/);
+    if (!match) {
       setError("Enter Riot ID as Name#TAG");
       setStage("error");
       return;
     }
-    const gameName = riotId.slice(0, hash);
-    const tagLine = riotId.slice(hash + 1);
+    const gameName = match[1];
+    const tagLine = match[2];
 
     setStage("searching");
     setError(null);
@@ -103,19 +103,22 @@ export default function LivePredict() {
     if (e.key === "Enter") handleSearch();
   }
 
-  const blue = prediction?.participants.filter((p) => p.team_id === 100) ?? [];
-  const red = prediction?.participants.filter((p) => p.team_id === 200) ?? [];
-  const blueBans = prediction?.bans.filter((b) => b.team_id === 100) ?? [];
-  const redBans = prediction?.bans.filter((b) => b.team_id === 200) ?? [];
+  const blue = useMemo(() => prediction?.participants.filter((p) => p.team_id === 100) ?? [], [prediction]);
+  const red = useMemo(() => prediction?.participants.filter((p) => p.team_id === 200) ?? [], [prediction]);
+  const blueBans = useMemo(() => prediction?.bans.filter((b) => b.team_id === 100) ?? [], [prediction]);
+  const redBans = useMemo(() => prediction?.bans.filter((b) => b.team_id === 200) ?? [], [prediction]);
 
-  const factorData = prediction?.top_factors
-    .slice(0, 10)
-    .reverse()
-    .map((f) => ({
-      name: formatFeatureName(f.feature),
-      impact: parseFloat(f.impact.toFixed(4)),
-      fill: f.impact > 0 ? "var(--blue)" : "var(--red)",
-    })) ?? [];
+  const factorData = useMemo(() =>
+    prediction?.top_factors
+      .slice(0, 10)
+      .reverse()
+      .map((f) => ({
+        name: formatFeatureName(f.feature),
+        impact: parseFloat(f.impact.toFixed(4)),
+        fill: f.impact > 0 ? "var(--blue)" : "var(--red)",
+      })) ?? [],
+    [prediction],
+  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 900, margin: "0 auto" }}>

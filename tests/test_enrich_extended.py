@@ -1,8 +1,5 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
-from lol_genius.db.queries import MatchDB
 from lol_genius.crawler.enrich import (
     _fetch_recent_stats_via_api,
     re_enrich_stale_batch,
@@ -21,35 +18,55 @@ def _make_participant(match_id, i, puuid=None, team_id=None, win=None):
         "champion_name": f"Champ{i}",
         "team_position": ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"][i % 5],
         "win": w,
-        "kills": 5, "deaths": 3, "assists": 7,
-        "total_damage": 20000, "cs": 180,
-        "vision_score": 25, "gold_earned": 12000,
-        "summoner1_id": 4, "summoner2_id": 14,
+        "kills": 5,
+        "deaths": 3,
+        "assists": 7,
+        "total_damage": 20000,
+        "cs": 180,
+        "vision_score": 25,
+        "gold_earned": 12000,
+        "summoner1_id": 4,
+        "summoner2_id": 14,
         "summoner_level": 200,
-        "perks_primary_style": 8100, "perks_sub_style": 8300,
-        "perks_keystone": 8112, "perks_offense": 5008, "perks_flex": 5008, "perks_defense": 5002,
+        "perks_primary_style": 8100,
+        "perks_sub_style": 8300,
+        "perks_keystone": 8112,
+        "perks_offense": 5008,
+        "perks_flex": 5008,
+        "perks_defense": 5002,
         "magic_damage_to_champions": 8000,
         "physical_damage_to_champions": 10000,
         "true_damage_to_champions": 2000,
         "total_damage_taken": 15000,
         "damage_self_mitigated": 8000,
-        "wards_placed": 10, "wards_killed": 3,
+        "wards_placed": 10,
+        "wards_killed": 3,
         "detector_wards_placed": 2,
         "gold_spent": 11000,
         "time_ccing_others": 20,
         "total_heal": 5000,
         "total_heals_on_teammates": 1000,
-        "double_kills": 1, "triple_kills": 0,
-        "quadra_kills": 0, "penta_kills": 0,
+        "double_kills": 1,
+        "triple_kills": 0,
+        "quadra_kills": 0,
+        "penta_kills": 0,
         "largest_killing_spree": 5,
-        "item0": 3071, "item1": 3047, "item2": 3026, "item3": 3053,
-        "item4": 3065, "item5": 3075, "item6": 3340,
-        "neutral_minions_killed": 30, "total_minions_killed": 150,
+        "item0": 3071,
+        "item1": 3047,
+        "item2": 3026,
+        "item3": 3053,
+        "item4": 3065,
+        "item5": 3075,
+        "item6": 3340,
+        "neutral_minions_killed": 30,
+        "total_minions_killed": 150,
         "champion_level": 16,
     }
 
 
-def _make_match(match_id="NA1_123", blue_win=1, game_creation=1700000000000, game_duration=1800):
+def _make_match(
+    match_id="NA1_123", blue_win=1, game_creation=1700000000000, game_duration=1800
+):
     return {
         "match_id": match_id,
         "game_version": "14.10.1",
@@ -98,11 +115,22 @@ def _make_riot_match_response(match_id, puuid, win=True, duration=1800):
             "summonerLevel": 200,
             "summoner1Id": 4,
             "summoner2Id": 14,
-            "perks": {"statPerks": {"offense": 5008, "flex": 5008, "defense": 5002}, "styles": [{"style": 8100, "selections": [{"perk": 8112}]}, {"style": 8300}]},
+            "perks": {
+                "statPerks": {"offense": 5008, "flex": 5008, "defense": 5002},
+                "styles": [
+                    {"style": 8100, "selections": [{"perk": 8112}]},
+                    {"style": 8300},
+                ],
+            },
             "totalDamageDealt": 25000,
             "goldEarned": 14000,
-            "item0": 3071, "item1": 3047, "item2": 3026, "item3": 3053,
-            "item4": 3065, "item5": 3075, "item6": 3340,
+            "item0": 3071,
+            "item1": 3047,
+            "item2": 3026,
+            "item3": 3053,
+            "item4": 3065,
+            "item5": 3075,
+            "item6": 3340,
             "damageSelfMitigated": 8000,
             "detectorWardsPlaced": 2,
             "totalHealsOnTeammates": 1000,
@@ -112,7 +140,10 @@ def _make_riot_match_response(match_id, puuid, win=True, duration=1800):
         participants.append(p)
 
     return {
-        "metadata": {"matchId": match_id, "participants": [p["puuid"] for p in participants]},
+        "metadata": {
+            "matchId": match_id,
+            "participants": [p["puuid"] for p in participants],
+        },
         "info": {
             "matchId": match_id,
             "gameVersion": "14.10.1",
@@ -148,7 +179,9 @@ class TestFetchRecentStatsViaApi:
     def test_computes_stats_from_single_match(self):
         api = MagicMock()
         api.get_match_ids.return_value = ["NA1_001"]
-        api.get_match.return_value = _make_riot_match_response("NA1_001", "test_p", win=True, duration=1800)
+        api.get_match.return_value = _make_riot_match_response(
+            "NA1_001", "test_p", win=True, duration=1800
+        )
 
         result = _fetch_recent_stats_via_api(api, "test_p")
 
@@ -183,12 +216,16 @@ class TestFetchRecentStatsViaApi:
         api.get_match_ids.return_value = []
 
         _fetch_recent_stats_via_api(api, "p1", start_time=1700000)
-        api.get_match_ids.assert_called_once_with("p1", count=20, queue=420, start_time=1700000)
+        api.get_match_ids.assert_called_once_with(
+            "p1", count=20, queue=420, start_time=1700000
+        )
 
     def test_collects_opportunistic_matches(self):
         api = MagicMock()
         api.get_match_ids.return_value = ["NA1_OPP1"]
-        api.get_match.return_value = _make_riot_match_response("NA1_OPP1", "opp_p", win=True)
+        api.get_match.return_value = _make_riot_match_response(
+            "NA1_OPP1", "opp_p", win=True
+        )
 
         result = _fetch_recent_stats_via_api(api, "opp_p")
 
@@ -200,7 +237,9 @@ class TestFetchRecentStatsViaApi:
     def test_damage_share_calculation(self):
         api = MagicMock()
         api.get_match_ids.return_value = ["NA1_DMG"]
-        api.get_match.return_value = _make_riot_match_response("NA1_DMG", "dmg_p", win=True)
+        api.get_match.return_value = _make_riot_match_response(
+            "NA1_DMG", "dmg_p", win=True
+        )
 
         result = _fetch_recent_stats_via_api(api, "dmg_p")
 
@@ -211,7 +250,9 @@ class TestFetchRecentStatsViaApi:
     def test_cs_per_min_calculation(self):
         api = MagicMock()
         api.get_match_ids.return_value = ["NA1_CS"]
-        api.get_match.return_value = _make_riot_match_response("NA1_CS", "cs_p", duration=600)
+        api.get_match.return_value = _make_riot_match_response(
+            "NA1_CS", "cs_p", duration=600
+        )
 
         result = _fetch_recent_stats_via_api(api, "cs_p")
 
@@ -232,8 +273,14 @@ class TestReEnrichStaleBatch:
     def test_refreshes_rank_only(self, db):
         api = MagicMock()
         api.get_league_by_puuid.return_value = [
-            {"queueType": "RANKED_SOLO_5x5", "tier": "GOLD", "rank": "II",
-             "leaguePoints": 50, "wins": 30, "losses": 20}
+            {
+                "queueType": "RANKED_SOLO_5x5",
+                "tier": "GOLD",
+                "rank": "II",
+                "leaguePoints": 50,
+                "wins": 30,
+                "losses": 20,
+            }
         ]
 
         stale = [{"puuid": "stale_p1", "summoner_id": "s1"}]
@@ -251,8 +298,14 @@ class TestReEnrichStaleBatch:
     def test_refreshes_multiple_entries(self, db):
         api = MagicMock()
         api.get_league_by_puuid.return_value = [
-            {"queueType": "RANKED_SOLO_5x5", "tier": "SILVER", "rank": "I",
-             "leaguePoints": 75, "wins": 40, "losses": 30}
+            {
+                "queueType": "RANKED_SOLO_5x5",
+                "tier": "SILVER",
+                "rank": "I",
+                "leaguePoints": 75,
+                "wins": 40,
+                "losses": 30,
+            }
         ]
 
         stale = [
@@ -268,7 +321,9 @@ class TestReEnrichStaleBatch:
     def test_recomputes_stats_from_db(self, db):
         match = _make_match("NA1_STALE")
         participants = [
-            _make_participant("NA1_STALE", i, puuid="stat_p" if i == 0 else f"filler_{i}")
+            _make_participant(
+                "NA1_STALE", i, puuid="stat_p" if i == 0 else f"filler_{i}"
+            )
             for i in range(10)
         ]
         db.insert_match(match, participants)
@@ -277,37 +332,20 @@ class TestReEnrichStaleBatch:
         api.get_league_by_puuid.return_value = []
 
         stale = [{"puuid": "stat_p", "summoner_id": "s1"}]
-        re_enrich_stale_batch(api, db, stale)
-
-        stats = db.get_player_recent_stats("stat_p")
-        assert stats is not None
-        assert stats["games_played"] >= 1
-
-    def test_skips_stats_upsert_when_no_games(self, db):
-        api = MagicMock()
-        api.get_league_by_puuid.return_value = []
-
-        stale = [{"puuid": "no_games_p", "summoner_id": "s1"}]
-        re_enrich_stale_batch(api, db, stale)
-
-        stats = db.get_player_recent_stats("no_games_p")
-        assert stats is None
-
-    def test_start_time_conversion(self, db):
-        api = MagicMock()
-        api.get_league_by_puuid.return_value = []
-
-        stale = [{"puuid": "time_p", "summoner_id": "s1"}]
-
-        with patch.object(db, "compute_recent_stats_from_db", return_value=None) as mock_compute:
-            re_enrich_stale_batch(api, db, stale, start_time=1700000)
-            mock_compute.assert_called_once_with("time_p", start_time_ms=1700000000)
+        count = re_enrich_stale_batch(api, db, stale)
+        assert count == 1
 
     def test_missing_summoner_id_defaults_empty(self, db):
         api = MagicMock()
         api.get_league_by_puuid.return_value = [
-            {"queueType": "RANKED_SOLO_5x5", "tier": "BRONZE", "rank": "III",
-             "leaguePoints": 10, "wins": 5, "losses": 5}
+            {
+                "queueType": "RANKED_SOLO_5x5",
+                "tier": "BRONZE",
+                "rank": "III",
+                "leaguePoints": 10,
+                "wins": 5,
+                "losses": 5,
+            }
         ]
 
         stale = [{"puuid": "no_sid_p"}]

@@ -12,9 +12,11 @@ lol-genius is a League of Legends pre-game match outcome predictor. It crawls ra
 # Setup
 python -m venv .venv && source .venv/bin/activate
 pip install -e .
+brew install dbmate          # Migration tool (local dev)
 
 # CLI (all commands)
-lol-genius init-db          # Create SQLite database
+lol-genius init-db          # Run database migrations (dbmate up)
+lol-genius init-db --wait   # Wait for DB, then migrate (Docker)
 lol-genius fetch-ddragon    # Download champion static data
 lol-genius seed             # Seed crawl queue from League-V4 entries
 lol-genius crawl            # Snowball match crawler
@@ -29,6 +31,9 @@ lol-genius status           # Show crawler progress
 # Tests
 pytest tests/
 pytest tests/test_features.py -k "test_rank_to_numeric"
+
+# Migrations
+dbmate new add_foo_column   # Create new migration file in db/migrations/
 
 # Config
 # Set RIOT_API_KEY in .env (see .env.example)
@@ -56,7 +61,7 @@ seed → crawl → enrich → build-features → train → evaluate/explain
 - `config.py`: Loads `config.yaml` + env vars into frozen dataclass.
 
 ### Data Storage
-- SQLite at `data/lol_genius.db` (WAL mode). Tables: matches, participants, summoner_ranks, champion_mastery, player_recent_stats, crawl_queue, match_enrichment_status.
+- PostgreSQL managed by dbmate. Migrations in `db/migrations/`. Schema tracked in `schema_migrations` table.
 - Data Dragon cache at `data/ddragon/`
 - Model artifacts at `data/models/`
 

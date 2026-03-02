@@ -2,21 +2,27 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import OrderedDict
 
 import httpx
 
-from lol_genius.api.client import APIKeyExpiredError
+from lol_genius.api.client import APIKeyExpiredError, BadRequestError
+from lol_genius.utils import exponential_backoff
 
 log = logging.getLogger(__name__)
+
+_PUUID_CACHE_MAX = 10_000
 
 
 class ProxyClient:
     def __init__(self, proxy_url: str):
         self.base = proxy_url.rstrip("/") + "/riot/v1"
         self.client = httpx.Client(timeout=120.0)
-        self._puuid_keys: dict[str, int] = {}
+        self._puuid_keys: OrderedDict[str, int] = OrderedDict()
 
-    def _get(self, path: str, max_retries: int = 3, key_index: int | None = None) -> tuple[dict | list | None, int | None]:
+    def _get(
+        self, path: str, max_retries: int = 3, key_index: int | None = None
+    ) -> tuple[dict | list | None, int | None]:
         url = f"{self.base}{path}"
         headers = {}
         if key_index is not None:
@@ -27,7 +33,7 @@ class ProxyClient:
             except httpx.RequestError as e:
                 log.warning(f"Proxy request error: {e}")
                 if attempt < max_retries - 1:
-                    time.sleep(2 ** attempt)
+                    time.sleep(exponential_backoff(attempt))
                     continue
                 raise
 
@@ -39,12 +45,20 @@ class ProxyClient:
                     return body["data"], ki
                 return body, None
 
+            if resp.status_code == 400:
+                body = ""
+                try:
+                    body = resp.text[:500]
+                except Exception:
+                    pass
+                raise BadRequestError(f"400 from proxy for {url}: {body}")
+
             if resp.status_code == 503:
                 log.error("Proxy reports API key expired")
                 raise APIKeyExpiredError("Riot API key expired (proxy 503)")
 
             if resp.status_code >= 500:
-                wait = min(2 ** attempt, 30)
+                wait = exponential_backoff(attempt, max_wait=30)
                 log.warning(f"Proxy {resp.status_code}, retrying in {wait}s")
                 time.sleep(wait)
                 continue
@@ -68,11 +82,18 @@ class ProxyClient:
         return self._puuid_keys.get(puuid)
 
     def _store_puuid_key(self, puuid: str, key_index: int | None) -> None:
-        if key_index is not None:
-            self._puuid_keys[puuid] = key_index
+        if key_index is None:
+            return
+        if puuid in self._puuid_keys:
+            self._puuid_keys.move_to_end(puuid)
+        self._puuid_keys[puuid] = key_index
+        if len(self._puuid_keys) > _PUUID_CACHE_MAX:
+            self._puuid_keys.popitem(last=False)
 
     def get_summoner_by_puuid(self, puuid: str) -> dict | None:
-        data, _ = self._get(f"/summoner/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid))
+        data, _ = self._get(
+            f"/summoner/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid)
+        )
         return data
 
     def get_summoner_by_id(self, summoner_id: str) -> dict | None:
@@ -92,11 +113,17 @@ class ProxyClient:
         return self._get_list(f"/league/by-summoner/{summoner_id}")
 
     def get_league_by_puuid(self, puuid: str) -> list[dict]:
-        return self._get_list(f"/league/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid))
+        return self._get_list(
+            f"/league/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid)
+        )
 
     def get_match_ids(
-        self, puuid: str, start: int = 0, count: int = 20,
-        queue: int = 420, start_time: int | None = None,
+        self,
+        puuid: str,
+        start: int = 0,
+        count: int = 20,
+        queue: int = 420,
+        start_time: int | None = None,
     ) -> list[str]:
         params = f"?start={start}&count={count}&queue={queue}"
         if start_time is not None:
@@ -106,6 +133,10 @@ class ProxyClient:
             self._store_puuid_key(puuid, ki)
             return result
         return []
+
+    def get_match_timeline(self, match_id: str) -> dict | None:
+        data, _ = self._get(f"/match/{match_id}/timeline")
+        return data
 
     def get_match(self, match_id: str) -> dict | None:
         data, ki = self._get(f"/match/{match_id}")
@@ -118,14 +149,22 @@ class ProxyClient:
         return data
 
     def get_champion_mastery(self, puuid: str, champion_id: int) -> dict | None:
-        data, _ = self._get(f"/mastery/by-puuid/{puuid}/by-champion/{champion_id}", key_index=self._key_for_puuid(puuid))
+        data, _ = self._get(
+            f"/mastery/by-puuid/{puuid}/by-champion/{champion_id}",
+            key_index=self._key_for_puuid(puuid),
+        )
         return data
 
     def get_top_masteries(self, puuid: str, count: int = 10) -> list[dict]:
-        return self._get_list(f"/mastery/by-puuid/{puuid}/top?count={count}", key_index=self._key_for_puuid(puuid))
+        return self._get_list(
+            f"/mastery/by-puuid/{puuid}/top?count={count}",
+            key_index=self._key_for_puuid(puuid),
+        )
 
     def get_active_game(self, puuid: str) -> dict | None:
-        data, _ = self._get(f"/spectator/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid))
+        data, _ = self._get(
+            f"/spectator/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid)
+        )
         return data
 
     def rate_window_usage(self) -> tuple[int, int]:

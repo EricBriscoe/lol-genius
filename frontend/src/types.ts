@@ -1,9 +1,13 @@
-export interface StatusData {
+interface BaseStatus {
   match_count: number;
   queue_stats: Record<string, number>;
   enrichment: { enriched: number; total: number };
+  timeline: { fetched: number; total: number };
   queue_depth: number;
 }
+
+export interface StatusData extends BaseStatus {}
+
 
 export interface DistributionData {
   rank_distribution: Record<string, number>;
@@ -15,6 +19,7 @@ export interface DistributionData {
 export interface ModelRun {
   run_id: string;
   created_at: string;
+  model_type: "pregame" | "live";
   total_matches: number;
   train_count: number;
   test_count: number;
@@ -42,6 +47,25 @@ export interface TrainingRequest {
   preset?: string;
   params?: Record<string, number | string>;
   auto_tune?: boolean;
+  model_type?: "pregame" | "live";
+}
+
+export interface LiveGameUpdate {
+  game_time: number;
+  blue_win_probability: number;
+  gold_diff: number;
+  kill_diff: number;
+  dragon_diff: number;
+  tower_diff: number;
+  blue_barons: number;
+}
+
+export interface LiveGameStatus {
+  connected: boolean;
+  host: string | null;
+  port: number | null;
+  current: LiveGameUpdate | null;
+  history: { game_time: number; probability: number }[];
 }
 
 export interface TrainingStatus {
@@ -55,11 +79,22 @@ export interface TrainingStatus {
   completed_at?: number;
 }
 
-export interface CrawlerSSE {
-  match_count: number;
-  queue_depth: number;
-  enrichment: { enriched: number; total: number };
-  queue_stats: Record<string, number>;
+export interface CrawlerSSE extends BaseStatus {
+  crawler_mode?: "crawl" | "fetch_timelines";
+}
+
+export interface SpectatorGameData {
+  gameId: number;
+  gameMode: string;
+  gameLength: number;
+  participants: {
+    puuid: string;
+    teamId: number;
+    championId: number;
+    spell1Id: number;
+    spell2Id: number;
+  }[];
+  bannedChampions: { championId: number; teamId: number; pickTurn: number }[];
 }
 
 export interface PredictLookup {
@@ -69,7 +104,7 @@ export interface PredictLookup {
   game_name?: string;
   tag_line?: string;
   in_game: boolean;
-  game_data?: unknown;
+  game_data?: SpectatorGameData;
 }
 
 export interface PredictParticipant {
@@ -104,4 +139,16 @@ export interface PredictResult {
   game_id: number;
   game_mode: string;
   game_length_seconds: number;
+}
+
+export function isCrawlerSSE(data: unknown): data is CrawlerSSE {
+  return typeof data === "object" && data !== null && "match_count" in data;
+}
+
+export function isTrainingStatus(data: unknown): data is TrainingStatus {
+  return typeof data === "object" && data !== null && "stage" in data;
+}
+
+export function isLiveGameUpdate(data: unknown): data is LiveGameUpdate {
+  return typeof data === "object" && data !== null && "blue_win_probability" in data;
 }

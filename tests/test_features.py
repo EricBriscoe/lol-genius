@@ -1,7 +1,13 @@
-from lol_genius.features.player import extract_player_features, rank_to_numeric, _bayesian_winrate, compute_tilt_features, PLAYER_FEATURE_NAMES
+from lol_genius.features.player import (
+    extract_player_features,
+    rank_to_numeric,
+    _bayesian_winrate,
+    compute_tilt_features,
+    PLAYER_FEATURE_NAMES,
+)
 from lol_genius.features.team import extract_team_features, TEAM_FEATURE_NAMES
-from lol_genius.features.draft import extract_draft_features, POSITION_ORDER, DRAFT_FEATURE_NAMES
-from lol_genius.features.bans import extract_ban_features, BAN_FEATURE_NAMES
+from lol_genius.features.draft import extract_draft_features, DRAFT_FEATURE_NAMES
+from lol_genius.features.bans import extract_ban_features
 
 
 def test_rank_to_numeric():
@@ -31,25 +37,41 @@ def test_extract_player_features_full_data():
         "summoner2_id": 14,
     }
     rank = {
-        "tier": "EMERALD", "rank": "II", "league_points": 75,
-        "wins": 100, "losses": 80,
-        "hot_streak": 1, "fresh_blood": 0, "veteran": 1,
+        "tier": "EMERALD",
+        "rank": "II",
+        "league_points": 75,
+        "wins": 100,
+        "losses": 80,
+        "hot_streak": 1,
+        "fresh_blood": 0,
+        "veteran": 1,
     }
     mastery = {"mastery_points": 50000, "mastery_level": 7, "last_play_time": None}
     recent = {
-        "games_played": 20, "wins": 12,
-        "avg_kills": 6.0, "avg_deaths": 3.0, "avg_assists": 8.0,
-        "avg_cs_per_min": 7.5, "avg_vision": 25.0, "avg_damage_share": 0.28,
-        "avg_wards_placed": 10.0, "avg_wards_killed": 3.0,
-        "avg_damage_taken": 15000.0, "avg_gold_spent": 12000.0,
-        "avg_cc_score": 20.0, "avg_heal_total": 5000.0,
-        "avg_magic_dmg_share": 0.4, "avg_phys_dmg_share": 0.5,
+        "games_played": 20,
+        "wins": 12,
+        "avg_kills": 6.0,
+        "avg_deaths": 3.0,
+        "avg_assists": 8.0,
+        "avg_cs_per_min": 7.5,
+        "avg_vision": 25.0,
+        "avg_damage_share": 0.28,
+        "avg_wards_placed": 10.0,
+        "avg_wards_killed": 3.0,
+        "avg_damage_taken": 15000.0,
+        "avg_gold_spent": 12000.0,
+        "avg_cc_score": 20.0,
+        "avg_heal_total": 5000.0,
+        "avg_magic_dmg_share": 0.4,
+        "avg_phys_dmg_share": 0.5,
         "avg_multikill_rate": 1.5,
     }
     champ_stats = {"games": 10, "wins": 7, "winrate": 0.7}
     role_dist = {"MIDDLE": 15, "TOP": 3, "JUNGLE": 2}
 
-    features = extract_player_features(participant, rank, mastery, recent, champ_stats, role_dist)
+    features = extract_player_features(
+        participant, rank, mastery, recent, champ_stats, role_dist
+    )
 
     assert set(features.keys()) == set(PLAYER_FEATURE_NAMES)
     assert features["rank_numeric"] == rank_to_numeric("EMERALD", "II", 75)
@@ -80,7 +102,9 @@ def test_extract_player_features_autofill():
 
 
 def test_extract_player_features_no_data():
-    features = extract_player_features({"team_position": ""}, None, None, None, None, None)
+    features = extract_player_features(
+        {"team_position": ""}, None, None, None, None, None
+    )
     assert set(features.keys()) == set(PLAYER_FEATURE_NAMES)
     assert features["rank_numeric"] == 12.0
     assert features["recent_winrate"] == 0.5
@@ -128,62 +152,184 @@ def test_compute_tilt_features_no_losses():
 
 def test_kda_variance_skewness():
     recent = {
-        "games_played": 5, "wins": 3,
-        "avg_kills": 5.0, "avg_deaths": 3.0, "avg_assists": 7.0,
-        "avg_cs_per_min": 7.0, "avg_vision": 20.0, "avg_damage_share": 0.25,
-        "avg_wards_placed": 8.0, "avg_wards_killed": 2.0,
-        "avg_damage_taken": 12000.0, "avg_gold_spent": 10000.0,
-        "avg_cc_score": 15.0, "avg_heal_total": 3000.0,
-        "avg_magic_dmg_share": 0.3, "avg_phys_dmg_share": 0.6,
+        "games_played": 5,
+        "wins": 3,
+        "avg_kills": 5.0,
+        "avg_deaths": 3.0,
+        "avg_assists": 7.0,
+        "avg_cs_per_min": 7.0,
+        "avg_vision": 20.0,
+        "avg_damage_share": 0.25,
+        "avg_wards_placed": 8.0,
+        "avg_wards_killed": 2.0,
+        "avg_damage_taken": 12000.0,
+        "avg_gold_spent": 10000.0,
+        "avg_cc_score": 15.0,
+        "avg_heal_total": 3000.0,
+        "avg_magic_dmg_share": 0.3,
+        "avg_phys_dmg_share": 0.6,
         "avg_multikill_rate": 1.0,
         "kda_per_game": [2.0, 4.0, 6.0, 2.0, 6.0],
     }
-    features = extract_player_features({"team_position": "MIDDLE"}, None, None, recent, None, None)
+    features = extract_player_features(
+        {"team_position": "MIDDLE"}, None, None, recent, None, None
+    )
     assert features["kda_variance"] > 0
     assert isinstance(features["kda_skewness"], float)
 
 
 def test_kda_variance_insufficient_games():
     recent = {
-        "games_played": 2, "wins": 1,
-        "avg_kills": 5.0, "avg_deaths": 3.0, "avg_assists": 7.0,
-        "avg_cs_per_min": 7.0, "avg_vision": 20.0, "avg_damage_share": 0.25,
-        "avg_wards_placed": 8.0, "avg_wards_killed": 2.0,
-        "avg_damage_taken": 12000.0, "avg_gold_spent": 10000.0,
-        "avg_cc_score": 15.0, "avg_heal_total": 3000.0,
-        "avg_magic_dmg_share": 0.3, "avg_phys_dmg_share": 0.6,
+        "games_played": 2,
+        "wins": 1,
+        "avg_kills": 5.0,
+        "avg_deaths": 3.0,
+        "avg_assists": 7.0,
+        "avg_cs_per_min": 7.0,
+        "avg_vision": 20.0,
+        "avg_damage_share": 0.25,
+        "avg_wards_placed": 8.0,
+        "avg_wards_killed": 2.0,
+        "avg_damage_taken": 12000.0,
+        "avg_gold_spent": 10000.0,
+        "avg_cc_score": 15.0,
+        "avg_heal_total": 3000.0,
+        "avg_magic_dmg_share": 0.3,
+        "avg_phys_dmg_share": 0.6,
         "avg_multikill_rate": 1.0,
         "kda_per_game": [3.0, 4.0],
     }
-    features = extract_player_features({"team_position": "MIDDLE"}, None, None, recent, None, None)
+    features = extract_player_features(
+        {"team_position": "MIDDLE"}, None, None, recent, None, None
+    )
     assert features["kda_variance"] == 0.0
     assert features["kda_skewness"] == 0.0
 
 
 def test_extract_team_features():
     player_feats = [
-        {"rank_numeric": 20.0, "recent_winrate": 0.55, "mastery_points": 100000, "is_autofill": 0,
-         "summoner_level": 200, "hot_streak": 1, "avg_wards_placed": 10, "avg_cc_score": 20},
-        {"rank_numeric": 22.0, "recent_winrate": 0.60, "mastery_points": 80000, "is_autofill": 0,
-         "summoner_level": 300, "hot_streak": 0, "avg_wards_placed": 12, "avg_cc_score": 15},
-        {"rank_numeric": 18.0, "recent_winrate": 0.50, "mastery_points": 120000, "is_autofill": 1,
-         "summoner_level": 150, "hot_streak": 1, "avg_wards_placed": 8, "avg_cc_score": 25},
-        {"rank_numeric": 21.0, "recent_winrate": 0.52, "mastery_points": 90000, "is_autofill": 0,
-         "summoner_level": 250, "hot_streak": 0, "avg_wards_placed": 14, "avg_cc_score": 10},
-        {"rank_numeric": 19.0, "recent_winrate": 0.48, "mastery_points": 60000, "is_autofill": 0,
-         "summoner_level": 100, "hot_streak": 0, "avg_wards_placed": 20, "avg_cc_score": 30},
+        {
+            "rank_numeric": 20.0,
+            "recent_winrate": 0.55,
+            "mastery_points": 100000,
+            "is_autofill": 0,
+            "summoner_level": 200,
+            "hot_streak": 1,
+            "avg_wards_placed": 10,
+            "avg_cc_score": 20,
+        },
+        {
+            "rank_numeric": 22.0,
+            "recent_winrate": 0.60,
+            "mastery_points": 80000,
+            "is_autofill": 0,
+            "summoner_level": 300,
+            "hot_streak": 0,
+            "avg_wards_placed": 12,
+            "avg_cc_score": 15,
+        },
+        {
+            "rank_numeric": 18.0,
+            "recent_winrate": 0.50,
+            "mastery_points": 120000,
+            "is_autofill": 1,
+            "summoner_level": 150,
+            "hot_streak": 1,
+            "avg_wards_placed": 8,
+            "avg_cc_score": 25,
+        },
+        {
+            "rank_numeric": 21.0,
+            "recent_winrate": 0.52,
+            "mastery_points": 90000,
+            "is_autofill": 0,
+            "summoner_level": 250,
+            "hot_streak": 0,
+            "avg_wards_placed": 14,
+            "avg_cc_score": 10,
+        },
+        {
+            "rank_numeric": 19.0,
+            "recent_winrate": 0.48,
+            "mastery_points": 60000,
+            "is_autofill": 0,
+            "summoner_level": 100,
+            "hot_streak": 0,
+            "avg_wards_placed": 20,
+            "avg_cc_score": 30,
+        },
     ]
     champ_feats = [
-        {"is_ap_champ": 0, "is_mixed_champ": 0, "is_melee": 1, "tag_tank": 1, "tag_assassin": 0, "tag_mage": 0, "tag_marksman": 0, "tag_support": 0,
-         "champ_attack_score": 5, "champ_defense_score": 8, "champ_magic_score": 3, "champ_difficulty": 4},
-        {"is_ap_champ": 0, "is_mixed_champ": 0, "is_melee": 1, "tag_tank": 0, "tag_assassin": 1, "tag_mage": 0, "tag_marksman": 0, "tag_support": 0,
-         "champ_attack_score": 9, "champ_defense_score": 3, "champ_magic_score": 1, "champ_difficulty": 7},
-        {"is_ap_champ": 1, "is_mixed_champ": 0, "is_melee": 0, "tag_tank": 0, "tag_assassin": 0, "tag_mage": 1, "tag_marksman": 0, "tag_support": 0,
-         "champ_attack_score": 2, "champ_defense_score": 4, "champ_magic_score": 9, "champ_difficulty": 6},
-        {"is_ap_champ": 0, "is_mixed_champ": 0, "is_melee": 0, "tag_tank": 0, "tag_assassin": 0, "tag_mage": 0, "tag_marksman": 1, "tag_support": 0,
-         "champ_attack_score": 10, "champ_defense_score": 2, "champ_magic_score": 1, "champ_difficulty": 3},
-        {"is_ap_champ": 1, "is_mixed_champ": 0, "is_melee": 0, "tag_tank": 0, "tag_assassin": 0, "tag_mage": 0, "tag_marksman": 0, "tag_support": 1,
-         "champ_attack_score": 3, "champ_defense_score": 5, "champ_magic_score": 7, "champ_difficulty": 5},
+        {
+            "is_ap_champ": 0,
+            "is_mixed_champ": 0,
+            "is_melee": 1,
+            "tag_tank": 1,
+            "tag_assassin": 0,
+            "tag_mage": 0,
+            "tag_marksman": 0,
+            "tag_support": 0,
+            "champ_attack_score": 5,
+            "champ_defense_score": 8,
+            "champ_magic_score": 3,
+            "champ_difficulty": 4,
+        },
+        {
+            "is_ap_champ": 0,
+            "is_mixed_champ": 0,
+            "is_melee": 1,
+            "tag_tank": 0,
+            "tag_assassin": 1,
+            "tag_mage": 0,
+            "tag_marksman": 0,
+            "tag_support": 0,
+            "champ_attack_score": 9,
+            "champ_defense_score": 3,
+            "champ_magic_score": 1,
+            "champ_difficulty": 7,
+        },
+        {
+            "is_ap_champ": 1,
+            "is_mixed_champ": 0,
+            "is_melee": 0,
+            "tag_tank": 0,
+            "tag_assassin": 0,
+            "tag_mage": 1,
+            "tag_marksman": 0,
+            "tag_support": 0,
+            "champ_attack_score": 2,
+            "champ_defense_score": 4,
+            "champ_magic_score": 9,
+            "champ_difficulty": 6,
+        },
+        {
+            "is_ap_champ": 0,
+            "is_mixed_champ": 0,
+            "is_melee": 0,
+            "tag_tank": 0,
+            "tag_assassin": 0,
+            "tag_mage": 0,
+            "tag_marksman": 1,
+            "tag_support": 0,
+            "champ_attack_score": 10,
+            "champ_defense_score": 2,
+            "champ_magic_score": 1,
+            "champ_difficulty": 3,
+        },
+        {
+            "is_ap_champ": 1,
+            "is_mixed_champ": 0,
+            "is_melee": 0,
+            "tag_tank": 0,
+            "tag_assassin": 0,
+            "tag_mage": 0,
+            "tag_marksman": 0,
+            "tag_support": 1,
+            "champ_attack_score": 3,
+            "champ_defense_score": 5,
+            "champ_magic_score": 7,
+            "champ_difficulty": 5,
+        },
     ]
 
     features = extract_team_features(player_feats, champ_feats)
@@ -206,18 +352,78 @@ def test_extract_team_features():
 
 def test_extract_draft_features():
     blue_pf = {
-        "TOP": {"rank_numeric": 20.0, "mastery_points": 100000, "recent_winrate": 0.55, "champ_winrate": 0.6, "summoner_level": 200},
-        "JUNGLE": {"rank_numeric": 22.0, "mastery_points": 80000, "recent_winrate": 0.60, "champ_winrate": 0.5, "summoner_level": 300},
-        "MIDDLE": {"rank_numeric": 18.0, "mastery_points": 120000, "recent_winrate": 0.50, "champ_winrate": 0.55, "summoner_level": 150},
-        "BOTTOM": {"rank_numeric": 21.0, "mastery_points": 90000, "recent_winrate": 0.52, "champ_winrate": 0.48, "summoner_level": 250},
-        "UTILITY": {"rank_numeric": 19.0, "mastery_points": 60000, "recent_winrate": 0.48, "champ_winrate": 0.52, "summoner_level": 100},
+        "TOP": {
+            "rank_numeric": 20.0,
+            "mastery_points": 100000,
+            "recent_winrate": 0.55,
+            "champ_winrate": 0.6,
+            "summoner_level": 200,
+        },
+        "JUNGLE": {
+            "rank_numeric": 22.0,
+            "mastery_points": 80000,
+            "recent_winrate": 0.60,
+            "champ_winrate": 0.5,
+            "summoner_level": 300,
+        },
+        "MIDDLE": {
+            "rank_numeric": 18.0,
+            "mastery_points": 120000,
+            "recent_winrate": 0.50,
+            "champ_winrate": 0.55,
+            "summoner_level": 150,
+        },
+        "BOTTOM": {
+            "rank_numeric": 21.0,
+            "mastery_points": 90000,
+            "recent_winrate": 0.52,
+            "champ_winrate": 0.48,
+            "summoner_level": 250,
+        },
+        "UTILITY": {
+            "rank_numeric": 19.0,
+            "mastery_points": 60000,
+            "recent_winrate": 0.48,
+            "champ_winrate": 0.52,
+            "summoner_level": 100,
+        },
     }
     red_pf = {
-        "TOP": {"rank_numeric": 19.0, "mastery_points": 90000, "recent_winrate": 0.50, "champ_winrate": 0.55, "summoner_level": 180},
-        "JUNGLE": {"rank_numeric": 21.0, "mastery_points": 70000, "recent_winrate": 0.55, "champ_winrate": 0.52, "summoner_level": 280},
-        "MIDDLE": {"rank_numeric": 20.0, "mastery_points": 110000, "recent_winrate": 0.53, "champ_winrate": 0.58, "summoner_level": 200},
-        "BOTTOM": {"rank_numeric": 22.0, "mastery_points": 85000, "recent_winrate": 0.58, "champ_winrate": 0.50, "summoner_level": 220},
-        "UTILITY": {"rank_numeric": 18.0, "mastery_points": 50000, "recent_winrate": 0.45, "champ_winrate": 0.50, "summoner_level": 90},
+        "TOP": {
+            "rank_numeric": 19.0,
+            "mastery_points": 90000,
+            "recent_winrate": 0.50,
+            "champ_winrate": 0.55,
+            "summoner_level": 180,
+        },
+        "JUNGLE": {
+            "rank_numeric": 21.0,
+            "mastery_points": 70000,
+            "recent_winrate": 0.55,
+            "champ_winrate": 0.52,
+            "summoner_level": 280,
+        },
+        "MIDDLE": {
+            "rank_numeric": 20.0,
+            "mastery_points": 110000,
+            "recent_winrate": 0.53,
+            "champ_winrate": 0.58,
+            "summoner_level": 200,
+        },
+        "BOTTOM": {
+            "rank_numeric": 22.0,
+            "mastery_points": 85000,
+            "recent_winrate": 0.58,
+            "champ_winrate": 0.50,
+            "summoner_level": 220,
+        },
+        "UTILITY": {
+            "rank_numeric": 18.0,
+            "mastery_points": 50000,
+            "recent_winrate": 0.45,
+            "champ_winrate": 0.50,
+            "summoner_level": 90,
+        },
     }
 
     features = extract_draft_features({}, {}, blue_pf, red_pf)

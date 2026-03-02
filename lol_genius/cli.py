@@ -1,12 +1,30 @@
 from __future__ import annotations
 
+import functools
 import logging
 import os
+import sys
 from datetime import datetime, timezone
 
 import click
 
 from lol_genius.config import load_config
+
+log = logging.getLogger(__name__)
+
+
+def cli_error_handler(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except SystemExit:
+            raise
+        except Exception:
+            log.exception("Command failed")
+            sys.exit(1)
+
+    return wrapper
 
 _DOCKER = os.environ.get("LOL_GENIUS_DOCKER") == "1"
 
@@ -20,7 +38,9 @@ def _setup_logging(verbose: bool) -> None:
 
 
 @click.group()
-@click.option("--config", "config_path", default="config.yaml", help="Path to config file")
+@click.option(
+    "--config", "config_path", default="config.yaml", help="Path to config file"
+)
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging")
 @click.pass_context
 def cli(ctx, config_path, verbose):
@@ -37,6 +57,7 @@ def _get_config(ctx):
 def _make_api(config):
     if config.proxy_url:
         from lol_genius.api.proxy_client import ProxyClient
+
         return ProxyClient(config.proxy_url)
 
     from lol_genius.api.client import RiotHTTPClient
@@ -44,23 +65,38 @@ def _make_api(config):
     from lol_genius.config import make_key_loader
 
     key_loader = make_key_loader() if _DOCKER else None
-    client = RiotHTTPClient(config.riot_api_key, key_loader=key_loader, rate_scale=config.rate_scale)
+    client = RiotHTTPClient(
+        config.riot_api_key, key_loader=key_loader, rate_scale=config.rate_scale
+    )
     return RiotAPI(client, config.region, config.routing)
 
 
 @cli.command("init-db")
+@click.option("--wait", is_flag=True, help="Wait for database to become available first")
 @click.pass_context
-def init_db(ctx):
-    """Create PostgreSQL database tables."""
-    from lol_genius.db.connection import init_db as do_init
+@cli_error_handler
+def init_db(ctx, wait):
+    """Run database migrations via dbmate."""
+    import subprocess
 
-    config = _get_config(ctx)
-    do_init(config.database_url)
-    click.echo(f"Database initialized at {config.database_url}")
+    from lol_genius.db.connection import dbmate_url
+
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        config = _get_config(ctx)
+        database_url = config.database_url
+    env = {**os.environ, "DATABASE_URL": dbmate_url(database_url)}
+
+    if wait:
+        subprocess.run(["dbmate", "wait"], env=env, check=True)
+
+    subprocess.run(["dbmate", "up"], env=env, check=True)
+    click.echo("Database migrations applied.")
 
 
 @cli.command("fetch-ddragon")
 @click.pass_context
+@cli_error_handler
 def fetch_ddragon(ctx):
     """Download/update Data Dragon champion data."""
     config = _get_config(ctx)
@@ -75,6 +111,7 @@ def fetch_ddragon(ctx):
 
 @cli.command()
 @click.pass_context
+@cli_error_handler
 def seed(ctx):
     """Seed crawl queue with accounts from League-V4 entries."""
     config = _get_config(ctx)
@@ -94,36 +131,58 @@ def seed(ctx):
 
 
 @cli.command()
-@click.option("--limit", default=None, type=int, help="Override match_count")
-@click.option("--continuous/--no-continuous", default=None, help="Override continuous mode")
 @click.pass_context
-def crawl(ctx, limit, continuous):
-    """Run the match snowball crawler with inline full enrichment."""
+@cli_error_handler
+def crawl(ctx):
+    """Supervisor loop: crawls matches or fetches timelines based on DB crawler_mode setting."""
+    import signal
+    import threading
+    import time
+    from dataclasses import replace
+
     config = _get_config(ctx)
-    overrides = {}
-    if limit:
-        overrides["match_count"] = limit
-    if continuous is not None:
-        overrides["continuous"] = continuous
-    if overrides:
-        from dataclasses import replace
-        config = replace(config, **overrides)
 
     from lol_genius.api.ddragon import DataDragon
     from lol_genius.crawler.snowball import crawl_matches
+    from lol_genius.db.queries import MatchDB
 
     api = _make_api(config)
     ddragon = DataDragon(config.ddragon_cache)
+    db = MatchDB(config.database_url)
+
+    _stop = threading.Event()
+
+    def _handle_stop(signum, frame):
+        _stop.set()
+
+    signal.signal(signal.SIGTERM, _handle_stop)
+    signal.signal(signal.SIGINT, _handle_stop)
 
     try:
-        crawl_matches(api, config.database_url, config, ddragon)
+        while not _stop.is_set():
+            db.conn.rollback()
+            mode = db.get_setting("crawler_mode", "crawl")
+
+            if mode == "fetch_timelines":
+                from lol_genius.crawler.fetch_timelines import fetch_match_timelines
+
+                fetch_match_timelines(api, db, limit=50)
+            else:
+                current = db.get_match_count()
+                batch_config = replace(config, match_count=current + 200, continuous=False)
+                crawl_matches(api, config.database_url, batch_config, ddragon)
+
+            if not _stop.is_set():
+                time.sleep(2)
     finally:
         api.close()
+        db.close()
 
 
 @cli.command("build-features")
 @click.option("--patch", default=None, help="Filter to specific patch")
 @click.pass_context
+@cli_error_handler
 def build_features(ctx, patch):
     """Build feature matrix from enriched data."""
     config = _get_config(ctx)
@@ -136,7 +195,9 @@ def build_features(ctx, patch):
     ddragon = DataDragon(config.ddragon_cache)
 
     try:
-        X, y, patches, timestamps = build_feature_matrix(db, ddragon, patch or config.patch_filter)
+        X, y, patches, timestamps = build_feature_matrix(
+            db, ddragon, patch or config.patch_filter
+        )
         if X.empty:
             click.echo("No enriched matches found. Run 'crawl' first.")
             return
@@ -155,33 +216,102 @@ def build_features(ctx, patch):
         db.close()
 
 
+@cli.command("fetch-timelines")
+@click.pass_context
+@cli_error_handler
+def fetch_timelines(ctx):
+    """Fetch match timelines for enriched matches."""
+    config = _get_config(ctx)
+
+    from lol_genius.crawler.fetch_timelines import fetch_match_timelines
+    from lol_genius.db.queries import MatchDB
+
+    api = _make_api(config)
+    db = MatchDB(config.database_url)
+
+    try:
+        fetch_match_timelines(api, db)
+    finally:
+        api.close()
+        db.close()
+
+
+@cli.command("build-timelines-from-db")
+@click.pass_context
+@cli_error_handler
+def build_timelines_from_db_cmd(ctx):
+    """Synthesize timeline snapshots from existing DB data (no API calls)."""
+    config = _get_config(ctx)
+
+    from lol_genius.crawler.fetch_timelines import build_timelines_from_db
+    from lol_genius.db.queries import MatchDB
+
+    db = MatchDB(config.database_url)
+    try:
+        saved = build_timelines_from_db(db)
+        click.echo(f"Synthesized {saved} timeline snapshots from DB")
+    finally:
+        db.close()
+
+
 @cli.command()
 @click.option("--tune/--no-tune", default=False, help="Run hyperparameter tuning")
+@click.option(
+    "--live/--no-live", default=False, help="Train on timeline features (live model)"
+)
 @click.option("--notes", default=None, help="Notes for this training run")
 @click.pass_context
-def train(ctx, tune, notes):
+@cli_error_handler
+def train(ctx, tune, live, notes):
     """Train XGBoost model."""
     import pandas as pd
 
     config = _get_config(ctx)
     from pathlib import Path
 
-    model_dir = Path(config.model_dir)
-    feat_path = model_dir / "features.parquet"
-    target_path = model_dir / "targets.parquet"
-    patches_path = model_dir / "patches.parquet"
-    timestamps_path = model_dir / "timestamps.parquet"
+    model_type = "live" if live else "pregame"
 
-    if not feat_path.exists():
-        click.echo("No feature matrix found. Run 'build-features' first.")
-        return
+    if live:
+        from lol_genius.db.queries import MatchDB
+        from lol_genius.features.timeline import build_timeline_feature_matrix
 
-    X = pd.read_parquet(feat_path)
-    y = pd.read_parquet(target_path).squeeze()
-    patches = pd.read_parquet(patches_path).squeeze() if patches_path.exists() else None
-    timestamps = pd.read_parquet(timestamps_path).squeeze() if timestamps_path.exists() else None
+        db = MatchDB(config.database_url)
+        try:
+            X, y = build_timeline_feature_matrix(db)
+        finally:
+            db.close()
 
-    click.echo(f"Training on {len(X)} matches with {X.shape[1]} features")
+        if X.empty:
+            click.echo("No timeline data found. Run 'fetch-timelines' first.")
+            return
+
+        patches = None
+        timestamps = None
+    else:
+        model_dir = Path(config.model_dir)
+        feat_path = model_dir / "features.parquet"
+        target_path = model_dir / "targets.parquet"
+        patches_path = model_dir / "patches.parquet"
+        timestamps_path = model_dir / "timestamps.parquet"
+
+        if not feat_path.exists():
+            click.echo("No feature matrix found. Run 'build-features' first.")
+            return
+
+        X = pd.read_parquet(feat_path)
+        y = pd.read_parquet(target_path).squeeze()
+        patches = (
+            pd.read_parquet(patches_path).squeeze() if patches_path.exists() else None
+        )
+        timestamps = (
+            pd.read_parquet(timestamps_path).squeeze()
+            if timestamps_path.exists()
+            else None
+        )
+
+    click.echo(
+        f"Training {model_type} model on {len(X)} samples with {X.shape[1]} features"
+    )
     click.echo(f"Target distribution: {y.mean():.2%} blue wins")
 
     from lol_genius.model.train import train_model, tune_hyperparameters
@@ -191,10 +321,19 @@ def train(ctx, tune, notes):
         best_params = tune_hyperparameters(X, y)
         click.echo(f"Best params: {best_params}")
 
-    model, run_id = train_model(X, y, config.model_dir, patches=patches, timestamps=timestamps, database_url=config.database_url)
+    model, run_id = train_model(
+        X,
+        y,
+        config.model_dir,
+        patches=patches,
+        timestamps=timestamps,
+        database_url=config.database_url,
+        model_type=model_type,
+    )
 
     if notes:
         from lol_genius.db.queries import MatchDB
+
         db = MatchDB(config.database_url)
         try:
             db.update_model_run(run_id, {"notes": notes})
@@ -206,6 +345,7 @@ def train(ctx, tune, notes):
 
 @cli.command()
 @click.pass_context
+@cli_error_handler
 def evaluate(ctx):
     """Evaluate trained model and generate reports."""
     import pandas as pd
@@ -226,11 +366,19 @@ def evaluate(ctx):
     run_id_path = model_dir / "run_id.txt"
     run_id = run_id_path.read_text().strip() if run_id_path.exists() else None
 
-    evaluate_model(model, X_test, y_test, config.model_dir, database_url=config.database_url, run_id=run_id)
+    evaluate_model(
+        model,
+        X_test,
+        y_test,
+        config.model_dir,
+        database_url=config.database_url,
+        run_id=run_id,
+    )
 
 
 @cli.command()
 @click.pass_context
+@cli_error_handler
 def explain(ctx):
     """Generate SHAP analysis and plots."""
     import pandas as pd
@@ -250,13 +398,16 @@ def explain(ctx):
     run_id_path = model_dir / "run_id.txt"
     run_id = run_id_path.read_text().strip() if run_id_path.exists() else None
 
-    explain_model(model, X, config.model_dir, database_url=config.database_url, run_id=run_id)
+    explain_model(
+        model, X, config.model_dir, database_url=config.database_url, run_id=run_id
+    )
     click.echo(f"SHAP plots saved to {model_dir}")
 
 
 @cli.command()
 @click.argument("match_id")
 @click.pass_context
+@cli_error_handler
 def predict(ctx, match_id):
     """Predict outcome for a specific match and show SHAP explanation."""
     config = _get_config(ctx)
@@ -284,7 +435,16 @@ def predict(ctx, match_id):
         red = [p for p in participants if p["team_id"] == 200]
 
         global_champ_wr = db.get_champion_patch_winrates(match.get("patch"))
-        features = _build_match_features(db, ddragon, blue, red, patch_str=match.get("patch", ""), match_id=match_id, game_creation=match.get("game_creation"), global_champ_wr=global_champ_wr)
+        features = _build_match_features(
+            db,
+            ddragon,
+            blue,
+            red,
+            patch_str=match.get("patch", ""),
+            match_id=match_id,
+            game_creation=match.get("game_creation"),
+            global_champ_wr=global_champ_wr,
+        )
         if not features:
             click.echo("Could not build features for this match.")
             return
@@ -295,7 +455,7 @@ def predict(ctx, match_id):
                 X[col] = 0.0
         X = X[feature_names]
 
-        result = explain_single_match(model, X, config.model_dir)
+        explain_single_match(model, X, config.model_dir)
         actual = "Blue" if match["blue_win"] else "Red"
         click.echo(f"\nActual winner: {actual}")
     finally:
@@ -307,6 +467,7 @@ def predict(ctx, match_id):
 @click.option("--detail", default=None, help="Show full detail for a run ID")
 @click.option("--note", nargs=2, default=None, help="Set notes: RUN_ID 'note text'")
 @click.pass_context
+@cli_error_handler
 def runs(ctx, limit, detail, note):
     """List and compare model training runs."""
     import json
@@ -327,29 +488,33 @@ def runs(ctx, limit, detail, note):
             if not run:
                 click.echo(f"Run {detail} not found.")
                 return
-            click.echo(f"\n{'='*60}")
+            click.echo(f"\n{'=' * 60}")
             click.echo(f"  Run: {run['run_id']}")
-            click.echo(f"{'='*60}")
+            click.echo(f"{'=' * 60}")
             click.echo(f"  Created:        {run['created_at']}")
-            click.echo(f"  Matches:        {run['total_matches']:,} (train={run['train_count']:,}, test={run['test_count']:,})")
+            click.echo(
+                f"  Matches:        {run['total_matches']:,} (train={run['train_count']:,}, test={run['test_count']:,})"
+            )
             click.echo(f"  Features:       {run['feature_count']}")
             click.echo(f"  Patches:        {run['patch_min']} - {run['patch_max']}")
             click.echo(f"  Target mean:    {run['target_mean']:.4f}")
             click.echo(f"  Training time:  {run['training_seconds']:.1f}s")
             click.echo(f"  Best iteration: {run['best_iteration']}")
             params = json.loads(run["hyperparameters"])
-            click.echo(f"\n  Hyperparameters:")
+            click.echo("\n  Hyperparameters:")
             for k, v in params.items():
                 click.echo(f"    {k:24s} {v}")
             if run.get("accuracy") is not None:
-                click.echo(f"\n  Metrics:")
+                click.echo("\n  Metrics:")
                 click.echo(f"    Accuracy:  {run['accuracy']:.4f}")
                 click.echo(f"    AUC-ROC:   {run['auc_roc']:.4f}")
                 click.echo(f"    Log Loss:  {run['log_loss']:.4f}")
-                click.echo(f"    CM: TN={run['tn']} FP={run['fp']} FN={run['fn']} TP={run['tp']}")
+                click.echo(
+                    f"    CM: TN={run['tn']} FP={run['fp']} FN={run['fn']} TP={run['tp']}"
+                )
             if run.get("top_features"):
                 feats = json.loads(run["top_features"])
-                click.echo(f"\n  Top SHAP Features:")
+                click.echo("\n  Top SHAP Features:")
                 for f in feats[:10]:
                     click.echo(f"    {f['name']:40s} {f['importance']:.6f}")
             if run.get("notes"):
@@ -362,25 +527,42 @@ def runs(ctx, limit, detail, note):
             click.echo("No training runs recorded yet.")
             return
 
-        click.echo(f"\n{'='*100}")
-        click.echo(f"  {'Run ID':<18s} {'Matches':>8s} {'Feats':>6s} {'Acc':>7s} {'AUC':>7s} {'LogL':>7s} {'Iter':>5s} {'Time':>7s}  Notes")
-        click.echo(f"  {'-'*18} {'-'*8} {'-'*6} {'-'*7} {'-'*7} {'-'*7} {'-'*5} {'-'*7}  {'-'*20}")
+        click.echo(f"\n{'=' * 100}")
+        click.echo(
+            f"  {'Run ID':<18s} {'Matches':>8s} {'Feats':>6s} {'Acc':>7s} {'AUC':>7s} {'LogL':>7s} {'Iter':>5s} {'Time':>7s}  Notes"
+        )
+        click.echo(
+            f"  {'-' * 18} {'-' * 8} {'-' * 6} {'-' * 7} {'-' * 7} {'-' * 7} {'-' * 5} {'-' * 7}  {'-' * 20}"
+        )
         for r in all_runs:
             acc = f"{r['accuracy']:.4f}" if r.get("accuracy") is not None else "   -   "
             auc = f"{r['auc_roc']:.4f}" if r.get("auc_roc") is not None else "   -   "
             ll = f"{r['log_loss']:.4f}" if r.get("log_loss") is not None else "   -   "
-            it = str(r["best_iteration"]) if r.get("best_iteration") is not None else "  -  "
-            tm = f"{r['training_seconds']:.0f}s" if r.get("training_seconds") is not None else "   -   "
+            it = (
+                str(r["best_iteration"])
+                if r.get("best_iteration") is not None
+                else "  -  "
+            )
+            tm = (
+                f"{r['training_seconds']:.0f}s"
+                if r.get("training_seconds") is not None
+                else "   -   "
+            )
             nt = (r.get("notes") or "")[:20]
-            click.echo(f"  {r['run_id']:<18s} {r['total_matches']:>8,} {r['feature_count']:>6} {acc:>7s} {auc:>7s} {ll:>7s} {it:>5s} {tm:>7s}  {nt}")
-        click.echo(f"{'='*100}")
-        click.echo(f"  {len(all_runs)} runs shown. Use --detail RUN_ID for full info.\n")
+            click.echo(
+                f"  {r['run_id']:<18s} {r['total_matches']:>8,} {r['feature_count']:>6} {acc:>7s} {auc:>7s} {ll:>7s} {it:>5s} {tm:>7s}  {nt}"
+            )
+        click.echo(f"{'=' * 100}")
+        click.echo(
+            f"  {len(all_runs)} runs shown. Use --detail RUN_ID for full info.\n"
+        )
     finally:
         db.close()
 
 
 @cli.command()
 @click.pass_context
+@cli_error_handler
 def status(ctx):
     """Show crawler progress: matches collected, queue size, enrichment status."""
     config = _get_config(ctx)
@@ -394,26 +576,44 @@ def status(ctx):
         queue_stats = db.get_queue_stats()
         enrichment = db.get_enrichment_stats()
 
-        click.echo(f"\n{'='*50}")
-        click.echo(f"  lol-genius Status")
-        click.echo(f"{'='*50}")
+        click.echo(f"\n{'=' * 50}")
+        click.echo("  lol-genius Status")
+        click.echo(f"{'=' * 50}")
         click.echo(f"  Matches collected:  {match_count:,}")
         click.echo(f"  Target:             {config.match_count:,}")
-        click.echo(f"  Progress:           {match_count/max(config.match_count,1):.1%}")
+        click.echo(
+            f"  Progress:           {match_count / max(config.match_count, 1):.1%}"
+        )
 
-        click.echo(f"\n  Crawl Queue:")
+        click.echo("\n  Crawl Queue:")
         for status_name, count in sorted(queue_stats.items()):
             click.echo(f"    {status_name:12s} {count:,}")
 
-        click.echo(f"\n  Enrichment:")
-        click.echo(f"    Enriched:  {enrichment['enriched']:,} / {enrichment['total']:,}")
+        click.echo("\n  Enrichment:")
+        click.echo(
+            f"    Enriched:  {enrichment['enriched']:,} / {enrichment['total']:,}"
+        )
         if enrichment["total"] > 0:
-            click.echo(f"    Progress:  {enrichment['enriched']/enrichment['total']:.1%}")
+            click.echo(
+                f"    Progress:  {enrichment['enriched'] / enrichment['total']:.1%}"
+            )
 
         tier_stats = db.get_queue_stats_by_tier()
         if tier_stats:
-            click.echo(f"\n  Seed Distribution by Tier:")
-            tier_order = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER", "UNKNOWN"]
+            click.echo("\n  Seed Distribution by Tier:")
+            tier_order = [
+                "IRON",
+                "BRONZE",
+                "SILVER",
+                "GOLD",
+                "PLATINUM",
+                "EMERALD",
+                "DIAMOND",
+                "MASTER",
+                "GRANDMASTER",
+                "CHALLENGER",
+                "UNKNOWN",
+            ]
             for tier in tier_order:
                 if tier in tier_stats:
                     stats = tier_stats[tier]
@@ -423,7 +623,7 @@ def status(ctx):
 
         rank_dist = db.get_rank_distribution()
         if rank_dist:
-            click.echo(f"\n  Matches by Player Rank (mid laner):")
+            click.echo("\n  Matches by Player Rank (mid laner):")
             for tier, count in rank_dist.items():
                 click.echo(f"    {tier:14s} {count:>6,}")
 
@@ -432,15 +632,15 @@ def status(ctx):
             oldest = datetime.fromtimestamp(age_range[0] / 1000, tz=timezone.utc)
             newest = datetime.fromtimestamp(age_range[1] / 1000, tz=timezone.utc)
             span = newest - oldest
-            click.echo(f"\n  Data Freshness:")
+            click.echo("\n  Data Freshness:")
             click.echo(f"    Oldest match:  {oldest:%Y-%m-%d %H:%M} UTC")
             click.echo(f"    Newest match:  {newest:%Y-%m-%d %H:%M} UTC")
-            click.echo(f"    Time span:     {span.days}d {span.seconds//3600}h")
+            click.echo(f"    Time span:     {span.days}d {span.seconds // 3600}h")
 
         patch_dist = db.get_patch_distribution()
         if patch_dist:
             total_matches = sum(patch_dist.values())
-            click.echo(f"\n  Matches by Patch:")
+            click.echo("\n  Matches by Patch:")
             for patch, count in patch_dist.items():
                 pct = count / total_matches if total_matches else 0
                 click.echo(f"    {patch:14s} {count:>6,}  ({pct:>5.1%})")
@@ -454,6 +654,7 @@ def status(ctx):
 @click.option("--host", default="0.0.0.0", help="Proxy bind host")
 @click.option("--port", default=8080, type=int, help="Proxy bind port")
 @click.pass_context
+@cli_error_handler
 def proxy(ctx, host, port):
     """Start the Riot API proxy server."""
     os.environ.setdefault("PROXY_HOST", host)
@@ -465,6 +666,7 @@ def proxy(ctx, host, port):
     os.environ.setdefault("LOL_GENIUS_RATE_SCALE", str(config.rate_scale))
 
     from lol_genius.proxy.run import main
+
     main()
 
 
@@ -472,6 +674,7 @@ def proxy(ctx, host, port):
 @click.option("--host", default="0.0.0.0", help="Dashboard API bind host")
 @click.option("--port", default=8081, type=int, help="Dashboard API bind port")
 @click.pass_context
+@cli_error_handler
 def dashboard(ctx, host, port):
     """Start the dashboard API server."""
     config = _get_config(ctx)
@@ -484,6 +687,7 @@ def dashboard(ctx, host, port):
         os.environ.setdefault("PROXY_URL", config.proxy_url)
 
     from lol_genius.dashboard.run import main
+
     main()
 
 

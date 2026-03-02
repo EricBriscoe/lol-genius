@@ -97,9 +97,13 @@ def extract_interaction_features(
         r_cf = red_champ_feats[i] if i < len(red_champ_feats) else {}
 
         blue_ap += int(b_cf.get("is_ap_champ", 0))
-        blue_ad += int(not b_cf.get("is_ap_champ", 0) and not b_cf.get("is_mixed_champ", 0))
+        blue_ad += int(
+            not b_cf.get("is_ap_champ", 0) and not b_cf.get("is_mixed_champ", 0)
+        )
         red_ap += int(r_cf.get("is_ap_champ", 0))
-        red_ad += int(not r_cf.get("is_ap_champ", 0) and not r_cf.get("is_mixed_champ", 0))
+        red_ad += int(
+            not r_cf.get("is_ap_champ", 0) and not r_cf.get("is_mixed_champ", 0)
+        )
 
         blue_armor_sum += b_cf.get("champ_armor_base", 33.0)
         red_armor_sum += r_cf.get("champ_armor_base", 33.0)
@@ -123,11 +127,13 @@ def extract_interaction_features(
     features["team_ap_diff"] = float(blue_ap - red_ap)
     features["team_ad_diff"] = float(blue_ad - red_ad)
 
-    blue_entropy = _shannon_entropy([blue_ap, blue_ad, 5 - blue_ap - blue_ad])
-    red_entropy = _shannon_entropy([red_ap, red_ad, 5 - red_ap - red_ad])
+    blue_entropy = _shannon_entropy([blue_ap, blue_ad, max(0, 5 - blue_ap - blue_ad)])
+    red_entropy = _shannon_entropy([red_ap, red_ad, max(0, 5 - red_ap - red_ad)])
     features["team_damage_diversity_diff"] = blue_entropy - red_entropy
 
-    features["team_armor_vs_ap"] = (blue_armor_sum / 5.0) * red_ap - (red_armor_sum / 5.0) * blue_ap
+    features["team_armor_vs_ap"] = (blue_armor_sum / 5.0) * red_ap - (
+        red_armor_sum / 5.0
+    ) * blue_ap
 
     features["frontline_diff"] = float(
         (blue_tags_count["Tank"] + blue_tags_count["Fighter"])
@@ -154,20 +160,24 @@ def extract_interaction_features(
 INTERACTION_FEATURE_NAMES: list[str] = []
 for _pos in POSITION_ORDER:
     _short = POSITION_SHORT[_pos]
-    INTERACTION_FEATURE_NAMES.extend([
-        f"{_short}_tag_advantage",
-        f"{_short}_range_diff",
-        f"{_short}_melee_vs_ranged",
-    ])
-INTERACTION_FEATURE_NAMES.extend([
-    "team_ap_diff",
-    "team_ad_diff",
-    "team_damage_diversity_diff",
-    "team_armor_vs_ap",
-    "frontline_diff",
-    "engage_diff",
-    "backline_diff",
-    "poke_diff",
-    "peel_diff",
-    "dive_diff",
-])
+    INTERACTION_FEATURE_NAMES.extend(
+        [
+            f"{_short}_tag_advantage",
+            f"{_short}_range_diff",
+            f"{_short}_melee_vs_ranged",
+        ]
+    )
+INTERACTION_FEATURE_NAMES.extend(
+    [
+        "team_ap_diff",
+        "team_ad_diff",
+        "team_damage_diversity_diff",
+        "team_armor_vs_ap",
+        "frontline_diff",
+        "engage_diff",
+        "backline_diff",
+        "poke_diff",
+        "peel_diff",
+        "dive_diff",
+    ]
+)

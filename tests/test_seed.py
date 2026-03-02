@@ -1,6 +1,5 @@
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 
-import pytest
 
 from lol_genius.crawler.seed import (
     ENTRIES_PER_PAGE,
@@ -54,6 +53,7 @@ def test_fetch_tier_puuids_round_robin():
     divisions = ["I", "II"]
 
     call_count = {"I": 0, "II": 0}
+
     def mock_entries(tier, division, page):
         call_count[division] += 1
         return [{"puuid": f"{division}_p{page}_{i}"} for i in range(ENTRIES_PER_PAGE)]
@@ -109,7 +109,9 @@ def test_fetch_tier_puuids_all_divisions_exhausted_before_target():
 
 def test_fetch_tier_puuids_truncates_to_target():
     api = MagicMock()
-    api.get_league_entries.return_value = [{"puuid": f"p_{i}"} for i in range(ENTRIES_PER_PAGE)]
+    api.get_league_entries.return_value = [
+        {"puuid": f"p_{i}"} for i in range(ENTRIES_PER_PAGE)
+    ]
 
     result = _fetch_tier_puuids(api, "GOLD", ["I"], target=50)
     assert len(result) == 50
@@ -156,9 +158,11 @@ def test_seed_accounts_calls_per_tier():
     config.target_divisions = ["I", "II", "III", "IV"]
     config.seed_pages = 1
 
-    api.get_league_entries.return_value = [{"puuid": f"p_{i}"} for i in range(ENTRIES_PER_PAGE)]
+    api.get_league_entries.return_value = [
+        {"puuid": f"p_{i}"} for i in range(ENTRIES_PER_PAGE)
+    ]
 
-    total = seed_accounts(api, db, config)
+    seed_accounts(api, db, config)
 
     assert db.add_puuids_to_queue.call_count == 2
     calls = db.add_puuids_to_queue.call_args_list
@@ -176,7 +180,9 @@ def test_seed_accounts_per_tier_target_calculation():
     config.target_divisions = ["I", "II"]
     config.seed_pages = 2
 
-    api.get_league_entries.return_value = [{"puuid": f"p_{i}"} for i in range(ENTRIES_PER_PAGE)]
+    api.get_league_entries.return_value = [
+        {"puuid": f"p_{i}"} for i in range(ENTRIES_PER_PAGE)
+    ]
 
     seed_accounts(api, db, config)
 
@@ -193,7 +199,9 @@ def test_seed_tier_reuses_helper():
     config = MagicMock()
     config.target_divisions = ["I", "II"]
 
-    api.get_league_entries.return_value = [{"puuid": f"p_{i}"} for i in range(ENTRIES_PER_PAGE)]
+    api.get_league_entries.return_value = [
+        {"puuid": f"p_{i}"} for i in range(ENTRIES_PER_PAGE)
+    ]
 
     result = seed_tier(api, db, config, "PLATINUM", pages=1)
     assert result == 50
