@@ -72,6 +72,7 @@ async def lifespan(app: FastAPI):
     )
     yield
     pool.close()
+    cache.stop()
     log.info("Proxy shut down")
 
 
