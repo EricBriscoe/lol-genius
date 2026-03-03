@@ -322,7 +322,7 @@ def predict_live_game(
     spectator_data: dict,
     dsn: str | None = None,
 ) -> dict:
-    model, feature_names = load_model(model_dir)
+    model, feature_names = load_model(model_dir, "pregame")
 
     raw = spectator_data.get("participants", [])
     if len(raw) != 10:

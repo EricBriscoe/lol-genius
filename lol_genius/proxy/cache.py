@@ -37,7 +37,7 @@ class ProxyCache:
         try:
             return len(json.dumps(value).encode())
         except Exception:
-            return 256
+            return 512
 
     def _make_key(self, namespace: str, key: str) -> str:
         return f"{namespace}:{key}"

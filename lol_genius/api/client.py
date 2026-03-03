@@ -225,7 +225,7 @@ class RiotHTTPClient:
             try:
                 response = self.client.get(url)
             except httpx.RequestError as e:
-                log.warning(f"Request error: {e}")
+                log.warning(f"Request error fetching {url}: {e}", exc_info=True)
                 if attempt < max_retries - 1:
                     time.sleep(exponential_backoff(attempt))
                     continue

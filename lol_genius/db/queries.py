@@ -205,33 +205,30 @@ class MatchDB:
         self._maybe_commit()
         return added
 
-    def get_pending_puuids(
-        self, limit: int = 100, tier_weights: dict[str, int] | None = None
+    def claim_pending_puuids(
+        self, limit: int = 50, tier_weights: dict[str, int] | None = None
     ) -> list[str]:
-        if tier_weights:
-            ranked = sorted(tier_weights.items(), key=lambda x: x[1])
-            extra = {t: i + 1 for i, (t, _) in enumerate(ranked)}
-            tier_case = _tier_case_sql(extra)
-        else:
-            tier_case = _tier_case_sql({"UNKNOWN": 11})
-        sql = f"""
-            SELECT puuid FROM (
-                SELECT puuid,
-                    ROW_NUMBER() OVER (PARTITION BY seed_tier ORDER BY added_at) AS rn,
-                    CASE seed_tier {tier_case} ELSE 99 END AS tier_order
-                FROM crawl_queue WHERE status = 'pending'
-            ) sub
-            ORDER BY rn, tier_order
-            LIMIT %s
-        """
-        rows = self._fetchall(sql, (limit,))
-        return [r["puuid"] for r in rows]
-
-    def mark_puuid_processing(self, puuid: str) -> None:
-        self._execute(
-            "UPDATE crawl_queue SET status = 'processing' WHERE puuid = %s", (puuid,)
-        )
-        self._maybe_commit()
+        with self.transaction():
+            cur = self._execute(
+                """
+                WITH to_claim AS (
+                    SELECT puuid, seed_tier FROM crawl_queue
+                    WHERE status = 'pending'
+                    ORDER BY added_at
+                    LIMIT %s
+                    FOR UPDATE SKIP LOCKED
+                )
+                UPDATE crawl_queue SET status = 'processing'
+                FROM to_claim
+                WHERE crawl_queue.puuid = to_claim.puuid
+                RETURNING crawl_queue.puuid, to_claim.seed_tier
+                """,
+                (limit,),
+            )
+            rows = cur.fetchall()
+        if not rows or not tier_weights:
+            return [r["puuid"] for r in rows]
+        return [r["puuid"] for r in sorted(rows, key=lambda r: tier_weights.get(r["seed_tier"], 999))]
 
     def mark_puuid_done(self, puuid: str) -> None:
         self._execute(
@@ -781,6 +778,49 @@ class MatchDB:
             tuple(SNAPSHOT_SECONDS),
         )
         return [dict(r) for r in rows]
+
+    def get_match_pregame_participants(self, match_ids: list[str]) -> list[dict]:
+        if not match_ids:
+            return []
+        rows = self._fetchall(
+            """SELECT p.match_id, p.team_id, p.champion_id, p.champion_name, p.puuid,
+                      sr.tier, sr.rank, sr.league_points, sr.wins, sr.losses,
+                      COALESCE(sr.hot_streak, 0) AS hot_streak,
+                      COALESCE(sr.veteran, 0) AS veteran,
+                      COALESCE(cm.mastery_points, 0) AS mastery_points,
+                      COALESCE(cm.mastery_level, 0) AS mastery_level
+               FROM participants p
+               LEFT JOIN (
+                   SELECT DISTINCT ON (puuid) puuid, tier, rank, league_points, wins, losses,
+                          hot_streak, veteran
+                   FROM summoner_ranks
+                   WHERE queue_type = 'RANKED_SOLO_5x5'
+                   ORDER BY puuid, fetched_at DESC
+               ) sr ON sr.puuid = p.puuid
+               LEFT JOIN champion_mastery cm ON cm.puuid = p.puuid
+                   AND cm.champion_id = p.champion_id
+               WHERE p.match_id = ANY(%s)""",
+            (match_ids,),
+        )
+        return [dict(r) for r in rows]
+
+    def get_ranks_and_mastery_by_puuids(self, puuids: list[str]) -> tuple[list[dict], list[dict]]:
+        if not puuids:
+            return [], []
+        ranks = self._fetchall(
+            """SELECT DISTINCT ON (puuid) puuid, tier, rank, league_points, wins, losses,
+                      COALESCE(hot_streak, 0) AS hot_streak,
+                      COALESCE(veteran, 0) AS veteran
+               FROM summoner_ranks
+               WHERE puuid = ANY(%s) AND queue_type = 'RANKED_SOLO_5x5'
+               ORDER BY puuid, fetched_at DESC""",
+            (puuids,),
+        )
+        masteries = self._fetchall(
+            "SELECT puuid, champion_id, mastery_points, mastery_level FROM champion_mastery WHERE puuid = ANY(%s)",
+            (puuids,),
+        )
+        return [dict(r) for r in ranks], [dict(r) for r in masteries]
 
     def bulk_update_pregame_probs(self, pairs: list[tuple[str, float]]) -> None:
         for match_id, prob in pairs:

@@ -51,6 +51,9 @@ PARAM_PRESETS = {
     },
 }
 
+_TEST_SPLIT_RATIO = 0.2
+_RANDOM_SEED = 42
+
 
 def _compute_patch_weights(
     patches: "pd.Series", decay_factor: float = 0.5
@@ -100,7 +103,7 @@ def select_features(
 
     corr = X.corr().abs()
     upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
-    mi = mutual_info_classif(X.fillna(0), y, random_state=42)
+    mi = mutual_info_classif(X.fillna(0), y, random_state=_RANDOM_SEED)
     mi_series = pd.Series(mi, index=X.columns)
 
     to_drop: set[str] = set()
@@ -156,7 +159,7 @@ def train_model(
             .drop_duplicates("match_id")
             .sort_values("game_creation")
         )
-        n_test_matches = max(1, int(len(unique_matches) * 0.2))
+        n_test_matches = max(1, int(len(unique_matches) * _TEST_SPLIT_RATIO))
         test_match_set = set(unique_matches["match_id"].iloc[-n_test_matches:])
         test_mask = match_ids.isin(test_match_set).values
         train_mask = ~test_mask
@@ -172,7 +175,7 @@ def train_model(
         )
     elif timestamps is not None and len(timestamps) > 0:
         sort_idx = np.argsort(timestamps.values)
-        n_test = int(len(X) * 0.2)
+        n_test = int(len(X) * _TEST_SPLIT_RATIO)
         train_idx = sort_idx[:-n_test]
         test_idx = sort_idx[-n_test:]
         X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
@@ -181,11 +184,11 @@ def train_model(
         log.info("Using temporal train/test split")
     elif sample_weights is not None:
         X_train, X_test, y_train, y_test, w_train, _ = train_test_split(
-            X, y, sample_weights, test_size=0.2, stratify=y, random_state=42
+            X, y, sample_weights, test_size=_TEST_SPLIT_RATIO, stratify=y, random_state=_RANDOM_SEED
         )
     else:
         X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, stratify=y, random_state=42
+            X, y, test_size=_TEST_SPLIT_RATIO, stratify=y, random_state=_RANDOM_SEED
         )
         w_train = None
 
@@ -383,6 +386,10 @@ def load_model(
         model_path = Path(model_dir) / model_type
         if not (model_path / "model.json").exists():
             model_path = Path(model_dir)
+        if not (model_path / "model.json").exists():
+            raise FileNotFoundError(
+                f"No {model_type} model found. Go to Model Training to train one first."
+            )
         model = xgb.Booster()
         model.load_model(str(model_path / "model.json"))
         with open(model_path / "feature_names.json") as f:

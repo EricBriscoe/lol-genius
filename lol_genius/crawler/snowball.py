@@ -138,7 +138,7 @@ def _enrich_match_participants(
     for p in participants:
         puuid = p["puuid"]
         summoner_id = p.get("summoner_id", "")
-        needs, _ = check_enrich_needed(
+        needs = check_enrich_needed(
             db, puuid, summoner_id, start_time_ms=start_time_ms
         )
         if any(needs.values()):
@@ -299,10 +299,10 @@ def _crawl_batch(
     tier_weights: dict[str, int] | None = None,
 ) -> int:
     db = MatchDB(database_url)
-    puuids = db.get_pending_puuids(limit=puuid_limit, tier_weights=tier_weights)
+    puuids = db.claim_pending_puuids(limit=puuid_limit, tier_weights=tier_weights)
     if not puuids:
         _auto_seed(api, db, config)
-        puuids = db.get_pending_puuids(limit=puuid_limit, tier_weights=tier_weights)
+        puuids = db.claim_pending_puuids(limit=puuid_limit, tier_weights=tier_weights)
         if not puuids:
             db.close()
             log.warning("Crawl queue still empty after auto-seed. Stopping.")
@@ -320,9 +320,6 @@ def _crawl_batch(
         for puuid in puuids:
             if stopper.should_stop():
                 break
-
-            db.mark_puuid_processing(puuid)
-            db.flush()
 
             match_ids = api.get_match_ids(
                 puuid, count=20, queue=420, start_time=match_start_time

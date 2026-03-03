@@ -117,3 +117,11 @@ class DataDragon:
 
     def is_melee(self, champion_id: int) -> bool:
         return self.get_attack_range(champion_id) <= 200
+
+    def get_champion_id_by_name(self, name: str) -> int | None:
+        if not self._champions:
+            self.fetch_champion_data()
+        for champ_id, data in self._champions.items():
+            if data.get("id") == name or data.get("name") == name:
+                return champ_id
+        return None
