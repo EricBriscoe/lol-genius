@@ -241,6 +241,16 @@ class LiveGamePoller:
         self.status: str = "waiting"
         self._game_id: int | None = None
         self._last_game_time: float | None = None
+        self._explainer: object | None = None
+        self._explainer_model_id: int | None = None
+
+    def _get_explainer(self, model):
+        import shap
+        model_id = id(model)
+        if self._explainer is None or self._explainer_model_id != model_id:
+            self._explainer = shap.TreeExplainer(model)
+            self._explainer_model_id = model_id
+        return self._explainer
 
     def start(self) -> None:
         self._stop_event.clear()
@@ -467,6 +477,20 @@ class LiveGamePoller:
         else:
             prob = float(np.interp(prob, cal["x_thresholds"], cal["y_thresholds"]))
 
+        try:
+            explainer = self._get_explainer(model)
+            shap_values = explainer.shap_values(feat_df)
+            sv = shap_values[0] if len(shap_values.shape) > 1 else shap_values
+            top_factors = [
+                {"feature": name, "impact": round(float(imp), 4)}
+                for name, imp in sorted(
+                    zip(feature_names, sv), key=lambda x: abs(x[1]), reverse=True
+                )[:8]
+            ]
+        except Exception:
+            log.debug("SHAP computation failed", exc_info=True)
+            top_factors = []
+
         update = {
             "status": "ok",
             "game_time": game_state.get("game_time", 0),
@@ -479,6 +503,7 @@ class LiveGamePoller:
             "inhibitor_diff": game_state.get("inhibitor_diff", 0),
             "elder_diff": game_state.get("elder_diff", 0),
             "game_reset": game_reset,
+            "top_factors": top_factors,
         }
         with self._lock:
             self.status = "ok"

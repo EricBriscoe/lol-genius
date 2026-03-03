@@ -14,6 +14,7 @@ import Card from "../components/Card";
 import { lookupPlayer, predictLiveGame } from "../api";
 import { tooltipStyle, sectionTitle, primaryButton } from "../styles";
 import type { PredictLookup, PredictResult, PredictParticipant } from "../types";
+import { formatFeatureName } from "../utils";
 
 type Stage = "idle" | "searching" | "not_in_game" | "predicting" | "result" | "error";
 
@@ -46,12 +47,6 @@ function formatRank(rank: PredictParticipant["rank"]): string {
   return `${rank.tier[0]}${rank.tier.slice(1).toLowerCase()} ${rank.rank}`;
 }
 
-function formatFeatureName(name: string): string {
-  return name
-    .replace(/^(blue|red)_/, "")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
 
 export default function LivePredict() {
   const [riotId, setRiotId] = useState("");

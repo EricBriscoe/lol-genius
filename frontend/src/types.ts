@@ -64,6 +64,7 @@ export interface LiveGameUpdate {
   game_reset?: boolean;
   status?: string;
   error?: string;
+  top_factors?: PredictFactor[];
 }
 
 export interface LiveGameStatus {
