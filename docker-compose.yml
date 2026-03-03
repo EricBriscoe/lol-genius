@@ -30,6 +30,7 @@ services:
     environment:
       - LOL_GENIUS_REGION=na1
       - LOL_GENIUS_ROUTING=americas
+      - PROXY_CACHE_MAX_MB=256
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/riot/v1/health"]
       interval: 30s

@@ -29,7 +29,7 @@ class KeyPool:
         self._keys: list[KeyState] = []
         for i, key in enumerate(api_keys):
             client = RiotHTTPClient(key, auth_backoff=False, rate_scale=rate_scale)
-            label = f"key_{i}_{key[-8:]}"
+            label = f"key_{i}"
             self._keys.append(KeyState(client=client, key_label=label))
         self._index = 0
         self._lock = threading.Lock()

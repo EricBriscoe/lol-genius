@@ -97,13 +97,22 @@ async def distributions(request: Request):
     return await asyncio.to_thread(_query)
 
 
+_VALID_MODEL_TYPES = {"pregame", "live"}
+
+
 @router.get("/model/runs")
-async def model_runs(request: Request, model_type: str | None = None):
+async def model_runs(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    model_type: str | None = Query(default=None),
+):
+    if model_type is not None and model_type not in _VALID_MODEL_TYPES:
+        return JSONResponse({"error": "Invalid model_type"}, status_code=400)
     pool = request.app.state.pool
 
     def _query():
         with pooled_db(pool) as db:
-            runs = db.get_model_runs(limit=50, model_type=model_type)
+            runs = db.get_model_runs(limit=limit, model_type=model_type)
             return [_serialize_model_run(dict(r)) for r in runs]
 
     return await asyncio.to_thread(_query)
@@ -155,7 +164,7 @@ async def trigger_training(request: Request):
     auto_tune = body.get("auto_tune", False)
     model_type = body.get("model_type", "pregame")
 
-    if model_type not in ("pregame", "live"):
+    if model_type not in _VALID_MODEL_TYPES:
         return JSONResponse({"error": "Invalid model_type"}, status_code=400)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
@@ -217,9 +226,12 @@ def _run_training_pipeline(
         if model_type == "live":
             db = MatchDB(dsn)
             try:
+                from lol_genius.api.ddragon import DataDragon
                 from lol_genius.features.timeline import build_timeline_feature_matrix
 
-                X, y, match_ids, game_creations = build_timeline_feature_matrix(db, model_type="live")
+                X, y, match_ids, game_creations = build_timeline_feature_matrix(
+                    db, model_type="live", ddragon=DataDragon(ddragon_cache)
+                )
             finally:
                 db.close()
             patches = None
@@ -446,6 +458,8 @@ async def predict_live(request: Request):
     try:
         result = await asyncio.to_thread(_predict)
         return result
+    except FileNotFoundError as e:
+        return JSONResponse({"error": str(e)}, status_code=503)
     except Exception:
         log.exception("Prediction failed")
         return JSONResponse({"error": "Internal error"}, status_code=500)
@@ -462,18 +476,32 @@ async def live_game_start(request: Request):
         pass
 
     host = body.get("host", "localhost")
-    port = int(body.get("port", 2999))
+    try:
+        port = int(body.get("port", 2999))
+    except (ValueError, TypeError):
+        return JSONResponse({"error": "port must be an integer"}, status_code=400)
+    if not (1024 <= port <= 65535):
+        return JSONResponse({"error": "port must be between 1024 and 65535"}, status_code=400)
     pregame_win_prob = body.get("pregame_win_prob")
     if pregame_win_prob is not None:
         pregame_win_prob = float(pregame_win_prob)
     model_dir = request.app.state.model_dir
+    dsn = request.app.state.dsn
+    proxy_url = request.app.state.proxy_url
+    ddragon_cache = request.app.state.ddragon_cache
 
     from lol_genius.predict.live_client import LiveGamePoller
 
     with _poller_lock:
         if _live_game_poller is not None:
             _live_game_poller.stop()
-        _live_game_poller = LiveGamePoller(host, port, model_dir, _push_sse, pregame_win_prob=pregame_win_prob)
+        _live_game_poller = LiveGamePoller(
+            host, port, model_dir, _push_sse,
+            pregame_win_prob=pregame_win_prob,
+            dsn=dsn,
+            proxy_url=proxy_url,
+            ddragon_cache=ddragon_cache,
+        )
         _live_game_poller.start()
     return {"status": "started", "host": host, "port": port}
 

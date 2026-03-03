@@ -260,12 +260,15 @@ def train(ctx, tune, live, notes):
     model_type = "live" if live else "pregame"
 
     if live:
+        from lol_genius.api.ddragon import DataDragon
         from lol_genius.db.queries import MatchDB
         from lol_genius.features.timeline import build_timeline_feature_matrix
 
         db = MatchDB(config.database_url)
         try:
-            X, y, match_ids, game_creations = build_timeline_feature_matrix(db, model_type="live")
+            X, y, match_ids, game_creations = build_timeline_feature_matrix(
+                db, model_type="live", ddragon=DataDragon(config.ddragon_cache)
+            )
         finally:
             db.close()
 

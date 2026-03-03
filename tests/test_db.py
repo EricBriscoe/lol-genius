@@ -197,25 +197,22 @@ def test_crawl_queue(db):
     added_again = db.add_puuids_to_queue(["p2", "p4"])
     assert added_again == 1
 
-    pending = db.get_pending_puuids(limit=10)
-    assert len(pending) == 4
-
-    db.mark_puuid_processing("p1")
-    pending = db.get_pending_puuids(limit=10)
-    assert "p1" not in pending
+    claimed = db.claim_pending_puuids(limit=10)
+    assert len(claimed) == 4
+    assert "p1" in claimed
 
     db.mark_puuid_done("p1")
     stats = db.get_queue_stats()
     assert stats.get("done", 0) == 1
 
 
-def test_get_pending_puuids_tier_weights(db):
+def test_claim_pending_puuids_tier_weights(db):
     db.add_puuids_to_queue(["d1", "d2", "d3"], tier="DIAMOND")
     db.add_puuids_to_queue(["g1", "g2"], tier="GOLD")
     db.add_puuids_to_queue(["i1"], tier="IRON")
 
     tier_weights = {"IRON": 5, "GOLD": 50, "DIAMOND": 200}
-    result = db.get_pending_puuids(limit=6, tier_weights=tier_weights)
+    result = db.claim_pending_puuids(limit=6, tier_weights=tier_weights)
 
     assert len(result) == 6
     iron_idx = result.index("i1")
@@ -605,9 +602,8 @@ def test_flush_persists_in_batch(test_dsn, db):
     db.end_batch()
 
     db2 = MatchDB(test_dsn)
-    pending = db2.get_pending_puuids(limit=10)
-    assert "flush_p1" in pending
-    assert "flush_p2" in pending
+    stats = db2.get_queue_stats()
+    assert stats.get("pending", 0) >= 2
     db2.close()
 
 
@@ -617,8 +613,8 @@ def test_maybe_commit_auto_in_non_batch(test_dsn, db):
     db.add_puuids_to_queue(["auto_p1"])
 
     db2 = MatchDB(test_dsn)
-    pending = db2.get_pending_puuids(limit=10)
-    assert "auto_p1" in pending
+    stats = db2.get_queue_stats()
+    assert stats.get("pending", 0) >= 1
     db2.close()
 
 

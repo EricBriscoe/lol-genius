@@ -49,7 +49,7 @@ def check_enrich_needed(
     puuid: str,
     summoner_id: str,
     start_time_ms: int | None = None,
-) -> tuple[dict[str, bool], dict | None]:
+) -> dict[str, bool]:
     needs = {"rank": False, "mastery": False, "stats": False}
 
     if not db.has_recent_rank(puuid):
@@ -61,7 +61,7 @@ def check_enrich_needed(
     if not stats or stats["games_played"] < 1:
         needs["stats"] = True
 
-    return needs, None
+    return needs
 
 
 def fetch_enrichment(

@@ -87,11 +87,10 @@ def _make_match(
 
 
 def test_check_enrich_needed_all_missing(db):
-    needs, precomputed = check_enrich_needed(db, "new_puuid", "summ_1")
+    needs = check_enrich_needed(db, "new_puuid", "summ_1")
     assert needs["rank"] is True
     assert needs["mastery"] is True
     assert needs["stats"] is True
-    assert precomputed is None
 
 
 def test_check_enrich_needed_all_present(db):
@@ -131,11 +130,10 @@ def test_check_enrich_needed_all_present(db):
         ]
     )
 
-    needs, precomputed = check_enrich_needed(db, "p1", "s1")
+    needs = check_enrich_needed(db, "p1", "s1")
     assert needs["rank"] is False
     assert needs["mastery"] is False
     assert needs["stats"] is False
-    assert precomputed is None
 
 
 def test_check_enrich_needed_stats_satisfied_by_db(db):
@@ -175,7 +173,7 @@ def test_check_enrich_needed_stats_satisfied_by_db(db):
         ]
     )
 
-    needs, _ = check_enrich_needed(db, "stat_p1", "s1")
+    needs = check_enrich_needed(db, "stat_p1", "s1")
     assert needs["rank"] is False
     assert needs["mastery"] is False
     assert needs["stats"] is False
@@ -305,11 +303,10 @@ def test_check_enrich_needed_stats_from_db_returns_none(db):
         ]
     )
 
-    needs, precomputed = check_enrich_needed(db, "no_stats_p", "s1")
+    needs = check_enrich_needed(db, "no_stats_p", "s1")
     assert needs["rank"] is False
     assert needs["mastery"] is False
     assert needs["stats"] is True
-    assert precomputed is None
 
 
 def test_write_enrichment_with_opportunistic_matches(db):
