@@ -13,7 +13,8 @@ import { Wifi, WifiOff, Play, Square, AlertTriangle } from "lucide-react";
 import Card from "../components/Card";
 import { startLiveGame, stopLiveGame, fetchLiveGameStatus } from "../api";
 import { sectionTitle } from "../styles";
-import type { LiveGameUpdate, LiveGameStatus } from "../types";
+import type { LiveGameUpdate, LiveGameStatus, PredictFactor } from "../types";
+import { formatFeatureName } from "../utils";
 
 interface Props {
   latestUpdate: LiveGameUpdate | null;
@@ -41,6 +42,57 @@ function StatBox({ label, value, color }: { label: string; value: string | numbe
     }}>
       <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
       <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: color || "var(--text-primary)" }}>{value}</div>
+    </div>
+  );
+}
+
+const FEATURE_LABEL_OVERRIDES: Record<string, string> = {
+  kill_diff: "Kill Lead",
+  tower_diff: "Tower Lead",
+  dragon_diff: "Dragon Lead",
+  cs_diff: "CS Lead",
+  inhibitor_diff: "Inhibitor Lead",
+  elder_diff: "Elder Lead",
+  pregame_blue_win_prob: "Pregame Prediction",
+  game_time_seconds: "Game Time",
+  avg_rank_diff: "Avg Rank",
+  avg_winrate_diff: "Winrate Adv.",
+  avg_mastery_diff: "Mastery Adv.",
+  avg_champ_wr_diff: "Champ WR Adv.",
+};
+
+function featureLabel(name: string): string {
+  return FEATURE_LABEL_OVERRIDES[name] ?? formatFeatureName(name);
+}
+
+function KeyFactors({ factors }: { factors: PredictFactor[] }) {
+  const maxImpact = Math.max(...factors.map((f) => Math.abs(f.impact)), 0.001);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+      {factors.map((f) => {
+        const label = featureLabel(f.feature);
+        const pct = (Math.abs(f.impact) / maxImpact) * 100;
+        const positive = f.impact >= 0;
+        return (
+          <div key={f.feature} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 140, textAlign: "right", fontSize: 12, color: "var(--text-secondary)", flexShrink: 0 }}>
+              {label}
+            </div>
+            <div style={{ flex: 1, height: 12, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
+              <div style={{
+                width: `${pct}%`,
+                height: "100%",
+                background: positive ? "var(--accent)" : "var(--red)",
+                borderRadius: 4,
+                transition: "width 0.4s ease",
+              }} />
+            </div>
+            <div className="mono" style={{ width: 52, fontSize: 11, color: positive ? "var(--accent)" : "var(--red)", textAlign: "right", flexShrink: 0 }}>
+              {positive ? "+" : ""}{f.impact.toFixed(3)}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -241,6 +293,13 @@ export default function LiveGame({ latestUpdate }: Props) {
             <StatBox label="Elder Diff" value={current.elder_diff >= 0 ? `+${current.elder_diff}` : current.elder_diff} color={diffColor(current.elder_diff)} />
           </div>
         </>
+      )}
+
+      {current?.top_factors && current.top_factors.length > 0 && (
+        <Card>
+          <h3 style={sectionTitle}>Key Factors</h3>
+          <KeyFactors factors={current.top_factors} />
+        </Card>
       )}
 
       {history.length > 1 && (
