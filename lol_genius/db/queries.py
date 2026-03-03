@@ -284,9 +284,9 @@ class MatchDB:
 
     def get_timeline_stats(self) -> dict:
         row = self._fetchone("""
-            SELECT COUNT(*) AS total, COUNT(DISTINCT t.match_id) AS fetched
-            FROM match_enrichment_status e
-            LEFT JOIN match_timelines t ON t.match_id = e.match_id
+            SELECT
+                (SELECT COUNT(*) FROM match_enrichment_status WHERE enriched = 1) AS total,
+                (SELECT COUNT(DISTINCT match_id) FROM match_timelines) AS fetched
         """)
         return {"fetched": row["fetched"] or 0, "total": row["total"] or 0}
 
