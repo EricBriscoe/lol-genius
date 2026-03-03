@@ -189,6 +189,15 @@ def train_model(
         )
         w_train = None
 
+    if match_ids is not None and len(match_ids) > 0:
+        total_match_count = int(match_ids.nunique())
+        train_match_count = int(match_ids.reindex(X_train.index).nunique())
+        test_match_count = int(match_ids.reindex(X_test.index).nunique())
+    else:
+        total_match_count = len(X)
+        train_match_count = len(X_train)
+        test_match_count = len(X_test)
+
     dtrain = xgb.DMatrix(
         X_train, label=y_train, feature_names=list(X.columns), weight=w_train
     )
@@ -237,9 +246,9 @@ def train_model(
                 {
                     "run_id": run_id,
                     "model_type": model_type,
-                    "total_matches": len(X),
-                    "train_count": len(X_train),
-                    "test_count": len(X_test),
+                    "total_matches": total_match_count,
+                    "train_count": train_match_count,
+                    "test_count": test_match_count,
                     "feature_count": X.shape[1],
                     "patch_min": patch_min,
                     "patch_max": patch_max,
