@@ -65,7 +65,7 @@ def build_timeline_feature_matrix(db, model_type: str = "pregame") -> tuple:
     if model_type == "live":
         # Defaults to 0.5 (neutral) when pregame model hasn't run for this match.
         # The live model was trained with this column, so it must always be provided.
-        df["pregame_blue_win_prob"] = df["pregame_blue_win_prob"].fillna(0.5)
+        df["pregame_blue_win_prob"] = df["pregame_blue_win_prob"].fillna(0.5).astype(float)
         feature_names = LIVE_FEATURE_NAMES
     else:
         feature_names = TIMELINE_FEATURE_NAMES
