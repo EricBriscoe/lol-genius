@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 _training_lock = threading.Lock()
+_poller_lock = threading.Lock()
 _training_status: dict | None = None
 _sse_events: deque[dict] = deque(maxlen=500)
 _live_game_poller = None
@@ -136,14 +137,11 @@ async def training_status():
 
 @router.post("/model/train")
 async def trigger_training(request: Request):
-    global _training_status
-
-    if not _training_lock.acquire(blocking=False):
+    if _training_lock.locked():
         return JSONResponse(
             {"error": "Training already in progress", "status": _training_status},
             status_code=409,
         )
-    _training_lock.release()
 
     body = {}
     try:
@@ -156,6 +154,9 @@ async def trigger_training(request: Request):
     custom_params = body.get("params")
     auto_tune = body.get("auto_tune", False)
     model_type = body.get("model_type", "pregame")
+
+    if model_type not in ("pregame", "live"):
+        return JSONResponse({"error": "Invalid model_type"}, status_code=400)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     from lol_genius.model.train import DEFAULT_PARAMS, PARAM_PRESETS
@@ -218,7 +219,7 @@ def _run_training_pipeline(
             try:
                 from lol_genius.features.timeline import build_timeline_feature_matrix
 
-                X, y = build_timeline_feature_matrix(db)
+                X, y, match_ids, game_creations = build_timeline_feature_matrix(db, model_type="live")
             finally:
                 db.close()
             patches = None
@@ -230,7 +231,7 @@ def _run_training_pipeline(
             db = MatchDB(dsn)
             ddragon = DataDragon(ddragon_cache)
             try:
-                X, y, patches, timestamps = build_feature_matrix(db, ddragon)
+                X, y, patches, timestamps, match_ids = build_feature_matrix(db, ddragon)
             finally:
                 db.close()
 
@@ -240,15 +241,19 @@ def _run_training_pipeline(
             y.to_frame().to_parquet(out_dir / "targets.parquet")
             patches.to_frame().to_parquet(out_dir / "patches.parquet")
             timestamps.to_frame().to_parquet(out_dir / "timestamps.parquet")
+            match_ids.to_frame().to_parquet(out_dir / "match_ids.parquet")
+            game_creations = None
 
         if X.empty:
             _set_stage({"stage": "error", "error": "No training data found"})
             return
 
+        match_count = match_ids.nunique() if match_ids is not None and len(match_ids) > 0 else len(X)
+
         train_params = None
         tuned_num_round = 1000
         if resolved_params == "__auto_tune__":
-            _set_stage({"stage": "tuning", "run_id": run_id_hint, "matches": len(X), "features": X.shape[1]})
+            _set_stage({"stage": "tuning", "run_id": run_id_hint, "matches": match_count, "features": X.shape[1]})
 
             from lol_genius.model.train import tune_hyperparameters
 
@@ -258,7 +263,7 @@ def _run_training_pipeline(
         elif isinstance(resolved_params, dict):
             train_params = resolved_params
 
-        _set_stage({"stage": "training", "run_id": run_id_hint, "matches": len(X), "features": X.shape[1]})
+        _set_stage({"stage": "training", "run_id": run_id_hint, "matches": match_count, "features": X.shape[1]})
 
         train_kwargs = dict(
             patches=patches,
@@ -267,10 +272,32 @@ def _run_training_pipeline(
             params=train_params,
             model_type=model_type,
         )
+        if model_type == "live":
+            train_kwargs["match_ids"] = match_ids
+            train_kwargs["game_creations"] = game_creations
         if resolved_params == "__auto_tune__":
             train_kwargs["num_boost_round"] = tuned_num_round
 
         model, actual_run_id = train_model(X, y, model_dir, **train_kwargs)
+
+        if model_type == "pregame" and match_ids is not None and not match_ids.empty:
+            import xgboost as xgb
+            from lol_genius.model.train import load_model as _load_model
+
+            try:
+                m, feat_names = _load_model(model_dir, "pregame")
+                feat_df = X[[c for c in feat_names if c in X.columns]]
+                dmat = xgb.DMatrix(feat_df, feature_names=feat_names)
+                probs = m.predict(dmat)
+                pairs = list(zip(match_ids.tolist(), probs.tolist()))
+                db3 = MatchDB(dsn)
+                try:
+                    db3.bulk_update_pregame_probs(pairs)
+                    log.info("Stored pregame probs for %d matches", len(pairs))
+                finally:
+                    db3.close()
+            except Exception as e:
+                log.warning("Could not store pregame probs: %s", e)
 
         if notes:
             db2 = MatchDB(dsn)
@@ -424,28 +451,6 @@ async def predict_live(request: Request):
         return JSONResponse({"error": "Internal error"}, status_code=500)
 
 
-@router.post("/timelines/build-from-db")
-async def build_timelines_from_db(request: Request):
-    dsn = request.app.state.dsn
-
-    def _run():
-        from lol_genius.crawler.fetch_timelines import build_timelines_from_db as _build
-        from lol_genius.db.queries import MatchDB
-
-        db = MatchDB(dsn)
-        try:
-            return _build(db)
-        finally:
-            db.close()
-
-    try:
-        saved = await asyncio.to_thread(_run)
-        return {"saved": saved}
-    except Exception:
-        log.exception("build_timelines_from_db failed")
-        return JSONResponse({"error": "Internal error"}, status_code=500)
-
-
 @router.post("/live-game/start")
 async def live_game_start(request: Request):
     global _live_game_poller
@@ -458,30 +463,36 @@ async def live_game_start(request: Request):
 
     host = body.get("host", "localhost")
     port = int(body.get("port", 2999))
+    pregame_win_prob = body.get("pregame_win_prob")
+    if pregame_win_prob is not None:
+        pregame_win_prob = float(pregame_win_prob)
     model_dir = request.app.state.model_dir
-
-    if _live_game_poller is not None:
-        _live_game_poller.stop()
 
     from lol_genius.predict.live_client import LiveGamePoller
 
-    _live_game_poller = LiveGamePoller(host, port, model_dir, _push_sse)
-    _live_game_poller.start()
+    with _poller_lock:
+        if _live_game_poller is not None:
+            _live_game_poller.stop()
+        _live_game_poller = LiveGamePoller(host, port, model_dir, _push_sse, pregame_win_prob=pregame_win_prob)
+        _live_game_poller.start()
     return {"status": "started", "host": host, "port": port}
 
 
 @router.delete("/live-game/stop")
 async def live_game_stop():
     global _live_game_poller
-    if _live_game_poller is not None:
-        _live_game_poller.stop()
-        _live_game_poller = None
+    with _poller_lock:
+        if _live_game_poller is not None:
+            _live_game_poller.stop()
+            _live_game_poller = None
     return {"status": "stopped"}
 
 
 @router.get("/live-game/status")
 async def live_game_status():
-    if _live_game_poller is None:
+    with _poller_lock:
+        poller = _live_game_poller
+    if poller is None:
         return {
             "connected": False,
             "host": None,
@@ -489,40 +500,13 @@ async def live_game_status():
             "current": None,
             "history": [],
         }
+    snap = poller.snapshot()
     return {
         "connected": True,
-        "host": _live_game_poller.host,
-        "port": _live_game_poller.port,
-        "current": _live_game_poller.current,
-        "history": _live_game_poller.history,
+        "host": poller.host,
+        "port": poller.port,
+        **snap,
     }
-
-
-@router.get("/crawler/mode")
-async def get_crawler_mode(request: Request):
-    pool = request.app.state.pool
-
-    def _get():
-        with pooled_db(pool) as db:
-            return db.get_setting("crawler_mode", "crawl")
-
-    return {"mode": await asyncio.to_thread(_get)}
-
-
-@router.post("/crawler/mode")
-async def set_crawler_mode(request: Request):
-    body = await request.json()
-    mode = body.get("mode", "crawl")
-    if mode not in ("crawl", "fetch_timelines"):
-        return JSONResponse({"error": "Invalid mode"}, status_code=400)
-    pool = request.app.state.pool
-
-    def _set():
-        with pooled_db(pool) as db:
-            db.set_setting("crawler_mode", mode)
-
-    await asyncio.to_thread(_set)
-    return {"mode": mode}
 
 
 @router.get("/events")
@@ -537,7 +521,6 @@ async def sse_stream(request: Request):
                 "enrichment": db.get_enrichment_stats(),
                 "timeline": db.get_timeline_stats(),
                 "queue_stats": db.get_queue_stats(),
-                "crawler_mode": db.get_setting("crawler_mode", "crawl"),
             }
 
     async def event_generator():

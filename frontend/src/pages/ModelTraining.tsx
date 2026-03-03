@@ -10,9 +10,9 @@ import {
   LineChart,
   Line,
 } from "recharts";
-import { Play, X, Loader2, AlertTriangle, Database } from "lucide-react";
+import { Play, X, Loader2, AlertTriangle } from "lucide-react";
 import Card from "../components/Card";
-import { fetchModelRuns, fetchPresets, triggerTraining, buildTimelinesFromDb } from "../api";
+import { fetchModelRuns, fetchPresets, triggerTraining } from "../api";
 import { tooltipStyle, sectionTitle, primaryButton } from "../styles";
 import type { ModelRun, TrainingRequest, TrainingStatus } from "../types";
 
@@ -43,8 +43,6 @@ export default function ModelTraining({ trainingStatus }: Props) {
   const [customParams, setCustomParams] = useState<Record<string, number>>({});
   const [presets, setPresets] = useState<Record<string, Record<string, number | string>>>({});
   const [modelType, setModelType] = useState<"pregame" | "live">("pregame");
-  const [buildingTimelines, setBuildingTimelines] = useState(false);
-  const [timelineResult, setTimelineResult] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,19 +84,6 @@ export default function ModelTraining({ trainingStatus }: Props) {
     }
   }
 
-  async function handleBuildTimelines() {
-    setBuildingTimelines(true);
-    setTimelineResult(null);
-    try {
-      const res = await buildTimelinesFromDb();
-      setTimelineResult(res.saved);
-    } catch {
-      setTimelineResult(-1);
-    } finally {
-      setBuildingTimelines(false);
-    }
-  }
-
   async function handleTrain() {
     const req: TrainingRequest = { notes, model_type: modelType };
     if (mode === "preset") {
@@ -122,6 +107,25 @@ export default function ModelTraining({ trainingStatus }: Props) {
       .map((r, i) => ({ idx: i + 1, auc: r.auc_roc!, run: r.run_id.slice(0, 8) })),
     [runs],
   );
+
+  const timeWindows = useMemo(() => {
+    if (modelType !== "live") return [];
+    const minutes = new Set<number>();
+    for (const r of runs) {
+      for (const w of r.time_window_metrics ?? []) minutes.add(w.minutes);
+    }
+    return [...minutes].sort((a, b) => a - b);
+  }, [runs, modelType]);
+
+  const timeWindowLookup = useMemo(() => {
+    const map = new Map<string, Map<number, number>>();
+    for (const r of runs) {
+      const inner = new Map<number, number>();
+      for (const w of r.time_window_metrics ?? []) inner.set(w.minutes, w.accuracy);
+      map.set(r.run_id, inner);
+    }
+    return map;
+  }, [runs]);
 
   const isTraining = trainingStatus && !["completed", "error"].includes(trainingStatus.stage);
 
@@ -188,23 +192,6 @@ export default function ModelTraining({ trainingStatus }: Props) {
           </span>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {modelType === "live" && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {timelineResult !== null && (
-                <span style={{ fontSize: 11, color: timelineResult >= 0 ? "var(--accent)" : "var(--red)" }}>
-                  {timelineResult >= 0 ? `+${timelineResult.toLocaleString()} snapshots` : "failed"}
-                </span>
-              )}
-              <button
-                onClick={handleBuildTimelines}
-                disabled={buildingTimelines || !!isTraining}
-                style={{ ...primaryButton, background: "var(--bg-secondary)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-              >
-                {buildingTimelines ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <Database size={14} />}
-                Build Timelines from DB
-              </button>
-            </div>
-          )}
           <button onClick={() => setShowModal(true)} disabled={!!isTraining} style={primaryButton}>
             <Play size={14} />
             New Training Run
@@ -214,11 +201,15 @@ export default function ModelTraining({ trainingStatus }: Props) {
 
       <div style={{ display: "grid", gridTemplateColumns: selected ? "1fr 1fr" : "1fr", gap: 20 }}>
         <Card style={{ padding: 0, overflow: "hidden" }}>
+          <div style={{ overflowX: "auto" }}>
           <table style={styles.table}>
             <thead>
               <tr>
                 {["Run ID", "Matches", "Features", "Accuracy", "AUC", "LogLoss", "Time"].map((h) => (
                   <th key={h} style={styles.th}>{h}</th>
+                ))}
+                {timeWindows.map((m) => (
+                  <th key={m} style={styles.th}>{m}m</th>
                 ))}
               </tr>
             </thead>
@@ -242,17 +233,26 @@ export default function ModelTraining({ trainingStatus }: Props) {
                   <td style={{ ...styles.tdMono, color: "var(--accent)" }}>{r.auc_roc != null ? r.auc_roc.toFixed(4) : "-"}</td>
                   <td style={styles.tdMono}>{r.log_loss != null ? r.log_loss.toFixed(4) : "-"}</td>
                   <td style={styles.tdMono}>{r.training_seconds != null ? `${r.training_seconds.toFixed(0)}s` : "-"}</td>
+                  {timeWindows.map((m) => {
+                    const acc = timeWindowLookup.get(r.run_id)?.get(m);
+                    return (
+                      <td key={m} style={{ ...styles.tdMono, color: acc != null ? (acc >= 0.7 ? "var(--accent)" : "var(--text-secondary)") : "var(--text-muted)" }}>
+                        {acc != null ? acc.toFixed(4) : "-"}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
               {runs.length === 0 && (
                 <tr>
-                  <td colSpan={7} style={{ ...styles.td, textAlign: "center", color: "var(--text-muted)" }}>
+                  <td colSpan={7 + timeWindows.length} style={{ ...styles.td, textAlign: "center", color: "var(--text-muted)" }}>
                     No training runs yet
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+          </div>
         </Card>
 
         {selected && (
@@ -282,6 +282,25 @@ export default function ModelTraining({ trainingStatus }: Props) {
                   <CMCell label="FP" value={selected.fp!} color="var(--red)" />
                   <CMCell label="FN" value={selected.fn!} color="var(--red)" />
                   <CMCell label="TP" value={selected.tp!} color="var(--accent)" />
+                </div>
+              </Card>
+            )}
+
+            {selected.time_window_metrics && selected.time_window_metrics.length > 0 && (
+              <Card>
+                <h3 style={sectionTitle}>Accuracy by Game Time</h3>
+                <div style={{ height: 200 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={selected.time_window_metrics} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                      <XAxis dataKey="minutes" tickFormatter={(v) => `${v}m`}
+                        tick={{ fill: "var(--text-secondary)", fontSize: 10 }} />
+                      <YAxis domain={["auto", "auto"]} tick={{ fill: "var(--text-secondary)", fontSize: 10 }} />
+                      <Tooltip contentStyle={tooltipStyle} formatter={(v: unknown) => typeof v === "number" ? v.toFixed(4) : "-"} />
+                      <Line type="monotone" dataKey="accuracy" stroke="var(--accent)" strokeWidth={2} dot={{ r: 3 }} name="Accuracy" />
+                      <Line type="monotone" dataKey="auc_roc" stroke="var(--gold)" strokeWidth={2} dot={{ r: 3 }} name="AUC-ROC" />
+                    </LineChart>
+                  </ResponsiveContainer>
                 </div>
               </Card>
             )}

@@ -11,7 +11,7 @@ import {
 } from "recharts";
 import Card from "../components/Card";
 import StatBox from "../components/StatBox";
-import { fetchStatus, fetchDistributions, fetchCrawlerMode, setCrawlerMode } from "../api";
+import { fetchStatus, fetchDistributions } from "../api";
 import { tooltipStyle, sectionTitle, sectionLabel } from "../styles";
 import type { CrawlerSSE, StatusData, DistributionData } from "../types";
 
@@ -32,13 +32,11 @@ const TIER_ORDER = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "
 
 interface Props {
   live: CrawlerSSE | null;
-  crawlerMode?: "crawl" | "fetch_timelines";
 }
 
-export default function CrawlerStatus({ live, crawlerMode: crawlerModeProp }: Props) {
+export default function CrawlerStatus({ live }: Props) {
   const [initial, setInitial] = useState<StatusData | null>(null);
   const [dist, setDist] = useState<DistributionData | null>(null);
-  const [localMode, setLocalMode] = useState<"crawl" | "fetch_timelines" | null>(null);
   const [timelineRate, setTimelineRate] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timelineRef = useRef<{ fetched: number; timestamp: number } | null>(null);
@@ -46,19 +44,7 @@ export default function CrawlerStatus({ live, crawlerMode: crawlerModeProp }: Pr
   useEffect(() => {
     fetchStatus().then(setInitial).catch((e) => setError(e.message));
     fetchDistributions().then(setDist).catch((e) => setError(e.message));
-    fetchCrawlerMode().then((r) => setLocalMode(r.mode as "crawl" | "fetch_timelines")).catch((e) => setError(e.message));
   }, []);
-
-  const activeMode = crawlerModeProp ?? localMode ?? "crawl";
-
-  async function handleModeClick(mode: "crawl" | "fetch_timelines") {
-    setLocalMode(mode);
-    try {
-      await setCrawlerMode(mode);
-    } catch {
-      setLocalMode(activeMode);
-    }
-  }
 
   const matchCount = live?.match_count ?? initial?.match_count ?? 0;
   const queueStats = live?.queue_stats ?? initial?.queue_stats ?? {};
@@ -68,6 +54,7 @@ export default function CrawlerStatus({ live, crawlerMode: crawlerModeProp }: Pr
 
   const enrichPct = enrichment.total > 0 ? (enrichment.enriched / enrichment.total) * 100 : 0;
   const timelinePct = timeline.total > 0 ? (timeline.fetched / timeline.total) * 100 : 0;
+  const isFetchingTimelines = timeline.fetched < timeline.total;
 
   useEffect(() => {
     const prev = timelineRef.current;
@@ -118,34 +105,30 @@ export default function CrawlerStatus({ live, crawlerMode: crawlerModeProp }: Pr
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ display: "flex", background: "var(--bg-secondary)", borderRadius: 8, padding: 3, border: "1px solid var(--border)" }}>
-            {(["crawl", "fetch_timelines"] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => handleModeClick(m)}
-                style={{
-                  padding: "5px 14px",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  fontFamily: "inherit",
-                  borderRadius: 6,
-                  border: "none",
-                  cursor: "pointer",
-                  transition: "all 0.15s",
-                  background: activeMode === m ? "var(--accent)" : "transparent",
-                  color: activeMode === m ? "#000" : "var(--text-secondary)",
-                }}
-              >
-                {m === "crawl" ? "Crawl" : "Fetch Timelines"}
-              </button>
-            ))}
-          </div>
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            Takes effect at next batch boundary
-          </span>
-        </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: "1.5px",
+          color: "var(--accent)",
+          padding: "3px 8px",
+          border: "1px solid var(--accent)",
+          borderRadius: 4,
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          AUTO
+        </span>
+        <span style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: isFetchingTimelines ? "var(--gold)" : "var(--text-secondary)",
+          padding: "3px 8px",
+          background: "var(--bg-secondary)",
+          border: "1px solid var(--border)",
+          borderRadius: 4,
+        }}>
+          {isFetchingTimelines ? "fetching timelines" : "crawling"}
+        </span>
       </div>
 
       {error && (
@@ -165,35 +148,8 @@ export default function CrawlerStatus({ live, crawlerMode: crawlerModeProp }: Pr
           />
         </div>
 
-        {activeMode === "fetch_timelines" ? (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
-                Timeline Fetching Progress
-              </span>
-              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                {timeline.fetched.toLocaleString()} / {timeline.total.toLocaleString()} ({timelinePct.toFixed(1)}%)
-                {timelineRate !== null && (
-                  <span style={{ marginLeft: 8, color: "var(--text-muted)" }}>
-                    {timelineRate.toFixed(1)} / min
-                  </span>
-                )}
-              </span>
-            </div>
-            <div style={{ height: 8, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
-              <div
-                style={{
-                  height: "100%",
-                  width: `${timelinePct}%`,
-                  background: "linear-gradient(90deg, var(--accent), var(--gold))",
-                  borderRadius: 4,
-                  transition: "width 0.5s ease",
-                }}
-              />
-            </div>
-          </div>
-        ) : (
-          <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          <div>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
                 Enrichment Progress
@@ -214,7 +170,34 @@ export default function CrawlerStatus({ live, crawlerMode: crawlerModeProp }: Pr
               />
             </div>
           </div>
-        )}
+
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+              <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
+                Timeline Progress
+              </span>
+              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+                {timeline.fetched.toLocaleString()} / {timeline.total.toLocaleString()} ({timelinePct.toFixed(1)}%)
+                {timelineRate !== null && timelineRate > 0 && (
+                  <span style={{ marginLeft: 8, color: "var(--text-muted)" }}>
+                    {timelineRate.toFixed(1)} / min
+                  </span>
+                )}
+              </span>
+            </div>
+            <div style={{ height: 8, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${timelinePct}%`,
+                  background: "linear-gradient(90deg, var(--blue), var(--accent))",
+                  borderRadius: 4,
+                  transition: "width 0.5s ease",
+                }}
+              />
+            </div>
+          </div>
+        </div>
       </Card>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>

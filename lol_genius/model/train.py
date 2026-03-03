@@ -126,6 +126,8 @@ def train_model(
     patches: "pd.Series | None" = None,
     patch_decay: float = 0.85,
     timestamps: "pd.Series | None" = None,
+    match_ids: "pd.Series | None" = None,
+    game_creations: "pd.Series | None" = None,
     database_url: str | None = None,
     params: dict | None = None,
     model_type: str = "pregame",
@@ -138,13 +140,37 @@ def train_model(
     model_path = Path(model_dir) / model_type
     model_path.mkdir(parents=True, exist_ok=True)
 
-    X = select_features(X, y)
+    if model_type != "live":
+        X = select_features(X, y)
+    else:
+        log.info("Skipping feature selection for live model (hand-curated sparse features)")
 
     sample_weights = None
     if patches is not None and len(patches) > 0 and patches.nunique() > 1:
         sample_weights = _compute_patch_weights(patches, patch_decay)
 
-    if timestamps is not None and len(timestamps) > 0:
+    if match_ids is not None and len(match_ids) > 0 and game_creations is not None:
+        import pandas as _pd
+        unique_matches = (
+            _pd.DataFrame({"match_id": match_ids.values, "game_creation": game_creations.values})
+            .drop_duplicates("match_id")
+            .sort_values("game_creation")
+        )
+        n_test_matches = max(1, int(len(unique_matches) * 0.2))
+        test_match_set = set(unique_matches["match_id"].iloc[-n_test_matches:])
+        test_mask = match_ids.isin(test_match_set).values
+        train_mask = ~test_mask
+        X_train, X_test = X.loc[train_mask], X.loc[test_mask]
+        y_train, y_test = y.loc[train_mask], y.loc[test_mask]
+        w_train = sample_weights[train_mask] if sample_weights is not None else None
+        log.info(
+            "Using match-aware group split: %d train / %d test matches (%d / %d rows)",
+            len(unique_matches) - n_test_matches,
+            n_test_matches,
+            train_mask.sum(),
+            test_mask.sum(),
+        )
+    elif timestamps is not None and len(timestamps) > 0:
         sort_idx = np.argsort(timestamps.values)
         n_test = int(len(X) * 0.2)
         train_idx = sort_idx[:-n_test]
@@ -354,6 +380,17 @@ def load_model(
             feature_names = json.load(f)
         _model_cache[cache_key] = (model, feature_names)
     return _model_cache[cache_key]
+
+
+def load_calibrator(model_dir: str, model_type: str = "pregame") -> dict | None:
+    path = Path(model_dir) / model_type / "calibrator.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text())
+    except Exception as e:
+        log.warning("Failed to load calibrator: %s", e)
+        return None
 
 
 def invalidate_model_cache(

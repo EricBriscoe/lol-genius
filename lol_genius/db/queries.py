@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 from lol_genius.features.stats import aggregate_recent_stats
+from lol_genius.features.timeline import SNAPSHOT_SECONDS
 
 from .connection import get_connection
 
@@ -286,7 +287,6 @@ class MatchDB:
             SELECT COUNT(*) AS total, COUNT(DISTINCT t.match_id) AS fetched
             FROM match_enrichment_status e
             LEFT JOIN match_timelines t ON t.match_id = e.match_id
-            WHERE e.enriched = 1
         """)
         return {"fetched": row["fetched"] or 0, "total": row["total"] or 0}
 
@@ -541,6 +541,12 @@ class MatchDB:
         self._maybe_commit()
 
     def update_model_run(self, run_id: str, updates: dict) -> None:
+        from psycopg2.extras import Json
+
+        _jsonb_cols = {"time_window_metrics"}
+        for k in _jsonb_cols:
+            if k in updates and updates[k] is not None and not isinstance(updates[k], str):
+                updates[k] = Json(updates[k])
         set_clause = ", ".join(f"{k} = %({k})s" for k in updates)
         updates["run_id"] = run_id
         self._execute(
@@ -709,29 +715,34 @@ class MatchDB:
         for s in snapshots:
             self._execute(
                 """INSERT INTO match_timelines
-                   (match_id, snapshot_seconds, blue_gold, red_gold, blue_kills, red_kills,
-                    blue_towers, red_towers, blue_dragons, red_dragons, blue_barons, red_barons,
-                    blue_heralds, red_heralds, first_blood_blue, first_tower_blue, first_dragon_blue)
+                   (match_id, snapshot_seconds, blue_gold, red_gold, blue_cs, red_cs,
+                    blue_kills, red_kills, blue_towers, red_towers, blue_dragons, red_dragons,
+                    blue_barons, red_barons, blue_heralds, red_heralds,
+                    blue_inhibitors, red_inhibitors, blue_elder, red_elder,
+                    first_blood_blue, first_tower_blue, first_dragon_blue)
                    VALUES (%(match_id)s, %(snapshot_seconds)s, %(blue_gold)s, %(red_gold)s,
-                           %(blue_kills)s, %(red_kills)s, %(blue_towers)s, %(red_towers)s,
-                           %(blue_dragons)s, %(red_dragons)s, %(blue_barons)s, %(red_barons)s,
-                           %(blue_heralds)s, %(red_heralds)s, %(first_blood_blue)s,
-                           %(first_tower_blue)s, %(first_dragon_blue)s)
+                           %(blue_cs)s, %(red_cs)s, %(blue_kills)s, %(red_kills)s,
+                           %(blue_towers)s, %(red_towers)s, %(blue_dragons)s, %(red_dragons)s,
+                           %(blue_barons)s, %(red_barons)s, %(blue_heralds)s, %(red_heralds)s,
+                           %(blue_inhibitors)s, %(red_inhibitors)s, %(blue_elder)s, %(red_elder)s,
+                           %(first_blood_blue)s, %(first_tower_blue)s, %(first_dragon_blue)s)
                    ON CONFLICT (match_id, snapshot_seconds) DO NOTHING""",
                 {"match_id": match_id, **s},
             )
         self._maybe_commit()
 
     def get_match_ids_without_timelines(self) -> list[str]:
+        placeholders = ",".join(["%s"] * len(SNAPSHOT_SECONDS))
         rows = self._fetchall(
-            """SELECT m.match_id FROM matches m
+            f"""SELECT m.match_id FROM matches m
                JOIN match_enrichment_status e ON m.match_id = e.match_id
                WHERE e.enriched = 1
                AND NOT EXISTS (
                    SELECT 1 FROM match_timelines t
                    WHERE t.match_id = m.match_id
-                   AND t.snapshot_seconds IN (300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 3000)
-               )"""
+                   AND t.snapshot_seconds IN ({placeholders})
+               )""",
+            tuple(SNAPSHOT_SECONDS),
         )
         return [r["match_id"] for r in rows]
 
@@ -748,21 +759,36 @@ class MatchDB:
         self._maybe_commit()
 
     def get_timeline_training_data(self) -> list[dict]:
+        placeholders = ",".join(["%s"] * len(SNAPSHOT_SECONDS))
         rows = self._fetchall(
-            """SELECT mt.snapshot_seconds AS game_time_seconds,
+            f"""SELECT mt.match_id, m.game_creation,
+                      mt.snapshot_seconds AS game_time_seconds,
                       mt.blue_gold, mt.red_gold,
+                      mt.blue_cs, mt.red_cs,
                       mt.blue_kills, mt.red_kills,
                       mt.blue_towers, mt.red_towers,
                       mt.blue_dragons, mt.red_dragons,
                       mt.blue_barons, mt.red_barons,
                       mt.blue_heralds, mt.red_heralds,
+                      mt.blue_inhibitors, mt.red_inhibitors,
+                      mt.blue_elder, mt.red_elder,
                       mt.first_blood_blue, mt.first_tower_blue, mt.first_dragon_blue,
-                      m.blue_win
+                      m.blue_win, m.pregame_blue_win_prob
                FROM match_timelines mt
                JOIN matches m ON mt.match_id = m.match_id
-               ORDER BY mt.match_id, mt.snapshot_seconds"""
+               WHERE mt.snapshot_seconds IN ({placeholders})
+               ORDER BY mt.match_id, mt.snapshot_seconds""",
+            tuple(SNAPSHOT_SECONDS),
         )
         return [dict(r) for r in rows]
+
+    def bulk_update_pregame_probs(self, pairs: list[tuple[str, float]]) -> None:
+        for match_id, prob in pairs:
+            self._execute(
+                "UPDATE matches SET pregame_blue_win_prob = %s WHERE match_id = %s",
+                (prob, match_id),
+            )
+        self._maybe_commit()
 
 
 @contextmanager
