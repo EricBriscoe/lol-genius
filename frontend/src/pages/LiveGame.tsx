@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { Wifi, WifiOff, Play, Square } from "lucide-react";
+import { Wifi, WifiOff, Play, Square, AlertTriangle } from "lucide-react";
 import Card from "../components/Card";
 import { startLiveGame, stopLiveGame, fetchLiveGameStatus } from "../api";
 import { sectionTitle } from "../styles";
@@ -20,9 +20,14 @@ interface Props {
 }
 
 function fmtTime(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return "0:00";
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function diffColor(diff: number): string | undefined {
+  return diff > 0 ? "var(--accent)" : diff < 0 ? "var(--red)" : undefined;
 }
 
 function StatBox({ label, value, color }: { label: string; value: string | number; color?: string }) {
@@ -40,18 +45,41 @@ function StatBox({ label, value, color }: { label: string; value: string | numbe
   );
 }
 
+const RECENTS_KEY = "lol_genius_live_recents";
+const MAX_RECENTS = 5;
+
+function loadRecents(): { host: string; port: string }[] {
+  try {
+    return JSON.parse(localStorage.getItem(RECENTS_KEY) || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function saveRecent(host: string, port: string): { host: string; port: string }[] {
+  const updated = [
+    { host, port },
+    ...loadRecents().filter((r) => !(r.host === host && r.port === port)),
+  ].slice(0, MAX_RECENTS);
+  localStorage.setItem(RECENTS_KEY, JSON.stringify(updated));
+  return updated;
+}
+
 export default function LiveGame({ latestUpdate }: Props) {
   const [host, setHost] = useState("localhost");
   const [port, setPort] = useState("2999");
   const [connected, setConnected] = useState(false);
+  const [pollerStatus, setPollerStatus] = useState<string>("waiting");
   const [history, setHistory] = useState<{ game_time: number; probability: number }[]>([]);
   const [current, setCurrent] = useState<LiveGameUpdate | null>(null);
+  const [recents, setRecents] = useState<{ host: string; port: string }[]>(loadRecents);
 
   useEffect(() => {
     fetchLiveGameStatus().then((s: LiveGameStatus) => {
       setConnected(s.connected);
       if (s.host) setHost(s.host);
       if (s.port) setPort(String(s.port));
+      if (s.status) setPollerStatus(s.status);
       setHistory(s.history);
       setCurrent(s.current);
     }).catch(() => {});
@@ -59,11 +87,19 @@ export default function LiveGame({ latestUpdate }: Props) {
 
   useEffect(() => {
     if (!latestUpdate) return;
+    const { status, blue_win_probability, game_reset } = latestUpdate;
+    if (status === "model_missing" || status === "poll_error") {
+      setPollerStatus(status);
+      return;
+    }
+    if (blue_win_probability == null) return;
+    setPollerStatus("ok");
     setCurrent(latestUpdate);
     setHistory((prev) => {
-      const entry = { game_time: latestUpdate.game_time, probability: Math.round(latestUpdate.blue_win_probability * 100 * 10) / 10 };
-      if (prev.length > 0 && prev[prev.length - 1].game_time === entry.game_time) return prev;
-      const next = [...prev, entry];
+      const base = game_reset ? [] : prev;
+      const entry = { game_time: latestUpdate.game_time, probability: Math.round(blue_win_probability * 100 * 10) / 10 };
+      if (base.length > 0 && base[base.length - 1].game_time === entry.game_time) return base;
+      const next = [...base, entry];
       return next.length > 100 ? next.slice(-100) : next;
     });
   }, [latestUpdate]);
@@ -74,8 +110,10 @@ export default function LiveGame({ latestUpdate }: Props) {
     try {
       await startLiveGame(host, portNum);
       setConnected(true);
+      setPollerStatus("waiting");
       setHistory([]);
       setCurrent(null);
+      setRecents(saveRecent(host, port));
     } catch {}
   }
 
@@ -86,7 +124,7 @@ export default function LiveGame({ latestUpdate }: Props) {
     } catch {}
   }
 
-  const blueProb = current ? Math.round(current.blue_win_probability * 100) : 50;
+  const blueProb = current && current.blue_win_probability != null ? Math.round(current.blue_win_probability * 100) : 50;
   const redProb = 100 - blueProb;
 
   return (
@@ -131,6 +169,20 @@ export default function LiveGame({ latestUpdate }: Props) {
             </span>
           </div>
         </div>
+        {!connected && recents.length > 0 && (
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: "var(--text-muted)", whiteSpace: "nowrap" }}>Recent:</span>
+            {recents.map((r) => (
+              <button
+                key={`${r.host}:${r.port}`}
+                onClick={() => { setHost(r.host); setPort(r.port); }}
+                style={recentBtn}
+              >
+                {r.host}:{r.port}
+              </button>
+            ))}
+          </div>
+        )}
         {!connected && (
           <p style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 10 }}>
             Connect to the Riot Live Client Data API (LoL must be running). Polls every 15s and predicts with the live model.
@@ -138,7 +190,7 @@ export default function LiveGame({ latestUpdate }: Props) {
         )}
       </Card>
 
-      {current && (
+      {current && current.blue_win_probability != null && (
         <>
           <Card>
             <h3 style={sectionTitle}>Win Probability</h3>
@@ -178,29 +230,15 @@ export default function LiveGame({ latestUpdate }: Props) {
             </div>
           </Card>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
             <StatBox label="Game Time" value={fmtTime(current.game_time)} />
-            <StatBox
-              label="Gold Diff"
-              value={current.gold_diff >= 0 ? `+${current.gold_diff}` : current.gold_diff}
-              color={current.gold_diff > 0 ? "var(--accent)" : current.gold_diff < 0 ? "var(--red)" : undefined}
-            />
-            <StatBox
-              label="Kill Diff"
-              value={current.kill_diff >= 0 ? `+${current.kill_diff}` : current.kill_diff}
-              color={current.kill_diff > 0 ? "var(--accent)" : current.kill_diff < 0 ? "var(--red)" : undefined}
-            />
-            <StatBox
-              label="Dragon Diff"
-              value={current.dragon_diff >= 0 ? `+${current.dragon_diff}` : current.dragon_diff}
-              color={current.dragon_diff > 0 ? "var(--accent)" : current.dragon_diff < 0 ? "var(--red)" : undefined}
-            />
-            <StatBox
-              label="Tower Diff"
-              value={current.tower_diff >= 0 ? `+${current.tower_diff}` : current.tower_diff}
-              color={current.tower_diff > 0 ? "var(--accent)" : current.tower_diff < 0 ? "var(--red)" : undefined}
-            />
-            <StatBox label="Blue Barons" value={current.blue_barons} />
+            <StatBox label="Kill Diff" value={current.kill_diff >= 0 ? `+${current.kill_diff}` : current.kill_diff} color={diffColor(current.kill_diff)} />
+            <StatBox label="CS Diff" value={current.cs_diff >= 0 ? `+${current.cs_diff}` : current.cs_diff} color={diffColor(current.cs_diff)} />
+            <StatBox label="Tower Diff" value={current.tower_diff >= 0 ? `+${current.tower_diff}` : current.tower_diff} color={diffColor(current.tower_diff)} />
+            <StatBox label="Baron Diff" value={current.baron_diff >= 0 ? `+${current.baron_diff}` : current.baron_diff} color={diffColor(current.baron_diff)} />
+            <StatBox label="Dragon Diff" value={current.dragon_diff >= 0 ? `+${current.dragon_diff}` : current.dragon_diff} color={diffColor(current.dragon_diff)} />
+            <StatBox label="Inhibitor Diff" value={current.inhibitor_diff >= 0 ? `+${current.inhibitor_diff}` : current.inhibitor_diff} color={diffColor(current.inhibitor_diff)} />
+            <StatBox label="Elder Diff" value={current.elder_diff >= 0 ? `+${current.elder_diff}` : current.elder_diff} color={diffColor(current.elder_diff)} />
           </div>
         </>
       )}
@@ -243,7 +281,25 @@ export default function LiveGame({ latestUpdate }: Props) {
         </Card>
       )}
 
-      {connected && !current && (
+      {connected && !current && pollerStatus === "model_missing" && (
+        <Card style={{ borderColor: "var(--red)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: "var(--red)", fontSize: 13 }}>
+            <AlertTriangle size={16} />
+            Live model not trained — run <code style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }}>lol-genius train --live</code> first
+          </div>
+        </Card>
+      )}
+
+      {connected && pollerStatus === "poll_error" && (
+        <Card style={{ borderColor: "var(--gold)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: "var(--gold)", fontSize: 13 }}>
+            <AlertTriangle size={16} />
+            Poll error — check that the Live Client API is reachable
+          </div>
+        </Card>
+      )}
+
+      {connected && !current && pollerStatus === "waiting" && (
         <Card>
           <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-muted)", fontSize: 13 }}>
             Waiting for game data... (polls every 15 seconds)
@@ -285,4 +341,16 @@ const connectBtn: React.CSSProperties = {
 const disconnectBtn: React.CSSProperties = {
   ...connectBtn,
   background: "var(--red)",
+};
+
+const recentBtn: React.CSSProperties = {
+  padding: "3px 10px",
+  fontSize: 12,
+  fontFamily: "'JetBrains Mono', monospace",
+  background: "var(--bg-input)",
+  border: "1px solid var(--border)",
+  borderRadius: 4,
+  color: "var(--text-secondary)",
+  cursor: "pointer",
+  whiteSpace: "nowrap",
 };

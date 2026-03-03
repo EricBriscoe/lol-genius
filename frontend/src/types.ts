@@ -39,6 +39,7 @@ export interface ModelRun {
   fn: number | null;
   tp: number | null;
   top_features: { name: string; importance: number }[] | null;
+  time_window_metrics: { minutes: number; accuracy: number; auc_roc: number | null; count: number }[] | null;
   notes: string | null;
 }
 
@@ -52,18 +53,25 @@ export interface TrainingRequest {
 
 export interface LiveGameUpdate {
   game_time: number;
-  blue_win_probability: number;
-  gold_diff: number;
+  blue_win_probability: number | null;
   kill_diff: number;
   dragon_diff: number;
   tower_diff: number;
-  blue_barons: number;
+  baron_diff: number;
+  cs_diff: number;
+  inhibitor_diff: number;
+  elder_diff: number;
+  game_reset?: boolean;
+  status?: string;
+  error?: string;
 }
 
 export interface LiveGameStatus {
   connected: boolean;
   host: string | null;
   port: number | null;
+  status?: string;
+  pregame_win_prob?: number | null;
   current: LiveGameUpdate | null;
   history: { game_time: number; probability: number }[];
 }
@@ -79,9 +87,7 @@ export interface TrainingStatus {
   completed_at?: number;
 }
 
-export interface CrawlerSSE extends BaseStatus {
-  crawler_mode?: "crawl" | "fetch_timelines";
-}
+export interface CrawlerSSE extends BaseStatus {}
 
 export interface SpectatorGameData {
   gameId: number;

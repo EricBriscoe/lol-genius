@@ -84,7 +84,7 @@ export default function App() {
       </header>
 
       <main style={styles.main}>
-        {tab === "crawler" && <CrawlerStatus live={crawlerData} crawlerMode={crawlerData?.crawler_mode} />}
+        {tab === "crawler" && <CrawlerStatus live={crawlerData} />}
         {tab === "model" && <ModelTraining trainingStatus={trainingStatus} />}
         {tab === "predict" && <LivePredict />}
         {tab === "live" && <LiveGame latestUpdate={liveGameUpdate} />}

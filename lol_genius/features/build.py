@@ -42,7 +42,7 @@ def _patch_to_numeric(patch: str) -> float:
 
 def build_feature_matrix(
     db: MatchDB, ddragon: DataDragon, patch: str | None = None
-) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series]:
+) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series, pd.Series]:
     match_ids = db.get_all_matches_for_training(patch)
     log.info(f"Building features for {len(match_ids)} matches")
 
@@ -52,6 +52,7 @@ def build_feature_matrix(
     targets = []
     patches = []
     timestamps = []
+    row_match_ids = []
 
     for match_id in tqdm(match_ids, desc="Building features", unit="match"):
         match = db.get_match(match_id)
@@ -84,6 +85,7 @@ def build_feature_matrix(
             targets.append(match["blue_win"])
             patches.append(match.get("patch", ""))
             timestamps.append(game_creation)
+            row_match_ids.append(match_id)
 
     if not rows:
         return (
@@ -91,14 +93,16 @@ def build_feature_matrix(
             pd.Series(dtype=float),
             pd.Series(dtype=str),
             pd.Series(dtype=int),
+            pd.Series(dtype=str),
         )
 
     X = pd.DataFrame(rows)
     y = pd.Series(targets, name="blue_win")
     patch_series = pd.Series(patches, name="patch")
     timestamp_series = pd.Series(timestamps, name="game_creation")
+    match_id_series = pd.Series(row_match_ids, name="match_id")
     log.info(f"Feature matrix: {X.shape[0]} matches, {X.shape[1]} features")
-    return X, y, patch_series, timestamp_series
+    return X, y, patch_series, timestamp_series, match_id_series
 
 
 def _build_match_features(

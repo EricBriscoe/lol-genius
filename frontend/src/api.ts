@@ -75,20 +75,3 @@ export async function stopLiveGame(): Promise<void> {
 }
 
 export const fetchLiveGameStatus = () => get<LiveGameStatus>("/live-game/status");
-
-export async function buildTimelinesFromDb(): Promise<{ saved: number }> {
-  const res = await fetch(`${BASE}/timelines/build-from-db`, { method: "POST" });
-  if (!res.ok) throw new Error(await parseErrorBody(res));
-  return res.json();
-}
-
-export const fetchCrawlerMode = () => get<{ mode: string }>("/crawler/mode");
-
-export async function setCrawlerMode(mode: "crawl" | "fetch_timelines"): Promise<void> {
-  const res = await fetch(`${BASE}/crawler/mode`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
-  });
-  if (!res.ok) throw new Error(await parseErrorBody(res));
-}

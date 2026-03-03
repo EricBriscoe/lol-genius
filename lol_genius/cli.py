@@ -130,11 +130,18 @@ def seed(ctx):
         db.close()
 
 
+def _decide_action(db) -> str:
+    stats = db.get_timeline_stats()
+    if stats["fetched"] < stats["total"]:
+        return "fetch_timelines"
+    return "crawl"
+
+
 @cli.command()
 @click.pass_context
 @cli_error_handler
 def crawl(ctx):
-    """Supervisor loop: crawls matches or fetches timelines based on DB crawler_mode setting."""
+    """Supervisor loop: auto-prioritizes timeline fetching over crawling when behind."""
     import signal
     import threading
     import time
@@ -161,9 +168,7 @@ def crawl(ctx):
     try:
         while not _stop.is_set():
             db.conn.rollback()
-            mode = db.get_setting("crawler_mode", "crawl")
-
-            if mode == "fetch_timelines":
+            if _decide_action(db) == "fetch_timelines":
                 from lol_genius.crawler.fetch_timelines import fetch_match_timelines
 
                 fetch_match_timelines(api, db, limit=50)
@@ -195,7 +200,7 @@ def build_features(ctx, patch):
     ddragon = DataDragon(config.ddragon_cache)
 
     try:
-        X, y, patches, timestamps = build_feature_matrix(
+        X, y, patches, timestamps, match_ids = build_feature_matrix(
             db, ddragon, patch or config.patch_filter
         )
         if X.empty:
@@ -210,6 +215,7 @@ def build_features(ctx, patch):
         y.to_frame().to_parquet(out_dir / "targets.parquet")
         patches.to_frame().to_parquet(out_dir / "patches.parquet")
         timestamps.to_frame().to_parquet(out_dir / "timestamps.parquet")
+        match_ids.to_frame().to_parquet(out_dir / "match_ids.parquet")
         click.echo(f"Feature matrix: {X.shape[0]} matches, {X.shape[1]} features")
         click.echo(f"Saved to {out_dir}")
     finally:
@@ -236,24 +242,6 @@ def fetch_timelines(ctx):
         db.close()
 
 
-@cli.command("build-timelines-from-db")
-@click.pass_context
-@cli_error_handler
-def build_timelines_from_db_cmd(ctx):
-    """Synthesize timeline snapshots from existing DB data (no API calls)."""
-    config = _get_config(ctx)
-
-    from lol_genius.crawler.fetch_timelines import build_timelines_from_db
-    from lol_genius.db.queries import MatchDB
-
-    db = MatchDB(config.database_url)
-    try:
-        saved = build_timelines_from_db(db)
-        click.echo(f"Synthesized {saved} timeline snapshots from DB")
-    finally:
-        db.close()
-
-
 @cli.command()
 @click.option("--tune/--no-tune", default=False, help="Run hyperparameter tuning")
 @click.option(
@@ -277,7 +265,7 @@ def train(ctx, tune, live, notes):
 
         db = MatchDB(config.database_url)
         try:
-            X, y = build_timeline_feature_matrix(db)
+            X, y, match_ids, game_creations = build_timeline_feature_matrix(db, model_type="live")
         finally:
             db.close()
 
@@ -293,6 +281,7 @@ def train(ctx, tune, live, notes):
         target_path = model_dir / "targets.parquet"
         patches_path = model_dir / "patches.parquet"
         timestamps_path = model_dir / "timestamps.parquet"
+        match_ids_path = model_dir / "match_ids.parquet"
 
         if not feat_path.exists():
             click.echo("No feature matrix found. Run 'build-features' first.")
@@ -308,6 +297,10 @@ def train(ctx, tune, live, notes):
             if timestamps_path.exists()
             else None
         )
+        match_ids = (
+            pd.read_parquet(match_ids_path).squeeze() if match_ids_path.exists() else None
+        )
+        game_creations = None
 
     click.echo(
         f"Training {model_type} model on {len(X)} samples with {X.shape[1]} features"
@@ -321,15 +314,37 @@ def train(ctx, tune, live, notes):
         best_params = tune_hyperparameters(X, y)
         click.echo(f"Best params: {best_params}")
 
-    model, run_id = train_model(
-        X,
-        y,
-        config.model_dir,
+    train_kwargs = dict(
         patches=patches,
         timestamps=timestamps,
         database_url=config.database_url,
         model_type=model_type,
     )
+    if live:
+        train_kwargs["match_ids"] = match_ids
+        train_kwargs["game_creations"] = game_creations
+
+    model, run_id = train_model(X, y, config.model_dir, **train_kwargs)
+
+    if not live and match_ids is not None:
+        import xgboost as xgb
+        from lol_genius.db.queries import MatchDB
+        from lol_genius.model.train import load_model as _load_model
+
+        try:
+            m, feat_names = _load_model(config.model_dir, "pregame")
+            feat_df = X[[c for c in feat_names if c in X.columns]]
+            dmat = xgb.DMatrix(feat_df, feature_names=feat_names)
+            probs = m.predict(dmat)
+            pairs = list(zip(match_ids.tolist(), probs.tolist()))
+            db2 = MatchDB(config.database_url)
+            try:
+                db2.bulk_update_pregame_probs(pairs)
+                click.echo(f"Stored pregame probs for {len(pairs)} matches")
+            finally:
+                db2.close()
+        except Exception as e:
+            log.warning("Could not store pregame probs: %s", e)
 
     if notes:
         from lol_genius.db.queries import MatchDB
@@ -353,24 +368,23 @@ def evaluate(ctx):
     config = _get_config(ctx)
     from pathlib import Path
 
-    model_dir = Path(config.model_dir)
-
     from lol_genius.model.evaluate import evaluate_model
     from lol_genius.model.train import load_model
 
+    type_dir = Path(config.model_dir) / "pregame"
     model, feature_names = load_model(config.model_dir)
 
-    X_test = pd.read_parquet(model_dir / "X_test.parquet")
-    y_test = pd.read_parquet(model_dir / "y_test.parquet").squeeze()
+    X_test = pd.read_parquet(type_dir / "X_test.parquet")
+    y_test = pd.read_parquet(type_dir / "y_test.parquet").squeeze()
 
-    run_id_path = model_dir / "run_id.txt"
+    run_id_path = type_dir / "run_id.txt"
     run_id = run_id_path.read_text().strip() if run_id_path.exists() else None
 
     evaluate_model(
         model,
         X_test,
         y_test,
-        config.model_dir,
+        str(type_dir),
         database_url=config.database_url,
         run_id=run_id,
     )
