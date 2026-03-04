@@ -106,40 +106,88 @@ class RateLimiter:
             new_buckets.append((int(count), int(window)))
         with self._lock:
             if new_buckets != self.buckets:
+                old_windows = {w for _, w in self.buckets}
+                new_ts: dict[int, deque[float]] = {}
+                for _, w in new_buckets:
+                    if w in old_windows and w in self.timestamps:
+                        new_ts[w] = self.timestamps[w]
+                    else:
+                        new_ts[w] = deque()
                 self.buckets = new_buckets
-                self.timestamps = {w: deque() for _, w in self.buckets}
+                self.timestamps = new_ts
                 self._min_interval = self._compute_min_interval()
 
-    def wait_if_needed(self) -> None:
-        with self._lock:
-            pace_wait = self._last_request + self._min_interval - time.monotonic()
-        if pace_wait > 0:
-            time.sleep(pace_wait)
+    _LOW_PRIORITY_THRESHOLD = 0.7
 
+    def acquire(self, priority: str = "normal") -> None:
         while True:
             with self._lock:
                 now = time.monotonic()
-                max_wait = 0.0
-                for max_calls, window in self.buckets:
-                    ts = self.timestamps.get(window, deque())
-                    while ts and ts[0] < now - window:
-                        ts.popleft()
-                    if len(ts) >= max_calls:
-                        wait = ts[0] + window - now + 0.05
-                        max_wait = max(max_wait, wait)
-            if max_wait <= 0:
-                break
-            log.debug(f"Rate limit: waiting {max_wait:.1f}s")
-            time.sleep(max_wait)
+                pace_wait = self._last_request + self._min_interval - now
+                if pace_wait <= 0:
+                    max_wait = 0.0
+                    for max_calls, window in self.buckets:
+                        ts = self.timestamps.get(window, deque())
+                        while ts and ts[0] < now - window:
+                            ts.popleft()
+                        if len(ts) >= max_calls:
+                            wait = ts[0] + window - now + 0.05
+                            max_wait = max(max_wait, wait)
+                    if max_wait <= 0:
+                        if (
+                            priority == "low"
+                            and self._utilization_locked(now)
+                            > self._LOW_PRIORITY_THRESHOLD
+                        ):
+                            pace_wait = self._min_interval * 3
+                        else:
+                            self._record_locked(now)
+                            return
+                    else:
+                        pace_wait = max_wait
 
-    def record_request(self) -> None:
+            log.debug("Rate limit: waiting %.1fs (priority=%s)", pace_wait, priority)
+            time.sleep(pace_wait)
+
+    def _utilization_locked(self, now: float) -> float:
+        max_util = 0.0
+        for max_calls, window in self.buckets:
+            ts = self.timestamps.get(window, deque())
+            max_util = max(max_util, len(ts) / max_calls)
+        return max_util
+
+    def _record_locked(self, now: float) -> None:
+        self._last_request = now
+        for _, window in self.buckets:
+            if window not in self.timestamps:
+                self.timestamps[window] = deque()
+            self.timestamps[window].append(now)
+
+    def sync_counts(self, count_header: str | None) -> None:
+        if not count_header:
+            return
         with self._lock:
             now = time.monotonic()
-            self._last_request = now
-            for _, window in self.buckets:
-                if window not in self.timestamps:
-                    self.timestamps[window] = deque()
-                self.timestamps[window].append(now)
+            for part in count_header.split(","):
+                try:
+                    actual_count_s, window_s = part.strip().split(":")
+                    actual_count = int(actual_count_s)
+                    window = int(window_s)
+                except (ValueError, IndexError):
+                    continue
+                ts = self.timestamps.get(window)
+                if ts is None:
+                    continue
+                while ts and ts[0] < now - window:
+                    ts.popleft()
+                local_count = len(ts)
+                if actual_count > local_count:
+                    for _ in range(actual_count - local_count):
+                        ts.append(now)
+                elif actual_count < local_count:
+                    excess = local_count - actual_count
+                    for _ in range(excess):
+                        ts.popleft()
 
     def window_usage(self) -> tuple[int, int]:
         with self._lock:
@@ -148,6 +196,13 @@ class RateLimiter:
             used = sum(1 for t in ts if now - t <= 120)
             budget = next((count for count, window in self.buckets if window == 120), 0)
         return used, budget
+
+
+def _safe_body(response: httpx.Response) -> str:
+    try:
+        return response.text[:500]
+    except Exception:
+        return ""
 
 
 class RiotHTTPClient:
@@ -170,12 +225,13 @@ class RiotHTTPClient:
         self.method_limiters: dict[str, RateLimiter] = {}
 
     def _get_method_limiter(self, method: str) -> RateLimiter:
-        if method not in self.method_limiters:
+        try:
+            return self.method_limiters[method]
+        except KeyError:
             buckets = METHOD_RATE_LIMITS.get(method, [(20000, 10)])
-            self.method_limiters[method] = RateLimiter(
-                default_buckets=buckets, scale=self._rate_scale
-            )
-        return self.method_limiters[method]
+            limiter = RateLimiter(default_buckets=buckets, scale=self._rate_scale)
+            self.method_limiters.setdefault(method, limiter)
+            return self.method_limiters[method]
 
     def _reload_key(self) -> bool:
         if not self.key_loader:
@@ -213,14 +269,16 @@ class RiotHTTPClient:
             "Generate a new key at https://developer.riotgames.com/"
         )
 
-    def get(self, url: str, max_retries: int = 5) -> dict | list | None:
+    def get(
+        self, url: str, max_retries: int = 5, priority: str = "normal"
+    ) -> dict | list | None:
         method = resolve_method(url)
         method_limiter = self._get_method_limiter(method) if method else None
         limiters = [self.rate_limiter] + ([method_limiter] if method_limiter else [])
 
         for attempt in range(max_retries):
             for lim in limiters:
-                lim.wait_if_needed()
+                lim.acquire(priority=priority)
 
             try:
                 response = self.client.get(url)
@@ -232,30 +290,27 @@ class RiotHTTPClient:
                 raise
 
             self.rate_limiter.update_limits(response.headers.get("x-app-rate-limit"))
+            self.rate_limiter.sync_counts(
+                response.headers.get("x-app-rate-limit-count")
+            )
             if method_limiter:
                 method_limiter.update_limits(
                     response.headers.get("x-method-rate-limit")
                 )
+                method_limiter.sync_counts(
+                    response.headers.get("x-method-rate-limit-count")
+                )
 
             if response.status_code == 200:
-                for lim in limiters:
-                    lim.record_request()
                 return response.json()
 
             if response.status_code == 404:
-                for lim in limiters:
-                    lim.record_request()
                 return None
 
             if response.status_code == 400:
-                for lim in limiters:
-                    lim.record_request()
-                body = ""
-                try:
-                    body = response.text[:500]
-                except Exception:
-                    pass
-                raise BadRequestError(f"400 Bad Request for {url}: {body}")
+                raise BadRequestError(
+                    f"400 Bad Request for {url}: {_safe_body(response)}"
+                )
 
             if response.status_code in (401, 403):
                 if not self._auth_backoff_enabled:
@@ -277,14 +332,9 @@ class RiotHTTPClient:
                 time.sleep(wait)
                 continue
 
-            for lim in limiters:
-                lim.record_request()
-            body = ""
-            try:
-                body = response.text[:500]
-            except Exception:
-                pass
-            raise RiotAPIError(f"Unexpected status {response.status_code} for {url}: {body}")
+            raise RiotAPIError(
+                f"Unexpected status {response.status_code} for {url}: {_safe_body(response)}"
+            )
 
         raise RiotAPIError(f"Max retries exceeded for {url}")
 

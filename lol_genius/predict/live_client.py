@@ -162,23 +162,39 @@ def build_live_features(
     game_state: dict,
     pregame_win_prob: float | None = None,
     pregame_summary: dict | None = None,
+    *,
+    prev_diffs: dict | None = None,
+    peak_kill_diff: float = 0.0,
+    peak_tower_diff: float = 0.0,
+    kill_diff_accel: float = 0.0,
+    recent_kill_share_diff: float = 0.0,
 ) -> dict:
     from lol_genius.features.timeline import LIVE_FEATURE_NAMES
 
     summary = pregame_summary or {}
+    game_time = _snap_to_snapshot(game_state.get("game_time", 0))
+    kill_diff = game_state.get("kill_diff", 0)
+    cs_diff = game_state.get("cs_diff", 0)
+    tower_diff = game_state.get("tower_diff", 0)
+    dragon_diff = game_state.get("dragon_diff", 0)
+
+    prev = prev_diffs or {}
+    scaling_score_diff = summary.get("scaling_score_diff", 0.0)
+    game_minutes = max(game_time / 60.0, 1.0)
+
     mapping = {
-        "game_time_seconds": _snap_to_snapshot(game_state.get("game_time", 0)),
+        "game_time_seconds": game_time,
         "blue_kills": game_state.get("blue_kills", 0),
         "red_kills": game_state.get("red_kills", 0),
-        "kill_diff": game_state.get("kill_diff", 0),
+        "kill_diff": kill_diff,
         "blue_cs": game_state.get("blue_cs", 0),
         "red_cs": game_state.get("red_cs", 0),
         "blue_towers": game_state.get("blue_towers", 0),
         "red_towers": game_state.get("red_towers", 0),
-        "tower_diff": game_state.get("tower_diff", 0),
+        "tower_diff": tower_diff,
         "blue_dragons": game_state.get("blue_dragons", 0),
         "red_dragons": game_state.get("red_dragons", 0),
-        "dragon_diff": game_state.get("dragon_diff", 0),
+        "dragon_diff": dragon_diff,
         "blue_barons": game_state.get("blue_barons", 0),
         "red_barons": game_state.get("red_barons", 0),
         "blue_heralds": game_state.get("blue_heralds", 0),
@@ -187,7 +203,7 @@ def build_live_features(
         "red_inhibitors": game_state.get("red_inhibitors", 0),
         "blue_elder": game_state.get("blue_elder", 0),
         "red_elder": game_state.get("red_elder", 0),
-        "cs_diff": game_state.get("cs_diff", 0),
+        "cs_diff": cs_diff,
         "inhibitor_diff": game_state.get("inhibitor_diff", 0),
         "elder_diff": game_state.get("elder_diff", 0),
         "first_blood_blue": game_state.get("first_blood_blue", 0),
@@ -207,6 +223,22 @@ def build_live_features(
         "veteran_count_diff": summary.get("veteran_count_diff", 0.0),
         "mastery_level7_count_diff": summary.get("mastery_level7_count_diff", 0.0),
         "avg_champ_wr_diff": summary.get("avg_champ_wr_diff", 0.0),
+        "scaling_score_diff": scaling_score_diff,
+        "max_scaling_score_diff": summary.get("max_scaling_score_diff", 0.0),
+        "stat_growth_diff": summary.get("stat_growth_diff", 0.0),
+        "scaling_advantage_realized": scaling_score_diff * (game_time / 1800.0),
+        "early_game_window_closing": scaling_score_diff
+        * max(0.0, 1.0 - game_time / 1500.0),
+        "kill_diff_delta": kill_diff - prev.get("kill_diff", kill_diff),
+        "cs_diff_delta": cs_diff - prev.get("cs_diff", cs_diff),
+        "tower_diff_delta": tower_diff - prev.get("tower_diff", tower_diff),
+        "kill_lead_erosion": max(peak_kill_diff, kill_diff) - kill_diff,
+        "tower_lead_erosion": max(peak_tower_diff, tower_diff) - tower_diff,
+        "kill_rate_diff": kill_diff / game_minutes,
+        "cs_rate_diff": cs_diff / game_minutes,
+        "dragon_rate_diff": dragon_diff / game_minutes,
+        "kill_diff_accel": kill_diff_accel,
+        "recent_kill_share_diff": recent_kill_share_diff,
     }
     return {col: mapping.get(col, 0) for col in LIVE_FEATURE_NAMES}
 
@@ -236,6 +268,12 @@ class LiveGamePoller:
         self._proxy_url = proxy_url
         self._ddragon_cache = ddragon_cache
         self._pregame_summary: dict | None = None
+        self._prev_diffs: dict | None = None
+        self._peak_kill_diff: float | None = None
+        self._peak_tower_diff: float | None = None
+        self._prev_kill_diff_delta: float = 0.0
+        self._prev_blue_kills: int = 0
+        self._prev_red_kills: int = 0
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -285,20 +323,23 @@ class LiveGamePoller:
             return
 
         try:
-            import math
+            import pandas as pd
 
             from lol_genius.api.ddragon import DataDragon
             from lol_genius.api.proxy_client import ProxyClient
             from lol_genius.db.queries import MatchDB
-            from lol_genius.features.player import rank_to_numeric
-            from lol_genius.features.timeline import compute_pregame_diff_stats
+            from lol_genius.features.timeline import (
+                _extract_team_vectors,
+                compute_pregame_diff_stats,
+            )
 
             ddragon = DataDragon(self._ddragon_cache)
-            proxy = ProxyClient(self._proxy_url)
+            proxy = ProxyClient(self._proxy_url, priority="high")
             db = MatchDB(self._dsn)
 
             try:
                 champ_wrs = db.get_champion_patch_winrates()
+                scaling_scores = db.get_champion_scaling_scores()
 
                 player_info = []
                 for p in all_players:
@@ -339,121 +380,95 @@ class LiveGamePoller:
                     (m["puuid"], m["champion_id"]): m for m in masteries_list
                 }
 
-                blue_ranks, red_ranks = [], []
-                blue_wrs, red_wrs = [], []
-                blue_masteries, red_masteries = [], []
-                blue_melee = red_melee = 0
-                blue_ad = red_ad = 0
-                blue_total_games, red_total_games = [], []
-                blue_hot_streaks = red_hot_streaks = 0
-                blue_veterans = red_veterans = 0
-                blue_mastery7 = red_mastery7 = 0
-                blue_champ_wrs_list, red_champ_wrs_list = [], []
-
+                rows = []
                 for p in player_info:
                     puuid = puuid_map.get(p["key"])
-                    team = p["team"]
                     champ_id = ddragon.get_champion_id_by_name(p["champion_name"])
-
                     rank_data = rank_by_puuid.get(puuid) if puuid else None
-                    if rank_data and rank_data.get("tier") and rank_data.get("rank"):
-                        rank_num = rank_to_numeric(
-                            rank_data["tier"],
-                            rank_data["rank"],
-                            rank_data.get("league_points") or 0,
-                        )
-                        w, losses = (
-                            rank_data.get("wins") or 0,
-                            rank_data.get("losses") or 0,
-                        )
-                        wr = w / (w + losses) if (w + losses) > 0 else 0.5
-                        if team == "ORDER":
-                            blue_ranks.append(rank_num)
-                            blue_wrs.append(wr)
-                        else:
-                            red_ranks.append(rank_num)
-                            red_wrs.append(wr)
-
                     mastery_data = (
                         mastery_by_key.get((puuid, champ_id))
                         if (puuid and champ_id is not None)
                         else None
                     )
-                    mp = (mastery_data or {}).get("mastery_points") or 0
-                    log_mastery = math.log((mp or 0) + 1)
-                    if team == "ORDER":
-                        blue_masteries.append(log_mastery)
-                    else:
-                        red_masteries.append(log_mastery)
-
-                    if champ_id is not None:
-                        if team == "ORDER":
-                            blue_melee += int(ddragon.is_melee(champ_id))
-                            blue_ad += int(
-                                ddragon.classify_damage_type(champ_id) == "AD"
-                            )
-                        else:
-                            red_melee += int(ddragon.is_melee(champ_id))
-                            red_ad += int(
-                                ddragon.classify_damage_type(champ_id) == "AD"
-                            )
-
-                    total_games = (
-                        ((rank_data.get("wins") or 0) + (rank_data.get("losses") or 0))
-                        if rank_data
-                        else 0
-                    )
-                    (blue_total_games if team == "ORDER" else red_total_games).append(
-                        total_games
+                    rows.append(
+                        {
+                            "team_id": 100 if p["team"] == "ORDER" else 200,
+                            "champion_id": champ_id,
+                            "tier": (rank_data or {}).get("tier"),
+                            "rank": (rank_data or {}).get("rank"),
+                            "league_points": (rank_data or {}).get("league_points", 0),
+                            "wins": (rank_data or {}).get("wins", 0),
+                            "losses": (rank_data or {}).get("losses", 0),
+                            "hot_streak": (rank_data or {}).get("hot_streak", 0),
+                            "veteran": (rank_data or {}).get("veteran", 0),
+                            "mastery_points": (mastery_data or {}).get(
+                                "mastery_points", 0
+                            ),
+                            "mastery_level": (mastery_data or {}).get(
+                                "mastery_level", 0
+                            ),
+                        }
                     )
 
-                    if rank_data:
-                        if (rank_data.get("hot_streak") or 0) >= 1:
-                            if team == "ORDER":
-                                blue_hot_streaks += 1
-                            else:
-                                red_hot_streaks += 1
-                        if (rank_data.get("veteran") or 0) >= 1:
-                            if team == "ORDER":
-                                blue_veterans += 1
-                            else:
-                                red_veterans += 1
-
-                    if (mastery_data or {}).get("mastery_level", 0) >= 7:
-                        if team == "ORDER":
-                            blue_mastery7 += 1
-                        else:
-                            red_mastery7 += 1
-
-                    if champ_id is not None and int(champ_id) in champ_wrs:
-                        wr_val = champ_wrs[int(champ_id)]["winrate"]
-                        (
-                            blue_champ_wrs_list
-                            if team == "ORDER"
-                            else red_champ_wrs_list
-                        ).append(wr_val)
-
+                group = pd.DataFrame(rows)
+                vectors = _extract_team_vectors(
+                    group,
+                    ddragon,
+                    champ_wrs,
+                    scaling_scores,
+                    ddragon.stat_growth_score,
+                )
+                (
+                    b_ranks,
+                    r_ranks,
+                    b_wrs,
+                    r_wrs,
+                    b_mast,
+                    r_mast,
+                    b_melee,
+                    r_melee,
+                    b_ad,
+                    r_ad,
+                    b_tg,
+                    r_tg,
+                    b_hs,
+                    r_hs,
+                    b_vet,
+                    r_vet,
+                    b_m7,
+                    r_m7,
+                    b_cwr,
+                    r_cwr,
+                    b_ss,
+                    r_ss,
+                    b_sg,
+                    r_sg,
+                ) = vectors
                 summary = compute_pregame_diff_stats(
-                    blue_ranks,
-                    red_ranks,
-                    blue_wrs,
-                    red_wrs,
-                    blue_masteries,
-                    red_masteries,
-                    blue_melee,
-                    red_melee,
-                    blue_ad,
-                    red_ad,
-                    blue_total_games=blue_total_games,
-                    red_total_games=red_total_games,
-                    blue_hot_streaks=blue_hot_streaks,
-                    red_hot_streaks=red_hot_streaks,
-                    blue_veterans=blue_veterans,
-                    red_veterans=red_veterans,
-                    blue_mastery7=blue_mastery7,
-                    red_mastery7=red_mastery7,
-                    blue_champ_wrs=blue_champ_wrs_list,
-                    red_champ_wrs=red_champ_wrs_list,
+                    b_ranks,
+                    r_ranks,
+                    b_wrs,
+                    r_wrs,
+                    b_mast,
+                    r_mast,
+                    b_melee,
+                    r_melee,
+                    b_ad,
+                    r_ad,
+                    blue_total_games=b_tg,
+                    red_total_games=r_tg,
+                    blue_hot_streaks=b_hs,
+                    red_hot_streaks=r_hs,
+                    blue_veterans=b_vet,
+                    red_veterans=r_vet,
+                    blue_mastery7=b_m7,
+                    red_mastery7=r_m7,
+                    blue_champ_wrs=b_cwr,
+                    red_champ_wrs=r_cwr,
+                    blue_scaling_scores=b_ss,
+                    red_scaling_scores=r_ss,
+                    blue_stat_growth=b_sg,
+                    red_stat_growth=r_sg,
                 )
                 with self._lock:
                     self._pregame_summary = summary
@@ -535,11 +550,64 @@ class LiveGamePoller:
         )
         game_reset = game_id_reset or time_reset
         self._last_game_time = current_game_time
+        if game_reset:
+            self._prev_diffs = None
+            self._peak_kill_diff = None
+            self._peak_tower_diff = None
+            self._prev_kill_diff_delta = 0.0
+            self._prev_blue_kills = 0
+            self._prev_red_kills = 0
+            self._pregame_summary = None
+            self._enriching = False
+
+        kill_diff = game_state.get("kill_diff", 0)
+        tower_diff = game_state.get("tower_diff", 0)
+        blue_kills = game_state.get("blue_kills", 0)
+        red_kills = game_state.get("red_kills", 0)
+
+        if self._prev_diffs is not None:
+            kill_diff_delta = kill_diff - self._prev_diffs.get("kill_diff", kill_diff)
+            blue_recent = blue_kills - self._prev_blue_kills
+            red_recent = red_kills - self._prev_red_kills
+            recent_kill_share_diff = blue_recent / max(
+                blue_kills, 1
+            ) - red_recent / max(red_kills, 1)
+        else:
+            kill_diff_delta = 0.0
+            recent_kill_share_diff = 0.0
+
+        kill_diff_accel = kill_diff_delta - self._prev_kill_diff_delta
+        if self._peak_kill_diff is None:
+            peak_kill_diff = kill_diff
+        else:
+            peak_kill_diff = max(self._peak_kill_diff, kill_diff)
+        if self._peak_tower_diff is None:
+            peak_tower_diff = tower_diff
+        else:
+            peak_tower_diff = max(self._peak_tower_diff, tower_diff)
+
         with self._lock:
             pregame_summary = self._pregame_summary
         features = build_live_features(
-            game_state, self._pregame_win_prob, pregame_summary
+            game_state,
+            self._pregame_win_prob,
+            pregame_summary,
+            prev_diffs=self._prev_diffs,
+            peak_kill_diff=peak_kill_diff,
+            peak_tower_diff=peak_tower_diff,
+            kill_diff_accel=kill_diff_accel,
+            recent_kill_share_diff=recent_kill_share_diff,
         )
+        self._prev_diffs = {
+            "kill_diff": kill_diff,
+            "cs_diff": game_state.get("cs_diff", 0),
+            "tower_diff": tower_diff,
+        }
+        self._peak_kill_diff = peak_kill_diff
+        self._peak_tower_diff = peak_tower_diff
+        self._prev_kill_diff_delta = kill_diff_delta
+        self._prev_blue_kills = blue_kills
+        self._prev_red_kills = red_kills
 
         try:
             model, feature_names = load_model(self.model_dir, "live")
