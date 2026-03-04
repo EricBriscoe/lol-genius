@@ -15,16 +15,17 @@ _PUUID_CACHE_MAX = 10_000
 
 
 class ProxyClient:
-    def __init__(self, proxy_url: str):
+    def __init__(self, proxy_url: str, priority: str = "normal"):
         self.base = proxy_url.rstrip("/") + "/riot/v1"
         self.client = httpx.Client(timeout=120.0)
         self._puuid_keys: OrderedDict[str, int] = OrderedDict()
+        self.priority = priority
 
     def _get(
         self, path: str, max_retries: int = 3, key_index: int | None = None
     ) -> tuple[dict | list | None, int | None]:
         url = f"{self.base}{path}"
-        headers = {}
+        headers = {"X-Priority": self.priority}
         if key_index is not None:
             headers["X-Key-Index"] = str(key_index)
         for attempt in range(max_retries):

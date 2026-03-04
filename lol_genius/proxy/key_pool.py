@@ -64,14 +64,17 @@ class KeyPool:
         return None
 
     def get(
-        self, url: str, key_index: int | None = None
+        self,
+        url: str,
+        key_index: int | None = None,
+        priority: str = "normal",
     ) -> tuple[dict | list | None, int]:
         if key_index is not None:
             with self._lock:
                 ks = self._get_by_index(key_index)
             if ks is not None:
                 try:
-                    result = ks.client.get(url)
+                    result = ks.client.get(url, priority=priority)
                     with self._lock:
                         ks.total_requests += 1
                     return result, key_index
@@ -90,7 +93,7 @@ class KeyPool:
             if ks is None:
                 raise APIKeyExpiredError("All API keys exhausted")
             try:
-                result = ks.client.get(url)
+                result = ks.client.get(url, priority=priority)
                 with self._lock:
                     ks.total_requests += 1
                 return result, used_index

@@ -26,6 +26,7 @@ def cli_error_handler(fn):
 
     return wrapper
 
+
 _DOCKER = os.environ.get("LOL_GENIUS_DOCKER") == "1"
 
 
@@ -68,11 +69,13 @@ def _make_api(config):
     client = RiotHTTPClient(
         config.riot_api_key, key_loader=key_loader, rate_scale=config.rate_scale
     )
-    return RiotAPI(client, config.region, config.routing)
+    return RiotAPI(client, config.region, config.routing, priority="low")
 
 
 @cli.command("init-db")
-@click.option("--wait", is_flag=True, help="Wait for database to become available first")
+@click.option(
+    "--wait", is_flag=True, help="Wait for database to become available first"
+)
 @click.pass_context
 @cli_error_handler
 def init_db(ctx, wait):
@@ -130,7 +133,18 @@ def seed(ctx):
         db.close()
 
 
+class _EventStopper:
+    def __init__(self, event):
+        self._event = event
+
+    def should_stop(self) -> bool:
+        return self._event.is_set()
+
+
 def _decide_action(db) -> str:
+    enrichment = db.get_enrichment_stats()
+    if enrichment["enriched"] < enrichment["total"]:
+        return "enrich"
     stats = db.get_timeline_stats()
     if stats["fetched"] < stats["total"]:
         return "fetch_timelines"
@@ -150,7 +164,7 @@ def crawl(ctx):
     config = _get_config(ctx)
 
     from lol_genius.api.ddragon import DataDragon
-    from lol_genius.crawler.snowball import crawl_matches
+    from lol_genius.crawler.snowball import crawl_matches, drain_unenriched
     from lol_genius.db.queries import MatchDB
 
     api = _make_api(config)
@@ -158,6 +172,7 @@ def crawl(ctx):
     db = MatchDB(config.database_url)
 
     _stop = threading.Event()
+    stopper = _EventStopper(_stop)
 
     def _handle_stop(signum, frame):
         _stop.set()
@@ -168,13 +183,21 @@ def crawl(ctx):
     try:
         while not _stop.is_set():
             db.conn.rollback()
-            if _decide_action(db) == "fetch_timelines":
+            action = _decide_action(db)
+
+            if action == "enrich":
+                drain_unenriched(
+                    api, config.database_url, config, stopper, batch_size=200
+                )
+            elif action == "fetch_timelines":
                 from lol_genius.crawler.fetch_timelines import fetch_match_timelines
 
                 fetch_match_timelines(api, db, limit=50)
             else:
                 current = db.get_match_count()
-                batch_config = replace(config, match_count=current + 200, continuous=False)
+                batch_config = replace(
+                    config, match_count=current + 200, continuous=False
+                )
                 crawl_matches(api, config.database_url, batch_config, ddragon)
 
             if not _stop.is_set():
@@ -301,7 +324,9 @@ def train(ctx, tune, live, notes):
             else None
         )
         match_ids = (
-            pd.read_parquet(match_ids_path).squeeze() if match_ids_path.exists() else None
+            pd.read_parquet(match_ids_path).squeeze()
+            if match_ids_path.exists()
+            else None
         )
         game_creations = None
 

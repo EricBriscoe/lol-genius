@@ -98,16 +98,17 @@ async def _cached_get(
 
     raw_key_index = request.headers.get("X-Key-Index")
     key_index = int(raw_key_index) if raw_key_index is not None else None
+    priority = request.headers.get("X-Priority", "normal")
 
     try:
-        result, used_key_index = await asyncio.to_thread(pool.get, url, key_index)
+        result, used_key_index = await asyncio.to_thread(
+            pool.get, url, key_index, priority
+        )
     except APIKeyExpiredError:
         return JSONResponse({"error": "All API keys expired"}, status_code=503)
     except BadRequestError as e:
         log.warning(f"Bad request (not cached): {e}")
-        return JSONResponse(
-            {"error": "bad_request", "detail": str(e)}, status_code=400
-        )
+        return JSONResponse({"error": "bad_request", "detail": str(e)}, status_code=400)
     except Exception:
         log.exception("Upstream error")
         return JSONResponse({"error": "upstream_error"}, status_code=502)
