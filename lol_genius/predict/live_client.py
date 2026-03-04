@@ -154,6 +154,7 @@ def parse_live_client_data(data: dict) -> dict:
 
 def _snap_to_snapshot(game_time: float) -> int:
     from lol_genius.features.timeline import SNAPSHOT_SECONDS
+
     return min(SNAPSHOT_SECONDS, key=lambda t: abs(t - game_time))
 
 
@@ -192,7 +193,9 @@ def build_live_features(
         "first_blood_blue": game_state.get("first_blood_blue", 0),
         "first_tower_blue": game_state.get("first_tower_blue", 0),
         "first_dragon_blue": game_state.get("first_dragon_blue", 0),
-        "pregame_blue_win_prob": pregame_win_prob if pregame_win_prob is not None else 0.5,
+        "pregame_blue_win_prob": pregame_win_prob
+        if pregame_win_prob is not None
+        else 0.5,
         "avg_rank_diff": summary.get("avg_rank_diff", 0.0),
         "rank_spread_diff": summary.get("rank_spread_diff", 0.0),
         "avg_winrate_diff": summary.get("avg_winrate_diff", 0.0),
@@ -241,11 +244,13 @@ class LiveGamePoller:
         self.status: str = "waiting"
         self._game_id: int | None = None
         self._last_game_time: float | None = None
+        self._enriching = False
         self._explainer: object | None = None
         self._explainer_model_id: int | None = None
 
     def _get_explainer(self, model):
         import shap
+
         model_id = id(model)
         if self._explainer is None or self._explainer_model_id != model_id:
             self._explainer = shap.TreeExplainer(model)
@@ -271,8 +276,12 @@ class LiveGamePoller:
 
     def _enrich_pregame(self, all_players: list[dict]) -> None:
         if not (self._dsn and self._proxy_url and self._ddragon_cache):
-            log.warning("Pregame enrichment skipped: missing dsn, proxy_url, or ddragon_cache")
-            self._pregame_summary = {}
+            log.warning(
+                "Pregame enrichment skipped: missing dsn, proxy_url, or ddragon_cache"
+            )
+            with self._lock:
+                self._pregame_summary = {}
+                self._enriching = False
             return
 
         try:
@@ -297,13 +306,17 @@ class LiveGamePoller:
                     parts = riot_id.rsplit("#", 1)
                     game_name = parts[0] if parts else riot_id
                     tag_line = parts[1] if len(parts) == 2 else ""
-                    player_info.append({
-                        "key": riot_id,
-                        "game_name": game_name,
-                        "tag_line": tag_line,
-                        "champion_name": p.get("championName", p.get("rawChampionName", "")),
-                        "team": p.get("team", "ORDER"),
-                    })
+                    player_info.append(
+                        {
+                            "key": riot_id,
+                            "game_name": game_name,
+                            "tag_line": tag_line,
+                            "champion_name": p.get(
+                                "championName", p.get("rawChampionName", "")
+                            ),
+                            "team": p.get("team", "ORDER"),
+                        }
+                    )
 
                 puuid_map = {}
                 for p in player_info:
@@ -313,12 +326,18 @@ class LiveGamePoller:
 
                 if not puuid_map:
                     log.warning("Pregame enrichment: could not resolve any PUUIDs")
-                    self._pregame_summary = {}
+                    with self._lock:
+                        self._pregame_summary = {}
+                        self._enriching = False
                     return
 
-                ranks_list, masteries_list = db.get_ranks_and_mastery_by_puuids(list(puuid_map.values()))
+                ranks_list, masteries_list = db.get_ranks_and_mastery_by_puuids(
+                    list(puuid_map.values())
+                )
                 rank_by_puuid = {r["puuid"]: r for r in ranks_list}
-                mastery_by_key = {(m["puuid"], m["champion_id"]): m for m in masteries_list}
+                mastery_by_key = {
+                    (m["puuid"], m["champion_id"]): m for m in masteries_list
+                }
 
                 blue_ranks, red_ranks = [], []
                 blue_wrs, red_wrs = [], []
@@ -338,8 +357,15 @@ class LiveGamePoller:
 
                     rank_data = rank_by_puuid.get(puuid) if puuid else None
                     if rank_data and rank_data.get("tier") and rank_data.get("rank"):
-                        rank_num = rank_to_numeric(rank_data["tier"], rank_data["rank"], rank_data.get("league_points") or 0)
-                        w, losses = rank_data.get("wins") or 0, rank_data.get("losses") or 0
+                        rank_num = rank_to_numeric(
+                            rank_data["tier"],
+                            rank_data["rank"],
+                            rank_data.get("league_points") or 0,
+                        )
+                        w, losses = (
+                            rank_data.get("wins") or 0,
+                            rank_data.get("losses") or 0,
+                        )
                         wr = w / (w + losses) if (w + losses) > 0 else 0.5
                         if team == "ORDER":
                             blue_ranks.append(rank_num)
@@ -348,7 +374,11 @@ class LiveGamePoller:
                             red_ranks.append(rank_num)
                             red_wrs.append(wr)
 
-                    mastery_data = mastery_by_key.get((puuid, champ_id)) if (puuid and champ_id is not None) else None
+                    mastery_data = (
+                        mastery_by_key.get((puuid, champ_id))
+                        if (puuid and champ_id is not None)
+                        else None
+                    )
                     mp = (mastery_data or {}).get("mastery_points") or 0
                     log_mastery = math.log((mp or 0) + 1)
                     if team == "ORDER":
@@ -359,13 +389,23 @@ class LiveGamePoller:
                     if champ_id is not None:
                         if team == "ORDER":
                             blue_melee += int(ddragon.is_melee(champ_id))
-                            blue_ad += int(ddragon.classify_damage_type(champ_id) == "AD")
+                            blue_ad += int(
+                                ddragon.classify_damage_type(champ_id) == "AD"
+                            )
                         else:
                             red_melee += int(ddragon.is_melee(champ_id))
-                            red_ad += int(ddragon.classify_damage_type(champ_id) == "AD")
+                            red_ad += int(
+                                ddragon.classify_damage_type(champ_id) == "AD"
+                            )
 
-                    total_games = ((rank_data.get("wins") or 0) + (rank_data.get("losses") or 0)) if rank_data else 0
-                    (blue_total_games if team == "ORDER" else red_total_games).append(total_games)
+                    total_games = (
+                        ((rank_data.get("wins") or 0) + (rank_data.get("losses") or 0))
+                        if rank_data
+                        else 0
+                    )
+                    (blue_total_games if team == "ORDER" else red_total_games).append(
+                        total_games
+                    )
 
                     if rank_data:
                         if (rank_data.get("hot_streak") or 0) >= 1:
@@ -387,18 +427,37 @@ class LiveGamePoller:
 
                     if champ_id is not None and int(champ_id) in champ_wrs:
                         wr_val = champ_wrs[int(champ_id)]["winrate"]
-                        (blue_champ_wrs_list if team == "ORDER" else red_champ_wrs_list).append(wr_val)
+                        (
+                            blue_champ_wrs_list
+                            if team == "ORDER"
+                            else red_champ_wrs_list
+                        ).append(wr_val)
 
-                self._pregame_summary = compute_pregame_diff_stats(
-                    blue_ranks, red_ranks, blue_wrs, red_wrs,
-                    blue_masteries, red_masteries,
-                    blue_melee, red_melee, blue_ad, red_ad,
-                    blue_total_games=blue_total_games, red_total_games=red_total_games,
-                    blue_hot_streaks=blue_hot_streaks, red_hot_streaks=red_hot_streaks,
-                    blue_veterans=blue_veterans, red_veterans=red_veterans,
-                    blue_mastery7=blue_mastery7, red_mastery7=red_mastery7,
-                    blue_champ_wrs=blue_champ_wrs_list, red_champ_wrs=red_champ_wrs_list,
+                summary = compute_pregame_diff_stats(
+                    blue_ranks,
+                    red_ranks,
+                    blue_wrs,
+                    red_wrs,
+                    blue_masteries,
+                    red_masteries,
+                    blue_melee,
+                    red_melee,
+                    blue_ad,
+                    red_ad,
+                    blue_total_games=blue_total_games,
+                    red_total_games=red_total_games,
+                    blue_hot_streaks=blue_hot_streaks,
+                    red_hot_streaks=red_hot_streaks,
+                    blue_veterans=blue_veterans,
+                    red_veterans=red_veterans,
+                    blue_mastery7=blue_mastery7,
+                    red_mastery7=red_mastery7,
+                    blue_champ_wrs=blue_champ_wrs_list,
+                    red_champ_wrs=red_champ_wrs_list,
                 )
+                with self._lock:
+                    self._pregame_summary = summary
+                    self._enriching = False
                 log.info("Enriched pregame features for game %s", self._game_id)
             finally:
                 proxy.close()
@@ -406,7 +465,9 @@ class LiveGamePoller:
 
         except Exception:
             log.warning("Pregame enrichment failed, using defaults", exc_info=True)
-            self._pregame_summary = {}
+            with self._lock:
+                self._pregame_summary = {}
+                self._enriching = False
 
     def _poll_loop(self) -> None:
         consecutive_failures = 0
@@ -419,9 +480,20 @@ class LiveGamePoller:
                 log.warning(f"Live game poll error: {e}")
                 with self._lock:
                     self.status = "poll_error"
-                self._push_sse("live_game_update", {"status": "poll_error", "error": str(e), "blue_win_probability": None})
+                self._push_sse(
+                    "live_game_update",
+                    {
+                        "status": "poll_error",
+                        "error": str(e),
+                        "blue_win_probability": None,
+                    },
+                )
                 consecutive_failures += 1
-                wait = exponential_backoff(consecutive_failures - 1, base_wait=POLL_INTERVAL, max_wait=MAX_POLL_INTERVAL)
+                wait = exponential_backoff(
+                    consecutive_failures - 1,
+                    base_wait=POLL_INTERVAL,
+                    max_wait=MAX_POLL_INTERVAL,
+                )
             self._stop_event.wait(wait)
 
     def _poll(self) -> None:
@@ -435,26 +507,48 @@ class LiveGamePoller:
             return
 
         game_id = data.get("gameData", {}).get("gameId")
-        game_id_reset = game_id is not None and self._game_id is not None and game_id != self._game_id
+        game_id_reset = (
+            game_id is not None
+            and self._game_id is not None
+            and game_id != self._game_id
+        )
         if game_id is not None:
             self._game_id = game_id
 
         all_players = data.get("allPlayers", [])
-        if self._pregame_summary is None and all_players:
-            self._enrich_pregame(all_players)
+        with self._lock:
+            should_enrich = (
+                self._pregame_summary is None and all_players and not self._enriching
+            )
+            if should_enrich:
+                self._enriching = True
+        if should_enrich:
+            threading.Thread(
+                target=self._enrich_pregame, args=(all_players,), daemon=True
+            ).start()
 
         game_state = parse_live_client_data(data)
         current_game_time = game_state.get("game_time", 0)
-        time_reset = self._last_game_time is not None and current_game_time < self._last_game_time - 30
+        time_reset = (
+            self._last_game_time is not None
+            and current_game_time < self._last_game_time - 30
+        )
         game_reset = game_id_reset or time_reset
         self._last_game_time = current_game_time
-        features = build_live_features(game_state, self._pregame_win_prob, self._pregame_summary)
+        with self._lock:
+            pregame_summary = self._pregame_summary
+        features = build_live_features(
+            game_state, self._pregame_win_prob, pregame_summary
+        )
 
         try:
             model, feature_names = load_model(self.model_dir, "live")
         except Exception as e:
             log.warning("Live model not found: %s", e)
-            self._push_sse("live_game_update", {"status": "model_missing", "blue_win_probability": None})
+            self._push_sse(
+                "live_game_update",
+                {"status": "model_missing", "blue_win_probability": None},
+            )
             with self._lock:
                 self.status = "model_missing"
             raise
@@ -462,7 +556,9 @@ class LiveGamePoller:
         feat_df = pd.DataFrame([features])
         missing = [col for col in feature_names if col not in feat_df.columns]
         if missing:
-            log.warning("Missing %d features (filling with 0.0): %s", len(missing), missing[:5])
+            log.warning(
+                "Missing %d features (filling with 0.0): %s", len(missing), missing[:5]
+            )
             for col in missing:
                 feat_df[col] = 0.0
         feat_df = feat_df[feature_names]
@@ -471,6 +567,7 @@ class LiveGamePoller:
         prob = float(model.predict(dmat)[0])
 
         from lol_genius.model.train import load_calibrator
+
         cal = load_calibrator(self.model_dir, "live")
         if cal is None:
             log.warning("No live calibrator found; predictions are uncalibrated")
@@ -510,7 +607,9 @@ class LiveGamePoller:
             self.current = update
             if game_reset:
                 self.history = []
-            self.history.append({"game_time": update["game_time"], "probability": round(prob * 100, 1)})
+            self.history.append(
+                {"game_time": update["game_time"], "probability": round(prob * 100, 1)}
+            )
             if len(self.history) > 100:
                 self.history = self.history[-100:]
         self._push_sse("live_game_update", update)
