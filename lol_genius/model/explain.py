@@ -72,6 +72,7 @@ def explain_model(
 
     if database_url and run_id:
         import json
+
         from lol_genius.db.queries import MatchDB
 
         db = MatchDB(database_url)

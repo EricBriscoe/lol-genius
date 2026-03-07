@@ -140,7 +140,7 @@ export default function LiveGame({ latestUpdate }: Props) {
   useEffect(() => {
     if (!latestUpdate) return;
     const { status, blue_win_probability, game_reset } = latestUpdate;
-    if (status === "model_missing" || status === "poll_error") {
+    if (status === "model_missing" || status === "poll_error" || status === "no_data") {
       setPollerStatus(status);
       return;
     }
@@ -354,6 +354,15 @@ export default function LiveGame({ latestUpdate }: Props) {
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: "var(--gold)", fontSize: 13 }}>
             <AlertTriangle size={16} />
             Poll error — check that the Live Client API is reachable
+          </div>
+        </Card>
+      )}
+
+      {connected && pollerStatus === "no_data" && (
+        <Card style={{ borderColor: "var(--gold)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: "var(--gold)", fontSize: 13 }}>
+            <AlertTriangle size={16} />
+            No game detected at {host}:{port} — ensure League is running and in-game
           </div>
         </Card>
       )}

@@ -88,19 +88,38 @@ def load_config(config_path: str = "config.yaml") -> Config:
 
     database_url = os.environ.get("DATABASE_URL", raw.get("database_url", ""))
     if database_url and not database_url.startswith("postgresql://"):
-        raise ValueError(f"database_url must start with postgresql://, got: {database_url[:30]}...")
+        raise ValueError(
+            f"database_url must start with postgresql://, got: {database_url[:30]}..."
+        )
     if region not in ROUTING_MAP:
-        raise ValueError(f"Unknown region '{region}'. Valid: {', '.join(sorted(ROUTING_MAP))}")
+        raise ValueError(
+            f"Unknown region '{region}'. Valid: {', '.join(sorted(ROUTING_MAP))}"
+        )
 
-    known_tiers = {"IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"}
+    known_tiers = {
+        "IRON",
+        "BRONZE",
+        "SILVER",
+        "GOLD",
+        "PLATINUM",
+        "EMERALD",
+        "DIAMOND",
+        "MASTER",
+        "GRANDMASTER",
+        "CHALLENGER",
+    }
     valid_divisions = {"I", "II", "III", "IV"}
     divisions = raw.get("target_divisions", ["I", "II", "III", "IV"])
     for t in tiers:
         if t not in known_tiers:
-            raise ValueError(f"Unknown tier '{t}'. Valid: {', '.join(sorted(known_tiers))}")
+            raise ValueError(
+                f"Unknown tier '{t}'. Valid: {', '.join(sorted(known_tiers))}"
+            )
     for d in divisions:
         if d not in valid_divisions:
-            raise ValueError(f"Unknown division '{d}'. Valid: {', '.join(sorted(valid_divisions))}")
+            raise ValueError(
+                f"Unknown division '{d}'. Valid: {', '.join(sorted(valid_divisions))}"
+            )
 
     return Config(
         riot_api_key=api_key,

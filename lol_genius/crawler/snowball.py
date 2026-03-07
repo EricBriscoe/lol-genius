@@ -8,6 +8,7 @@ import threading
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from lol_genius.api.client import APIKeyExpiredError
 from lol_genius.api.ddragon import DataDragon
 from lol_genius.api.riot_api import RiotAPI
@@ -138,9 +139,7 @@ def _enrich_match_participants(
     for p in participants:
         puuid = p["puuid"]
         summoner_id = p.get("summoner_id", "")
-        needs = check_enrich_needed(
-            db, puuid, summoner_id, start_time_ms=start_time_ms
-        )
+        needs = check_enrich_needed(db, puuid, summoner_id, start_time_ms=start_time_ms)
         if any(needs.values()):
             work_items.append((puuid, summoner_id, needs))
 
@@ -176,7 +175,7 @@ def _enrich_match_participants(
     return all_ok
 
 
-def _drain_unenriched(
+def drain_unenriched(
     api: RiotAPI,
     database_url: str,
     config: Config,
@@ -407,8 +406,8 @@ def crawl_matches(
 ) -> None:
     from lol_genius.crawler.planner import (
         assess_data_quality,
-        plan_next_action,
         log_assessment,
+        plan_next_action,
     )
     from lol_genius.crawler.seed import seed_tier
 
@@ -479,7 +478,7 @@ def crawl_matches(
             log_assessment(metrics, action)
 
             if action.action == "enrich":
-                _drain_unenriched(api, database_url, config, stopper, batch_size=200)
+                drain_unenriched(api, database_url, config, stopper, batch_size=200)
 
             elif action.action == "reseed":
                 db = MatchDB(database_url)
@@ -543,13 +542,13 @@ def _maintenance_loop(
     stopper: _GracefulStop,
     match_start_time: int | None,
 ) -> None:
+    from lol_genius.crawler.enrich import re_enrich_stale_batch
     from lol_genius.crawler.planner import (
         assess_data_quality,
-        plan_next_action,
         log_assessment,
+        plan_next_action,
     )
     from lol_genius.crawler.seed import seed_tier
-    from lol_genius.crawler.enrich import re_enrich_stale_batch
 
     consecutive_healthy = 0
     last_prune_time = time.monotonic()
@@ -599,7 +598,7 @@ def _maintenance_loop(
                     last_prune_time = now
 
             elif action.action == "enrich":
-                _drain_unenriched(api, database_url, config, stopper, batch_size=200)
+                drain_unenriched(api, database_url, config, stopper, batch_size=200)
 
             elif action.action == "re_enrich":
                 db = MatchDB(database_url)

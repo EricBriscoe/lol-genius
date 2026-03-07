@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock
 
-
 from lol_genius.crawler.seed import (
     ENTRIES_PER_PAGE,
     _extract_puuids,

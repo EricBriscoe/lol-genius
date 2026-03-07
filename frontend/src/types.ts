@@ -14,6 +14,7 @@ export interface DistributionData {
   patch_distribution: Record<string, number>;
   tier_seed_stats: Record<string, Record<string, number>>;
   match_age_range: { oldest: string; newest: string } | null;
+  crawl_rate: { hour: string; count: number }[];
 }
 
 export interface ModelRun {
@@ -146,6 +147,36 @@ export interface PredictResult {
   game_id: number;
   game_mode: string;
   game_length_seconds: number;
+}
+
+export interface ChampionStat {
+  champion_id: number;
+  champion_name: string;
+  games: number;
+  wins: number;
+  winrate: number;
+  pick_rate: number;
+  ban_rate: number;
+  bans: number;
+  avg_kills: number;
+  avg_deaths: number;
+  avg_assists: number;
+  avg_cs: number;
+  avg_gold: number;
+  avg_damage: number;
+  avg_vision: number;
+  positions: Record<string, number>;
+  tags: string[];
+  attack_range: number;
+}
+
+export interface ChampionStatsResponse {
+  total_matches: number;
+  patch: string | null;
+  available_patches: string[];
+  tier: string | null;
+  available_tiers: string[];
+  champions: ChampionStat[];
 }
 
 export function isCrawlerSSE(data: unknown): data is CrawlerSSE {

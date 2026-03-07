@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import json
 import logging
 import threading
 import time
 from collections import deque
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -24,11 +25,16 @@ _training_lock = threading.Lock()
 _poller_lock = threading.Lock()
 _training_status: dict | None = None
 _sse_events: deque[dict] = deque(maxlen=500)
+_sse_counter = itertools.count(1)
 _live_game_poller = None
 
 
 def _push_sse(event_type: str, data: dict):
-    _sse_events.append({"event": event_type, "data": data, "ts": time.time()})
+    _sse_events.append({
+        "id": next(_sse_counter),
+        "event": event_type,
+        "data": data,
+    })
 
 
 def _set_stage(stage_dict: dict):
@@ -76,22 +82,29 @@ async def distributions(request: Request):
             patch_dist = db.get_patch_distribution()
             tier_seed_stats = db.get_queue_stats_by_tier()
             age_range = db.get_match_age_range()
+            crawl_rate_raw = db.get_crawl_rate_history()
 
         match_age = None
         if age_range:
             oldest = datetime.fromtimestamp(
-                age_range[0] / 1000, tz=timezone.utc
+                age_range[0] / 1000, tz=UTC
             ).isoformat()
             newest = datetime.fromtimestamp(
-                age_range[1] / 1000, tz=timezone.utc
+                age_range[1] / 1000, tz=UTC
             ).isoformat()
             match_age = {"oldest": oldest, "newest": newest}
+
+        crawl_rate = [
+            {"hour": r["hour"].isoformat(), "count": r["count"]}
+            for r in crawl_rate_raw
+        ]
 
         return {
             "rank_distribution": rank_dist,
             "patch_distribution": patch_dist,
             "tier_seed_stats": tier_seed_stats,
             "match_age_range": match_age,
+            "crawl_rate": crawl_rate,
         }
 
     return await asyncio.to_thread(_query)
@@ -166,7 +179,7 @@ async def trigger_training(request: Request):
 
     if model_type not in _VALID_MODEL_TYPES:
         return JSONResponse({"error": "Invalid model_type"}, status_code=400)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_id = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
 
     from lol_genius.model.train import DEFAULT_PARAMS, PARAM_PRESETS
 
@@ -213,7 +226,13 @@ def _run_training_pipeline(
         return
 
     try:
-        _set_stage({"stage": "building_features", "run_id": run_id_hint, "started_at": time.time()})
+        _set_stage(
+            {
+                "stage": "building_features",
+                "run_id": run_id_hint,
+                "started_at": time.time(),
+            }
+        )
 
         import pandas as pd
 
@@ -260,12 +279,23 @@ def _run_training_pipeline(
             _set_stage({"stage": "error", "error": "No training data found"})
             return
 
-        match_count = match_ids.nunique() if match_ids is not None and len(match_ids) > 0 else len(X)
+        match_count = (
+            match_ids.nunique()
+            if match_ids is not None and len(match_ids) > 0
+            else len(X)
+        )
 
         train_params = None
         tuned_num_round = 1000
         if resolved_params == "__auto_tune__":
-            _set_stage({"stage": "tuning", "run_id": run_id_hint, "matches": match_count, "features": X.shape[1]})
+            _set_stage(
+                {
+                    "stage": "tuning",
+                    "run_id": run_id_hint,
+                    "matches": match_count,
+                    "features": X.shape[1],
+                }
+            )
 
             from lol_genius.model.train import tune_hyperparameters
 
@@ -275,7 +305,14 @@ def _run_training_pipeline(
         elif isinstance(resolved_params, dict):
             train_params = resolved_params
 
-        _set_stage({"stage": "training", "run_id": run_id_hint, "matches": match_count, "features": X.shape[1]})
+        _set_stage(
+            {
+                "stage": "training",
+                "run_id": run_id_hint,
+                "matches": match_count,
+                "features": X.shape[1],
+            }
+        )
 
         train_kwargs = dict(
             patches=patches,
@@ -294,6 +331,7 @@ def _run_training_pipeline(
 
         if model_type == "pregame" and match_ids is not None and not match_ids.empty:
             import xgboost as xgb
+
             from lol_genius.model.train import load_model as _load_model
 
             try:
@@ -343,7 +381,14 @@ def _run_training_pipeline(
             model, X_shap, str(type_dir), database_url=dsn, run_id=actual_run_id
         )
 
-        _set_stage({"stage": "completed", "run_id": actual_run_id, "metrics": metrics, "completed_at": time.time()})
+        _set_stage(
+            {
+                "stage": "completed",
+                "run_id": actual_run_id,
+                "metrics": metrics,
+                "completed_at": time.time(),
+            }
+        )
 
     except Exception as e:
         log.exception("Training pipeline failed")
@@ -392,6 +437,87 @@ async def system_health(request: Request):
         "proxy_health": proxy_health,
         "stale_enrichment": stale,
     }
+
+
+@router.get("/champions/stats")
+async def champion_stats(
+    request: Request,
+    patch: str | None = Query(default=None),
+    tier: str | None = Query(default=None),
+):
+    from lol_genius.db.queries import TIER_ORDER
+
+    if tier is not None and tier not in TIER_ORDER:
+        return JSONResponse({"error": f"Invalid tier: {tier}"}, status_code=400)
+
+    pool = request.app.state.pool
+    ddragon_cache = request.app.state.ddragon_cache
+
+    def _query():
+        from lol_genius.api.ddragon import DataDragon
+
+        with pooled_db(pool) as db:
+            patch_dist = db.get_patch_distribution()
+            resolved_patch = patch
+            if not resolved_patch and patch_dist:
+                resolved_patch = max(
+                    patch_dist,
+                    key=lambda p: (
+                        int(p.split(".")[0]) if "." in p else 0,
+                        int(p.split(".")[1]) if "." in p else 0,
+                    ),
+                )
+            stats = db.get_champion_stats(resolved_patch, tier=tier)
+            ban_stats = db.get_champion_ban_stats(resolved_patch, tier=tier)
+            if tier:
+                total_matches = db.get_tier_match_count(resolved_patch, tier)
+            else:
+                total_matches = (
+                    patch_dist.get(resolved_patch, 0)
+                    if resolved_patch
+                    else sum(patch_dist.values())
+                )
+
+        ddragon = DataDragon(ddragon_cache)
+        champ_data = ddragon.fetch_champion_data()
+        champ_info = {}
+        if champ_data:
+            for c in champ_data.values():
+                cid = int(c.get("key", 0))
+                champ_info[cid] = {
+                    "tags": c.get("tags", []),
+                    "attack_range": c.get("stats", {}).get("attackrange", 0),
+                }
+
+        champions = []
+        for s in stats:
+            cid = s["champion_id"]
+            info = champ_info.get(cid, {})
+            bans = ban_stats.get(cid, 0)
+            champions.append(
+                {
+                    **s,
+                    "winrate": round(s["wins"] / s["games"], 4) if s["games"] else 0,
+                    "pick_rate": round(s["games"] / total_matches, 4)
+                    if total_matches
+                    else 0,
+                    "ban_rate": round(bans / total_matches, 4) if total_matches else 0,
+                    "bans": bans,
+                    "tags": info.get("tags", []),
+                    "attack_range": info.get("attack_range", 0),
+                }
+            )
+
+        return {
+            "total_matches": total_matches,
+            "patch": resolved_patch,
+            "available_patches": list(patch_dist.keys()),
+            "tier": tier,
+            "available_tiers": list(TIER_ORDER.keys()),
+            "champions": champions,
+        }
+
+    return await asyncio.to_thread(_query)
 
 
 @router.get("/predict/lookup")
@@ -481,7 +607,9 @@ async def live_game_start(request: Request):
     except (ValueError, TypeError):
         return JSONResponse({"error": "port must be an integer"}, status_code=400)
     if not (1024 <= port <= 65535):
-        return JSONResponse({"error": "port must be between 1024 and 65535"}, status_code=400)
+        return JSONResponse(
+            {"error": "port must be between 1024 and 65535"}, status_code=400
+        )
     pregame_win_prob = body.get("pregame_win_prob")
     if pregame_win_prob is not None:
         pregame_win_prob = float(pregame_win_prob)
@@ -496,7 +624,10 @@ async def live_game_start(request: Request):
         if _live_game_poller is not None:
             _live_game_poller.stop()
         _live_game_poller = LiveGamePoller(
-            host, port, model_dir, _push_sse,
+            host,
+            port,
+            model_dir,
+            _push_sse,
             pregame_win_prob=pregame_win_prob,
             dsn=dsn,
             proxy_url=proxy_url,
@@ -552,7 +683,7 @@ async def sse_stream(request: Request):
             }
 
     async def event_generator():
-        last_idx = len(_sse_events)
+        last_seen_id = _sse_events[-1]["id"] if _sse_events else 0
         last_status_time = 0
 
         while True:
@@ -568,13 +699,10 @@ async def sse_stream(request: Request):
                 except Exception as e:
                     log.warning(f"SSE crawler poll error: {e}")
 
-            current_len = len(_sse_events)
-            if current_len < last_idx:
-                last_idx = 0
-            if current_len > last_idx:
-                for evt in list(_sse_events)[last_idx:current_len]:
-                    yield {"event": evt["event"], "data": json.dumps(evt["data"])}
-                last_idx = current_len
+            new_events = [e for e in _sse_events if e["id"] > last_seen_id]
+            for evt in new_events:
+                yield {"event": evt["event"], "data": json.dumps(evt["data"])}
+                last_seen_id = evt["id"]
 
             await asyncio.sleep(1)
 

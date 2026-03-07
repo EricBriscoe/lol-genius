@@ -12,20 +12,11 @@ import {
 import { Search, Loader2, UserX } from "lucide-react";
 import Card from "../components/Card";
 import { lookupPlayer, predictLiveGame } from "../api";
-import { tooltipStyle, sectionTitle, primaryButton } from "../styles";
+import { tooltipStyle, sectionTitle, primaryButton, POSITION_LABELS } from "../styles";
 import type { PredictLookup, PredictResult, PredictParticipant } from "../types";
 import { formatFeatureName } from "../utils";
 
 type Stage = "idle" | "searching" | "not_in_game" | "predicting" | "result" | "error";
-
-const POSITION_LABELS: Record<string, string> = {
-  TOP: "Top",
-  JUNGLE: "Jungle",
-  MIDDLE: "Mid",
-  BOTTOM: "Bot",
-  UTILITY: "Support",
-  UNKNOWN: "?",
-};
 
 const POSITION_ORDER = ["TOP", "JUNGLE", "MIDDLE", "BOTTOM", "UTILITY"];
 

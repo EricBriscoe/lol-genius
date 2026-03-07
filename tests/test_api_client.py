@@ -6,11 +6,11 @@ import httpx
 import pytest
 
 from lol_genius.api.client import (
+    METHOD_RATE_LIMITS,
     BadRequestError,
     RateLimiter,
     RiotHTTPClient,
     resolve_method,
-    METHOD_RATE_LIMITS,
 )
 
 

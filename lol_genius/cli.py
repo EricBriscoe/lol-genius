@@ -4,7 +4,7 @@ import functools
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import click
 
@@ -356,6 +356,7 @@ def train(ctx, tune, live, notes):
 
     if not live and match_ids is not None:
         import xgboost as xgb
+
         from lol_genius.db.queries import MatchDB
         from lol_genius.model.train import load_model as _load_model
 
@@ -454,13 +455,13 @@ def predict(ctx, match_id):
     """Predict outcome for a specific match and show SHAP explanation."""
     config = _get_config(ctx)
 
+    import pandas as pd
+
     from lol_genius.api.ddragon import DataDragon
     from lol_genius.db.queries import MatchDB
     from lol_genius.features.build import _build_match_features
     from lol_genius.model.explain import explain_single_match
     from lol_genius.model.train import load_model
-
-    import pandas as pd
 
     model, feature_names = load_model(config.model_dir)
     db = MatchDB(config.database_url)
@@ -671,8 +672,8 @@ def status(ctx):
 
         age_range = db.get_match_age_range()
         if age_range:
-            oldest = datetime.fromtimestamp(age_range[0] / 1000, tz=timezone.utc)
-            newest = datetime.fromtimestamp(age_range[1] / 1000, tz=timezone.utc)
+            oldest = datetime.fromtimestamp(age_range[0] / 1000, tz=UTC)
+            newest = datetime.fromtimestamp(age_range[1] / 1000, tz=UTC)
             span = newest - oldest
             click.echo("\n  Data Freshness:")
             click.echo(f"    Oldest match:  {oldest:%Y-%m-%d %H:%M} UTC")
@@ -690,6 +691,33 @@ def status(ctx):
         click.echo()
     finally:
         db.close()
+
+
+@cli.command("export-model")
+@click.option(
+    "--format",
+    "fmt",
+    default="onnx",
+    type=click.Choice(["onnx"]),
+    help="Export format",
+)
+@click.option(
+    "--type",
+    "model_type",
+    default="live",
+    type=click.Choice(["pregame", "live"]),
+    help="Model type to export",
+)
+@click.pass_context
+@cli_error_handler
+def export_model(ctx, fmt, model_type):
+    """Export trained model to ONNX format with feature importance."""
+    config = _get_config(ctx)
+
+    from lol_genius.model.export import export_onnx
+
+    out_path = export_onnx(config.model_dir, model_type)
+    click.echo(f"Exported {model_type} model to {out_path}")
 
 
 @cli.command()

@@ -1,7 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -37,9 +39,7 @@ interface Props {
 export default function CrawlerStatus({ live }: Props) {
   const [initial, setInitial] = useState<StatusData | null>(null);
   const [dist, setDist] = useState<DistributionData | null>(null);
-  const [timelineRate, setTimelineRate] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const timelineRef = useRef<{ fetched: number; timestamp: number } | null>(null);
 
   useEffect(() => {
     fetchStatus().then(setInitial).catch((e) => setError(e.message));
@@ -55,19 +55,6 @@ export default function CrawlerStatus({ live }: Props) {
   const enrichPct = enrichment.total > 0 ? (enrichment.enriched / enrichment.total) * 100 : 0;
   const timelinePct = timeline.total > 0 ? (timeline.fetched / timeline.total) * 100 : 0;
   const isFetchingTimelines = timeline.fetched < timeline.total;
-
-  useEffect(() => {
-    const prev = timelineRef.current;
-    const now = Date.now();
-    if (prev !== null) {
-      const elapsed = (now - prev.timestamp) / 1000;
-      const delta = timeline.fetched - prev.fetched;
-      if (elapsed > 0 && delta >= 0) {
-        setTimelineRate((delta / elapsed) * 60);
-      }
-    }
-    timelineRef.current = { fetched: timeline.fetched, timestamp: now };
-  }, [timeline.fetched]);
 
   const rankData = useMemo(() =>
     dist?.rank_distribution
@@ -99,6 +86,14 @@ export default function CrawlerStatus({ live }: Props) {
         })
       : [],
     [dist?.tier_seed_stats],
+  );
+
+  const crawlRateData = useMemo(() =>
+    dist?.crawl_rate?.map((d) => ({
+      count: d.count,
+      label: new Date(d.hour).toLocaleDateString(undefined, { weekday: "short", hour: "numeric" }),
+    })) ?? [],
+    [dist?.crawl_rate],
   );
 
   const ageRange = dist?.match_age_range;
@@ -146,57 +141,51 @@ export default function CrawlerStatus({ live }: Props) {
             value={(queueStats.done || 0).toLocaleString()}
             sub={`${(queueStats.pending || 0).toLocaleString()} pending`}
           />
+          <StatBox
+            label="Enriched"
+            value={`${enrichPct.toFixed(0)}%`}
+            sub={`${enrichment.enriched.toLocaleString()} / ${enrichment.total.toLocaleString()}`}
+          />
+          <StatBox
+            label="Timelines"
+            value={`${timelinePct.toFixed(0)}%`}
+            sub={`${timeline.fetched.toLocaleString()} / ${timeline.total.toLocaleString()}`}
+          />
         </div>
+      </Card>
 
-        <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
-                Enrichment Progress
-              </span>
-              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                {enrichment.enriched.toLocaleString()} / {enrichment.total.toLocaleString()} ({enrichPct.toFixed(1)}%)
-              </span>
-            </div>
-            <div style={{ height: 8, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
-              <div
-                style={{
-                  height: "100%",
-                  width: `${enrichPct}%`,
-                  background: "linear-gradient(90deg, var(--accent), var(--gold))",
-                  borderRadius: 4,
-                  transition: "width 0.5s ease",
-                }}
+      <Card>
+        <h3 style={{ ...sectionTitle, marginBottom: 12 }}>Crawl Rate</h3>
+        <div style={{ height: 280 }}>
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={crawlRateData} margin={{ top: 5, right: 5, bottom: 5, left: 5 }}>
+              <defs>
+                <linearGradient id="crawlGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+              <XAxis
+                dataKey="label"
+                tick={{ fill: "var(--text-secondary)", fontSize: 10 }}
+                interval="preserveStartEnd"
               />
-            </div>
-          </div>
-
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "1px" }}>
-                Timeline Progress
-              </span>
-              <span className="mono" style={{ fontSize: 12, color: "var(--text-secondary)" }}>
-                {timeline.fetched.toLocaleString()} / {timeline.total.toLocaleString()} ({timelinePct.toFixed(1)}%)
-                {timelineRate !== null && timelineRate > 0 && (
-                  <span style={{ marginLeft: 8, color: "var(--text-muted)" }}>
-                    {timelineRate.toFixed(1)} / min
-                  </span>
-                )}
-              </span>
-            </div>
-            <div style={{ height: 8, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
-              <div
-                style={{
-                  height: "100%",
-                  width: `${timelinePct}%`,
-                  background: "linear-gradient(90deg, var(--blue), var(--accent))",
-                  borderRadius: 4,
-                  transition: "width 0.5s ease",
-                }}
+              <YAxis tick={{ fill: "var(--text-secondary)", fontSize: 10 }} />
+              <Tooltip
+                contentStyle={tooltipStyle}
+                labelStyle={{ color: "var(--text-primary)" }}
+                formatter={(value: number) => [value, "matches/hr"]}
               />
-            </div>
-          </div>
+              <Area
+                type="monotone"
+                dataKey="count"
+                stroke="var(--accent)"
+                strokeWidth={2}
+                fill="url(#crawlGradient)"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
         </div>
       </Card>
 

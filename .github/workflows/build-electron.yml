@@ -1,0 +1,54 @@
+name: Build Electron
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: electron-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build SHAP sidecar
+        run: |
+          pip install pyinstaller xgboost shap numpy pandas
+          pyinstaller --onefile --name shap_predict sidecar/shap_predict.py
+        shell: bash
+
+      - name: Copy sidecar to extraResources
+        run: |
+          mkdir -p sidecar/dist
+          cp dist/shap_predict.exe sidecar/dist/
+        shell: bash
+
+      - name: Build Electron app
+        run: npx electron-builder --win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $exe = Get-ChildItem -Path dist -Filter "*.exe" | Select-Object -First 1
+          gh release upload $tag $exe.FullName --clobber
+        shell: pwsh

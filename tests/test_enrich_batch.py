@@ -2,13 +2,13 @@ from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import MagicMock
 
 from lol_genius.api.client import BadRequestError
-from lol_genius.db.queries import MatchDB
 from lol_genius.crawler.enrich import (
     EnrichResult,
     check_enrich_needed,
     fetch_enrichment,
     write_enrichment,
 )
+from lol_genius.db.queries import MatchDB
 
 
 def _make_participant(match_id, i, puuid=None, team_id=None, win=None):
