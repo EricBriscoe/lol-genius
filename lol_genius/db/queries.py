@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from lol_genius.features.stats import aggregate_recent_stats
 from lol_genius.features.timeline import SNAPSHOT_SECONDS
@@ -12,9 +12,24 @@ from .connection import get_connection
 log = logging.getLogger(__name__)
 
 TIER_ORDER = {
-    "IRON": 1, "BRONZE": 2, "SILVER": 3, "GOLD": 4, "PLATINUM": 5,
-    "EMERALD": 6, "DIAMOND": 7, "MASTER": 8, "GRANDMASTER": 9, "CHALLENGER": 10,
+    "IRON": 1,
+    "BRONZE": 2,
+    "SILVER": 3,
+    "GOLD": 4,
+    "PLATINUM": 5,
+    "EMERALD": 6,
+    "DIAMOND": 7,
+    "MASTER": 8,
+    "GRANDMASTER": 9,
+    "CHALLENGER": 10,
 }
+
+
+_LATEST_TIER_SUBQUERY = """(
+    SELECT DISTINCT ON (puuid) puuid, tier
+    FROM summoner_ranks WHERE queue_type = 'RANKED_SOLO_5x5'
+    ORDER BY puuid, fetched_at DESC
+)"""
 
 
 def _tier_case_sql(extra: dict[str, int] | None = None) -> str:
@@ -96,9 +111,7 @@ class MatchDB:
         return max(0, count)
 
     def match_exists(self, match_id: str) -> bool:
-        row = self._fetchone(
-            "SELECT 1 FROM matches WHERE match_id = %s", (match_id,)
-        )
+        row = self._fetchone("SELECT 1 FROM matches WHERE match_id = %s", (match_id,))
         return row is not None
 
     def insert_match(
@@ -228,7 +241,10 @@ class MatchDB:
             rows = cur.fetchall()
         if not rows or not tier_weights:
             return [r["puuid"] for r in rows]
-        return [r["puuid"] for r in sorted(rows, key=lambda r: tier_weights.get(r["seed_tier"], 999))]
+        return [
+            r["puuid"]
+            for r in sorted(rows, key=lambda r: tier_weights.get(r["seed_tier"], 999))
+        ]
 
     def mark_puuid_done(self, puuid: str) -> None:
         self._execute(
@@ -294,9 +310,7 @@ class MatchDB:
         return [dict(r) for r in rows]
 
     def get_match(self, match_id: str) -> dict | None:
-        row = self._fetchone(
-            "SELECT * FROM matches WHERE match_id = %s", (match_id,)
-        )
+        row = self._fetchone("SELECT * FROM matches WHERE match_id = %s", (match_id,))
         return dict(row) if row else None
 
     def get_latest_rank(
@@ -338,7 +352,7 @@ class MatchDB:
         return dict(row) if row else None
 
     def has_recent_rank(self, puuid: str, hours: int = 24) -> bool:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         row = self._fetchone(
             "SELECT 1 FROM summoner_ranks WHERE puuid = %s AND fetched_at > %s",
             (puuid, cutoff),
@@ -542,7 +556,11 @@ class MatchDB:
 
         _jsonb_cols = {"time_window_metrics"}
         for k in _jsonb_cols:
-            if k in updates and updates[k] is not None and not isinstance(updates[k], str):
+            if (
+                k in updates
+                and updates[k] is not None
+                and not isinstance(updates[k], str)
+            ):
                 updates[k] = Json(updates[k])
         set_clause = ", ".join(f"{k} = %({k})s" for k in updates)
         updates["run_id"] = run_id
@@ -568,7 +586,7 @@ class MatchDB:
         return [dict(r) for r in rows]
 
     def get_stale_enrichment_counts(self, hours: int = 72) -> dict:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         stale_ranks = self._fetchone(
             """SELECT COUNT(DISTINCT sr.puuid) as cnt
                FROM summoner_ranks sr
@@ -592,7 +610,7 @@ class MatchDB:
     def get_stale_enrichment_puuids(
         self, hours: int = 72, limit: int = 50
     ) -> list[dict]:
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+        cutoff = datetime.now(UTC) - timedelta(hours=hours)
         rows = self._fetchall(
             """SELECT DISTINCT sr.puuid, sr.summoner_id
                FROM summoner_ranks sr
@@ -621,9 +639,7 @@ class MatchDB:
         return count
 
     def get_model_run(self, run_id: str) -> dict | None:
-        row = self._fetchone(
-            "SELECT * FROM model_runs WHERE run_id = %s", (run_id,)
-        )
+        row = self._fetchone("SELECT * FROM model_runs WHERE run_id = %s", (run_id,))
         return dict(row) if row else None
 
     def insert_match_raw_json(self, match_id: str, raw_json: str) -> None:
@@ -699,6 +715,135 @@ class MatchDB:
             r["champion_id"]: {"games": r["games"], "winrate": r["wins"] / r["games"]}
             for r in rows
         }
+
+    def get_champion_stats(
+        self, patch: str | None = None, tier: str | None = None
+    ) -> list[dict]:
+        conditions = ["m.queue_id = 420"]
+        params: list = []
+        if patch:
+            conditions.append("m.patch = %s")
+            params.append(patch)
+        tier_join = ""
+        if tier:
+            tier_join = f"JOIN {_LATEST_TIER_SUBQUERY} sr ON sr.puuid = p.puuid"
+            conditions.append("sr.tier = %s")
+            params.append(tier)
+        where = " AND ".join(conditions)
+        rows = self._fetchall(
+            f"""SELECT p.champion_id, p.champion_name, p.team_position,
+                       COUNT(*) as games, SUM(p.win) as wins,
+                       AVG(p.kills) as avg_kills, AVG(p.deaths) as avg_deaths,
+                       AVG(p.assists) as avg_assists, AVG(p.cs) as avg_cs,
+                       AVG(p.gold_earned) as avg_gold, AVG(p.total_damage) as avg_damage,
+                       AVG(p.vision_score) as avg_vision
+                FROM participants p
+                JOIN matches m ON p.match_id = m.match_id
+                {tier_join}
+                WHERE {where}
+                GROUP BY p.champion_id, p.champion_name, p.team_position
+                HAVING COUNT(*) >= 5""",
+            params,
+        )
+        champs: dict[int, dict] = {}
+        for r in rows:
+            cid = r["champion_id"]
+            if cid not in champs:
+                champs[cid] = {
+                    "champion_id": cid,
+                    "champion_name": r["champion_name"],
+                    "games": 0,
+                    "wins": 0,
+                    "total_kills": 0.0,
+                    "total_deaths": 0.0,
+                    "total_assists": 0.0,
+                    "total_cs": 0.0,
+                    "total_gold": 0.0,
+                    "total_damage": 0.0,
+                    "total_vision": 0.0,
+                    "positions": {},
+                }
+            c = champs[cid]
+            g = r["games"]
+            c["games"] += g
+            c["wins"] += r["wins"]
+            c["total_kills"] += float(r["avg_kills"]) * g
+            c["total_deaths"] += float(r["avg_deaths"]) * g
+            c["total_assists"] += float(r["avg_assists"]) * g
+            c["total_cs"] += float(r["avg_cs"]) * g
+            c["total_gold"] += float(r["avg_gold"]) * g
+            c["total_damage"] += float(r["avg_damage"]) * g
+            c["total_vision"] += float(r["avg_vision"]) * g
+            pos = r["team_position"]
+            if pos:
+                c["positions"][pos] = g
+        result = []
+        for c in champs.values():
+            g = c["games"]
+            result.append(
+                {
+                    "champion_id": c["champion_id"],
+                    "champion_name": c["champion_name"],
+                    "games": g,
+                    "wins": c["wins"],
+                    "avg_kills": round(c["total_kills"] / g, 1),
+                    "avg_deaths": round(c["total_deaths"] / g, 1),
+                    "avg_assists": round(c["total_assists"] / g, 1),
+                    "avg_cs": round(c["total_cs"] / g, 0),
+                    "avg_gold": round(c["total_gold"] / g, 0),
+                    "avg_damage": round(c["total_damage"] / g, 0),
+                    "avg_vision": round(c["total_vision"] / g, 1),
+                    "positions": c["positions"],
+                }
+            )
+        return result
+
+    def get_champion_ban_stats(
+        self, patch: str | None = None, tier: str | None = None
+    ) -> dict[int, int]:
+        conditions = ["m.queue_id = 420"]
+        params: list = []
+        if patch:
+            conditions.append("m.patch = %s")
+            params.append(patch)
+        if tier:
+            conditions.append(f"""b.match_id IN (
+                SELECT DISTINCT p.match_id FROM participants p
+                JOIN {_LATEST_TIER_SUBQUERY} sr ON sr.puuid = p.puuid
+                WHERE sr.tier = %s
+            )""")
+            params.append(tier)
+        where = " AND ".join(conditions)
+        rows = self._fetchall(
+            f"""SELECT b.champion_id, COUNT(*) as bans
+                FROM match_bans b JOIN matches m ON b.match_id = m.match_id
+                WHERE {where}
+                GROUP BY b.champion_id""",
+            params,
+        )
+        return {r["champion_id"]: r["bans"] for r in rows}
+
+    def get_tier_match_count(
+        self, patch: str | None = None, tier: str | None = None
+    ) -> int:
+        conditions = ["m.queue_id = 420"]
+        params: list = []
+        if patch:
+            conditions.append("m.patch = %s")
+            params.append(patch)
+        if tier:
+            conditions.append(f"""p.match_id IN (
+                SELECT DISTINCT p2.match_id FROM participants p2
+                JOIN {_LATEST_TIER_SUBQUERY} sr ON sr.puuid = p2.puuid
+                WHERE sr.tier = %s
+            )""")
+            params.append(tier)
+        where = " AND ".join(conditions)
+        row = self._fetchone(
+            f"SELECT COUNT(DISTINCT m.match_id) as cnt FROM matches m JOIN participants p ON p.match_id = m.match_id WHERE {where}",
+            params,
+        )
+        return row["cnt"]
 
     def get_player_top_champions(self, puuid: str, limit: int = 5) -> list[int]:
         rows = self._fetchall(
@@ -804,7 +949,9 @@ class MatchDB:
         )
         return [dict(r) for r in rows]
 
-    def get_ranks_and_mastery_by_puuids(self, puuids: list[str]) -> tuple[list[dict], list[dict]]:
+    def get_ranks_and_mastery_by_puuids(
+        self, puuids: list[str]
+    ) -> tuple[list[dict], list[dict]]:
         if not puuids:
             return [], []
         ranks = self._fetchall(
@@ -821,6 +968,47 @@ class MatchDB:
             (puuids,),
         )
         return [dict(r) for r in ranks], [dict(r) for r in masteries]
+
+    def get_champion_scaling_scores(
+        self, prior_strength: int = 10, min_games: int = 20
+    ) -> dict[int, float]:
+        rows = self._fetchall(
+            """SELECT p.champion_id,
+                      SUM(CASE WHEN m.game_duration >= 1500 AND p.win::boolean THEN 1 ELSE 0 END) AS late_wins,
+                      SUM(CASE WHEN m.game_duration >= 1500 THEN 1 ELSE 0 END) AS late_games,
+                      SUM(CASE WHEN m.game_duration < 1500 AND p.win::boolean THEN 1 ELSE 0 END) AS early_wins,
+                      SUM(CASE WHEN m.game_duration < 1500 THEN 1 ELSE 0 END) AS early_games,
+                      COUNT(*) AS total_games
+               FROM participants p
+               JOIN matches m ON p.match_id = m.match_id
+               WHERE m.queue_id = 420
+               GROUP BY p.champion_id"""
+        )
+        prior = 0.5
+        scores: dict[int, float] = {}
+        for r in rows:
+            if r["total_games"] < min_games:
+                continue
+            late_wr = (r["late_wins"] + prior * prior_strength) / (
+                r["late_games"] + prior_strength
+            )
+            early_wr = (r["early_wins"] + prior * prior_strength) / (
+                r["early_games"] + prior_strength
+            )
+            scores[int(r["champion_id"])] = round(late_wr - early_wr, 4)
+        return scores
+
+    def get_crawl_rate_history(self, days: int = 7) -> list[dict]:
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        rows = self._fetchall(
+            """SELECT date_trunc('hour', crawled_at) AS hour, COUNT(*) AS count
+               FROM matches
+               WHERE crawled_at >= %s
+               GROUP BY date_trunc('hour', crawled_at)
+               ORDER BY hour""",
+            (cutoff,),
+        )
+        return [{"hour": r["hour"], "count": r["count"]} for r in rows]
 
     def bulk_update_pregame_probs(self, pairs: list[tuple[str, float]]) -> None:
         for match_id, prob in pairs:

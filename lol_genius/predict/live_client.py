@@ -245,6 +245,7 @@ def build_live_features(
 
 POLL_INTERVAL = 15
 MAX_POLL_INTERVAL = 300
+NO_DATA_THRESHOLD = 3
 
 
 class LiveGamePoller:
@@ -486,10 +487,26 @@ class LiveGamePoller:
 
     def _poll_loop(self) -> None:
         consecutive_failures = 0
+        consecutive_no_data = 0
         while not self._stop_event.is_set():
             try:
-                self._poll()
+                got_data = self._poll()
                 consecutive_failures = 0
+                if got_data:
+                    consecutive_no_data = 0
+                else:
+                    consecutive_no_data += 1
+                    if consecutive_no_data == NO_DATA_THRESHOLD:
+                        with self._lock:
+                            self.status = "no_data"
+                        self._push_sse(
+                            "live_game_update",
+                            {
+                                "status": "no_data",
+                                "error": f"No response from Live Client API at {self.host}:{self.port}",
+                                "blue_win_probability": None,
+                            },
+                        )
                 wait = POLL_INTERVAL
             except Exception as e:
                 log.warning(f"Live game poll error: {e}")
@@ -511,15 +528,16 @@ class LiveGamePoller:
                 )
             self._stop_event.wait(wait)
 
-    def _poll(self) -> None:
+    def _poll(self) -> bool:
         import numpy as np
         import pandas as pd
         import xgboost as xgb
+
         from lol_genius.model.train import load_model
 
         data = fetch_live_game_data(self.host, self.port)
         if not data:
-            return
+            return False
 
         game_id = data.get("gameData", {}).get("gameId")
         game_id_reset = (
@@ -681,3 +699,4 @@ class LiveGamePoller:
             if len(self.history) > 100:
                 self.history = self.history[-100:]
         self._push_sse("live_game_update", update)
+        return True

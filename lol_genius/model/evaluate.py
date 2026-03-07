@@ -98,14 +98,23 @@ def _compute_time_window_metrics(
         if len(group) < 30:
             continue
         minutes = int(snapshot_seconds // 60)
-        accuracy = float(((group["y_proba"] >= 0.5).astype(int) == group["y_true"]).mean())
+        accuracy = float(
+            ((group["y_proba"] >= 0.5).astype(int) == group["y_true"]).mean()
+        )
         auc = None
         if group["y_true"].nunique() > 1:
             try:
                 auc = float(roc_auc_score(group["y_true"], group["y_proba"]))
             except Exception:
                 log.warning("roc_auc_score failed for window %dm", minutes)
-        results.append({"minutes": minutes, "accuracy": accuracy, "auc_roc": auc, "count": len(group)})
+        results.append(
+            {
+                "minutes": minutes,
+                "accuracy": accuracy,
+                "auc_roc": auc,
+                "count": len(group),
+            }
+        )
 
     return sorted(results, key=lambda x: x["minutes"]) if results else None
 

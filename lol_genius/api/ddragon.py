@@ -118,6 +118,39 @@ class DataDragon:
     def is_melee(self, champion_id: int) -> bool:
         return self.get_attack_range(champion_id) <= 200
 
+    def stat_growth_score(self, champion_id: int) -> float:
+        champs = self.fetch_champion_data()
+        stats_keys = [
+            "attackspeedperlevel",
+            "attackdamageperlevel",
+            "hpperlevel",
+            "armorperlevel",
+            "spellblockperlevel",
+        ]
+        weights = [0.35, 0.20, 0.20, 0.15, 0.10]
+        all_vals: dict[str, list[float]] = {k: [] for k in stats_keys}
+        for c in champs.values():
+            s = c.get("stats", {})
+            for k in stats_keys:
+                all_vals[k].append(float(s.get(k, 0)))
+
+        means = {k: sum(v) / len(v) if v else 0 for k, v in all_vals.items()}
+        stds = {}
+        for k, v in all_vals.items():
+            m = means[k]
+            stds[k] = (sum((x - m) ** 2 for x in v) / len(v)) ** 0.5 if v else 1.0
+
+        champ = champs.get(champion_id)
+        if not champ:
+            return 0.0
+        s = champ.get("stats", {})
+        score = 0.0
+        for k, w in zip(stats_keys, weights):
+            val = float(s.get(k, 0))
+            std = stds[k] if stds[k] > 0 else 1.0
+            score += w * (val - means[k]) / std
+        return round(score, 4)
+
     def get_champion_id_by_name(self, name: str) -> int | None:
         if not self._champions:
             self.fetch_champion_data()

@@ -7,6 +7,7 @@ import type {
   PredictLookup,
   PredictResult,
   LiveGameStatus,
+  ChampionStatsResponse,
 } from "./types";
 
 const BASE = "/api/v1";
@@ -75,3 +76,11 @@ export async function stopLiveGame(): Promise<void> {
 }
 
 export const fetchLiveGameStatus = () => get<LiveGameStatus>("/live-game/status");
+
+export const fetchChampionStats = (patch?: string, tier?: string) => {
+  const params = new URLSearchParams();
+  if (patch) params.set("patch", patch);
+  if (tier) params.set("tier", tier);
+  const qs = params.toString();
+  return get<ChampionStatsResponse>(qs ? `/champions/stats?${qs}` : "/champions/stats");
+};

@@ -12,3 +12,11 @@ data/
 node_modules/
 .DS_Store
 .pytest_cache/
+electron-app/node_modules/
+electron-app/dist/
+electron-app/dist-electron/
+electron-app/models/*.onnx
+electron-app/models/*.json
+electron-app/sidecar/dist/
+electron-app/sidecar/build/
+electron-app/sidecar/*.spec

@@ -1,9 +1,10 @@
 import { useState, useCallback, useEffect } from "react";
-import { Activity, Brain, Crosshair, Gamepad2 } from "lucide-react";
+import { Activity, Brain, Trophy, Crosshair, Gamepad2 } from "lucide-react";
 import { fetchTrainingStatus } from "./api";
 import { useSSE } from "./hooks/useSSE";
 import CrawlerStatus from "./pages/CrawlerStatus";
 import ModelTraining from "./pages/ModelTraining";
+import ChampionStats from "./pages/ChampionStats";
 import LivePredict from "./pages/LivePredict";
 import LiveGame from "./pages/LiveGame";
 import type { CrawlerSSE, TrainingStatus, LiveGameUpdate } from "./types";
@@ -12,6 +13,7 @@ import { isCrawlerSSE, isTrainingStatus, isLiveGameUpdate } from "./types";
 const TABS = [
   { id: "crawler", label: "Crawler", icon: Activity },
   { id: "model", label: "Model", icon: Brain },
+  { id: "champions", label: "Champions", icon: Trophy },
   { id: "predict", label: "Predict", icon: Crosshair },
   { id: "live", label: "Live Game", icon: Gamepad2 },
 ] as const;
@@ -86,6 +88,7 @@ export default function App() {
       <main style={styles.main}>
         {tab === "crawler" && <CrawlerStatus live={crawlerData} />}
         {tab === "model" && <ModelTraining trainingStatus={trainingStatus} />}
+        {tab === "champions" && <ChampionStats />}
         {tab === "predict" && <LivePredict />}
         {tab === "live" && <LiveGame latestUpdate={liveGameUpdate} />}
       </main>

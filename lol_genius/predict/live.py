@@ -22,8 +22,8 @@ from lol_genius.features.draft import (
 from lol_genius.features.interactions import extract_interaction_features
 from lol_genius.features.player import (
     PLAYER_FEATURE_NAMES,
-    extract_player_features,
     compute_tilt_features,
+    extract_player_features,
 )
 from lol_genius.features.stats import aggregate_recent_stats, normalize_api_match_row
 from lol_genius.features.team import extract_team_features

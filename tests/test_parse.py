@@ -1,4 +1,4 @@
-from lol_genius.crawler.parse import parse_patch, parse_match
+from lol_genius.crawler.parse import parse_match, parse_patch
 
 
 def test_parse_patch_standard():

@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lol-genius"
+version = "0.1.0"
+description = "League of Legends pre-game match outcome predictor with SHAP interpretability"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Eric Briscoe" }]
+dependencies = [
+    "psycopg2-binary>=2.9",
+    "httpx>=0.27",
+    "xgboost>=2.1",
+    "shap>=0.50",
+    "scikit-learn>=1.6",
+    "pandas>=2.2",
+    "numpy>=1.26",
+    "click>=8.1",
+    "pyyaml>=6.0",
+    "matplotlib>=3.8",
+    "tqdm>=4.66",
+    "python-dotenv>=1.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0", "pytest-cov>=5.0"]
+dashboard = ["sse-starlette>=2.0", "pyarrow>=15.0"]
+proxy = []
+onnx = ["onnxmltools>=1.12", "skl2onnx>=1.17"]
+
+[project.scripts]
+lol-genius = "lol_genius.cli:cli"
+lol-genius-proxy = "lol_genius.proxy.run:main"
+
+[tool.setuptools.packages.find]
+include = ["lol_genius*"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

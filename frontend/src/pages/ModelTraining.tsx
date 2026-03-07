@@ -12,8 +12,9 @@ import {
 } from "recharts";
 import { Play, X, Loader2, AlertTriangle } from "lucide-react";
 import Card from "../components/Card";
+import DetailRow from "../components/DetailRow";
 import { fetchModelRuns, fetchPresets, triggerTraining } from "../api";
-import { tooltipStyle, sectionTitle, primaryButton } from "../styles";
+import { tooltipStyle, sectionTitle, primaryButton, tableStyles, inputStyle } from "../styles";
 import type { ModelRun, TrainingRequest, TrainingStatus } from "../types";
 
 type TrainMode = "preset" | "custom" | "autotune";
@@ -491,15 +492,6 @@ export default function ModelTraining({ trainingStatus }: Props) {
   );
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
-      <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{label}</span>
-      <span className="mono" style={{ fontSize: 12, color: "var(--text-primary)" }}>{value}</span>
-    </div>
-  );
-}
-
 function CMCell({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div style={{
@@ -516,53 +508,12 @@ function CMCell({ label, value, color }: { label: string; value: number; color: 
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: 13,
-  },
-  th: {
-    textAlign: "left",
-    padding: "10px 12px",
-    fontSize: 11,
-    fontWeight: 600,
-    color: "var(--text-muted)",
-    textTransform: "uppercase" as const,
-    letterSpacing: "0.5px",
-    borderBottom: "1px solid var(--border)",
-    background: "var(--bg-secondary)",
-  },
-  tr: {
-    cursor: "pointer",
-    transition: "background 0.1s",
-    borderBottom: "1px solid var(--border)",
-  },
-  td: {
-    padding: "10px 12px",
-    fontSize: 12,
-  },
-  tdMono: {
-    padding: "10px 12px",
-    fontSize: 12,
-    fontFamily: "'JetBrains Mono', monospace",
-  },
+  ...tableStyles,
   detailGrid: {
     display: "flex",
     flexDirection: "column" as const,
     gap: 2,
     marginTop: 8,
-  },
-  closeBtn: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 28,
-    height: 28,
-    background: "var(--bg-primary)",
-    border: "1px solid var(--border)",
-    borderRadius: 6,
-    color: "var(--text-secondary)",
-    cursor: "pointer",
   },
   overlay: {
     position: "fixed" as const,
@@ -582,15 +533,8 @@ const styles: Record<string, React.CSSProperties> = {
     maxWidth: "90vw",
   },
   input: {
+    ...inputStyle,
     width: "100%",
-    padding: "8px 12px",
-    fontSize: 13,
-    background: "var(--bg-input)",
-    border: "1px solid var(--border)",
-    borderRadius: 6,
-    color: "var(--text-primary)",
-    outline: "none",
-    fontFamily: "inherit",
   },
   cancelBtn: {
     padding: "8px 16px",

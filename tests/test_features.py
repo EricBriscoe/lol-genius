@@ -1,13 +1,13 @@
+from lol_genius.features.bans import extract_ban_features
+from lol_genius.features.draft import DRAFT_FEATURE_NAMES, extract_draft_features
 from lol_genius.features.player import (
-    extract_player_features,
-    rank_to_numeric,
+    PLAYER_FEATURE_NAMES,
     _bayesian_winrate,
     compute_tilt_features,
-    PLAYER_FEATURE_NAMES,
+    extract_player_features,
+    rank_to_numeric,
 )
-from lol_genius.features.team import extract_team_features, TEAM_FEATURE_NAMES
-from lol_genius.features.draft import extract_draft_features, DRAFT_FEATURE_NAMES
-from lol_genius.features.bans import extract_ban_features
+from lol_genius.features.team import TEAM_FEATURE_NAMES, extract_team_features
 
 
 def test_rank_to_numeric():

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -56,7 +56,7 @@ _RANDOM_SEED = 42
 
 
 def _compute_patch_weights(
-    patches: "pd.Series", decay_factor: float = 0.5
+    patches: pd.Series, decay_factor: float = 0.5
 ) -> np.ndarray:
     unique = sorted(
         patches.unique(), key=lambda p: [int(x) for x in p.split(".")] if p else [0]
@@ -89,11 +89,11 @@ def _compute_patch_weights(
 
 
 def select_features(
-    X: "pd.DataFrame",
-    y: "pd.Series",
+    X: pd.DataFrame,
+    y: pd.Series,
     variance_threshold: float = 1e-6,
     correlation_threshold: float = 0.95,
-) -> "pd.DataFrame":
+) -> pd.DataFrame:
     import pandas as pd
     from sklearn.feature_selection import mutual_info_classif
 
@@ -122,15 +122,15 @@ def select_features(
 
 
 def train_model(
-    X: "pd.DataFrame",
-    y: "pd.Series",
+    X: pd.DataFrame,
+    y: pd.Series,
     model_dir: str,
     num_boost_round: int = 1000,
-    patches: "pd.Series | None" = None,
+    patches: pd.Series | None = None,
     patch_decay: float = 0.85,
-    timestamps: "pd.Series | None" = None,
-    match_ids: "pd.Series | None" = None,
-    game_creations: "pd.Series | None" = None,
+    timestamps: pd.Series | None = None,
+    match_ids: pd.Series | None = None,
+    game_creations: pd.Series | None = None,
     database_url: str | None = None,
     params: dict | None = None,
     model_type: str = "pregame",
@@ -139,14 +139,16 @@ def train_model(
 
     resolved_params = {**DEFAULT_PARAMS, **(params or {})}
 
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    run_id = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     model_path = Path(model_dir) / model_type
     model_path.mkdir(parents=True, exist_ok=True)
 
     if model_type != "live":
         X = select_features(X, y)
     else:
-        log.info("Skipping feature selection for live model (hand-curated sparse features)")
+        log.info(
+            "Skipping feature selection for live model (hand-curated sparse features)"
+        )
 
     sample_weights = None
     if patches is not None and len(patches) > 0 and patches.nunique() > 1:
@@ -154,8 +156,11 @@ def train_model(
 
     if match_ids is not None and len(match_ids) > 0 and game_creations is not None:
         import pandas as _pd
+
         unique_matches = (
-            _pd.DataFrame({"match_id": match_ids.values, "game_creation": game_creations.values})
+            _pd.DataFrame(
+                {"match_id": match_ids.values, "game_creation": game_creations.values}
+            )
             .drop_duplicates("match_id")
             .sort_values("game_creation")
         )
@@ -184,7 +189,12 @@ def train_model(
         log.info("Using temporal train/test split")
     elif sample_weights is not None:
         X_train, X_test, y_train, y_test, w_train, _ = train_test_split(
-            X, y, sample_weights, test_size=_TEST_SPLIT_RATIO, stratify=y, random_state=_RANDOM_SEED
+            X,
+            y,
+            sample_weights,
+            test_size=_TEST_SPLIT_RATIO,
+            stratify=y,
+            random_state=_RANDOM_SEED,
         )
     else:
         X_train, X_test, y_train, y_test = train_test_split(
@@ -307,8 +317,8 @@ def _cv_single_combo(params: dict) -> tuple[float, dict, int]:
 
 
 def tune_hyperparameters(
-    X: "pd.DataFrame",
-    y: "pd.Series",
+    X: pd.DataFrame,
+    y: pd.Series,
 ) -> dict:
     import multiprocessing
     import os

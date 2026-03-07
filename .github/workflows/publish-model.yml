@@ -1,0 +1,60 @@
+name: Publish Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_type:
+        description: "Model type to export"
+        required: true
+        default: "live"
+        type: choice
+        options:
+          - pregame
+          - live
+      tag:
+        description: "Release tag (e.g. model-v1)"
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: lol_genius
+          POSTGRES_USER: lol_genius
+          POSTGRES_PASSWORD: publish_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lol_genius"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://lol_genius:publish_password@localhost:5432/lol_genius
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[onnx]"
+      - name: Export model
+        run: lol-genius export-model --format onnx --type ${{ inputs.model_type }}
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MODEL_DIR="data/models/${{ inputs.model_type }}"
+          gh release create "${{ inputs.tag }}" \
+            --title "${{ inputs.tag }}" \
+            --notes "Model export: ${{ inputs.model_type }}" \
+            "$MODEL_DIR/model.onnx" \
+            "$MODEL_DIR/model.json" \
+            "$MODEL_DIR/feature_names.json" \
+            "$MODEL_DIR/calibrator.json" \
+            "$MODEL_DIR/feature_importance.json"

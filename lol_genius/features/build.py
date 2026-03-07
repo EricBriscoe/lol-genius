@@ -25,8 +25,8 @@ from lol_genius.features.interactions import (
 )
 from lol_genius.features.player import (
     PLAYER_FEATURE_NAMES,
-    extract_player_features,
     compute_tilt_features,
+    extract_player_features,
 )
 from lol_genius.features.team import TEAM_FEATURE_NAMES, extract_team_features
 

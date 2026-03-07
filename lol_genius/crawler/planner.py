@@ -13,6 +13,7 @@ log = logging.getLogger(__name__)
 ENRICHMENT_THRESHOLD = 0.95
 CURRENT_PATCH_THRESHOLD = 0.80
 TIER_BALANCE_THRESHOLD = 0.30
+MIN_PATCH_MATCHES_FOR_FILTER = 100
 
 
 @dataclass
@@ -128,9 +129,10 @@ def plan_next_action(
         metrics.total_matches > 0
         and metrics.current_patch_ratio < CURRENT_PATCH_THRESHOLD
     ):
+        use_filter = metrics.current_patch_matches >= MIN_PATCH_MATCHES_FOR_FILTER
         return CrawlAction(
             action="crawl",
-            patch=metrics.current_patch,
+            patch=metrics.current_patch if use_filter else None,
             reason=f"current patch ({metrics.current_patch}) at {metrics.current_patch_ratio:.1%}, need >{CURRENT_PATCH_THRESHOLD:.0%}",
         )
 
