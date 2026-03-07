@@ -29,6 +29,9 @@ def export_onnx(model_dir: str, model_type: str = "pregame") -> Path:
 
     log.info("Exported ONNX model to %s", out_path)
 
+    names_path = type_dir / "feature_names.json"
+    names_path.write_text(json.dumps(feature_names, indent=2))
+
     _export_feature_importance(model, feature_names, type_dir)
 
     return out_path

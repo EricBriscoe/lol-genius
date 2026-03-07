@@ -50,11 +50,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           MODEL_DIR="data/models/${{ inputs.model_type }}"
+          ASSETS=("$MODEL_DIR/model.onnx" "$MODEL_DIR/model.json" "$MODEL_DIR/feature_names.json" "$MODEL_DIR/feature_importance.json")
+          if [ -f "$MODEL_DIR/calibrator.json" ]; then
+            ASSETS+=("$MODEL_DIR/calibrator.json")
+          fi
           gh release create "${{ inputs.tag }}" \
             --title "${{ inputs.tag }}" \
             --notes "Model export: ${{ inputs.model_type }}" \
-            "$MODEL_DIR/model.onnx" \
-            "$MODEL_DIR/model.json" \
-            "$MODEL_DIR/feature_names.json" \
-            "$MODEL_DIR/calibrator.json" \
-            "$MODEL_DIR/feature_importance.json"
+            "${ASSETS[@]}"
