@@ -21,7 +21,9 @@ export function loadDevModePreference(): boolean {
     if (existsSync(p)) {
       return JSON.parse(readFileSync(p, "utf-8")).enabled === true;
     }
-  } catch {}
+  } catch (e) {
+    log.warn("Failed to read dev-mode preference:", e);
+  }
   return false;
 }
 
@@ -32,7 +34,9 @@ export function setDevMode(enabled: boolean): void {
 
   try {
     writeFileSync(getPrefsPath(), JSON.stringify({ enabled }));
-  } catch {}
+  } catch (e) {
+    log.warn("Failed to write dev-mode preference:", e);
+  }
 }
 
 export function isDevMode(): boolean {

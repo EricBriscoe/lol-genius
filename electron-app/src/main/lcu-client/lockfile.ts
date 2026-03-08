@@ -1,6 +1,9 @@
 import { existsSync, readFileSync, watch, type FSWatcher } from "fs";
 import { dirname } from "path";
 import type { LCUCredentials } from "./types";
+import log from "../log";
+
+const logger = log.scope("lockfile");
 
 const LOCKFILE_PATHS =
   process.platform === "darwin"
@@ -58,8 +61,8 @@ export function watchLockfile(
         }
       });
       watchers.push(watcher);
-    } catch {
-      // dir may not be watchable
+    } catch (e) {
+      logger.debug("Cannot watch lockfile dir:", dir, e);
     }
   }
 

@@ -5,6 +5,7 @@ import type { LCUCredentials, ChampSelectSession, RankedStats } from "./types";
 import { buildPregameFeatures, getPregameSummaryFromFeatures } from "../model/pregame-features";
 import { predict, isModelLoaded, getFeatureNames } from "../model/inference";
 import { computeTopFactors } from "../model/shap-factors";
+import { getModelDir } from "../updater";
 import * as ddragon from "../model/ddragon";
 import log from "../log";
 
@@ -23,7 +24,6 @@ let gameflowTimer: ReturnType<typeof setInterval> | null = null;
 let champSelectTimer: ReturnType<typeof setInterval> | null = null;
 let stopLockfileWatch: (() => void) | null = null;
 let win: BrowserWindow | null = null;
-let modelDir: string | null = null;
 let lastPregameProb: number | null = null;
 let lastPregameSummary: Record<string, number> | null = null;
 let cachedRankedStats: RankedStats | null = null;
@@ -150,20 +150,18 @@ function startChampSelectPolling(): void {
       return;
     }
 
-    const pregameModelType = "pregame";
     let probability: number | null = null;
     let topFactors: { feature: string; impact: number }[] = [];
 
-    if (isModelLoaded(pregameModelType)) {
+    if (isModelLoaded("pregame")) {
       try {
-        const featureNamesList = getFeatureNames(pregameModelType);
+        const featureNamesList = getFeatureNames("pregame");
         const features = buildPregameFeatures(session, cachedRankedStats, featureNamesList);
-        probability = await predict(features, pregameModelType);
+        probability = await predict(features, "pregame");
         lastPregameProb = probability;
         lastPregameSummary = getPregameSummaryFromFeatures(features);
 
-        const pregameDir = modelDir ? modelDir + "/pregame" : null;
-        topFactors = await computeTopFactors(pregameDir, features, pregameModelType);
+        topFactors = await computeTopFactors(getModelDir("pregame"), features, "pregame");
       } catch (e) {
         logger.error("Pregame prediction failed:", e);
       }
@@ -217,10 +215,9 @@ function isPlayerLocalByCell(
   return all.indexOf(player) === session.localPlayerCellId;
 }
 
-export function startLCUPolling(window: BrowserWindow, dir: string): void {
+export function startLCUPolling(window: BrowserWindow): void {
   stopLCUPolling();
   win = window;
-  modelDir = dir;
   lastPregameProb = null;
   lastPregameSummary = null;
 
@@ -240,15 +237,3 @@ export function stopLCUPolling(): void {
   state = "disconnected";
 }
 
-export function getLastPregameProb(): number | null {
-  return lastPregameProb;
-}
-
-export function getLastPregameSummary(): Record<string, number> | null {
-  return lastPregameSummary;
-}
-
-export function resetPregameState(): void {
-  lastPregameProb = null;
-  lastPregameSummary = null;
-}

@@ -1,4 +1,5 @@
-import { Wifi, WifiOff, AlertTriangle, RefreshCw, Bug, Swords, Gamepad2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Wifi, WifiOff, AlertTriangle, RefreshCw, Bug, Swords, Gamepad2, Pin } from "lucide-react";
 import Card from "./components/Card";
 import WinProbBar from "./components/WinProbBar";
 import StatGrid from "./components/StatGrid";
@@ -9,14 +10,26 @@ import ChampSelect from "./components/ChampSelect";
 import { useLiveGame } from "./hooks/useLiveGame";
 import { useChampSelect } from "./hooks/useChampSelect";
 import { sectionTitle } from "./styles";
+import { toBlueProb } from "./utils";
 
 export default function App() {
-  const { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs } = useLiveGame();
+  const { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs, appUpdateStatus } = useLiveGame();
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+
+  useEffect(() => {
+    window.lolGenius.getAppVersion().then(setAppVersion);
+    window.lolGenius.getAlwaysOnTop().then(setAlwaysOnTop);
+  }, []);
+
+  const toggleAlwaysOnTop = async () => {
+    const next = !alwaysOnTop;
+    await window.lolGenius.setAlwaysOnTop(next);
+    setAlwaysOnTop(next);
+  };
   const { champSelectData, isInChampSelect } = useChampSelect();
 
-  const blueProb = current?.blue_win_probability != null
-    ? Math.round(current.blue_win_probability * 100)
-    : 50;
+  const blueProb = toBlueProb(current?.blue_win_probability);
 
   const isInGame = connectionStatus === "ok" || connectionStatus === "connected";
 
@@ -25,7 +38,10 @@ export default function App() {
   return (
     <div style={{ maxWidth: 880, margin: "0 auto", padding: "24px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>lol-genius</h1>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>lol-genius</h1>
+          {appVersion && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>v{appVersion}</span>}
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {modelInfo && (
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
@@ -38,6 +54,13 @@ export default function App() {
             title="Check for model updates"
           >
             <RefreshCw size={14} />
+          </button>
+          <button
+            onClick={toggleAlwaysOnTop}
+            style={{ background: "none", border: "none", cursor: "pointer", color: alwaysOnTop ? "var(--accent)" : "var(--text-muted)", padding: 4 }}
+            title={alwaysOnTop ? "Unpin window" : "Pin window on top"}
+          >
+            <Pin size={14} />
           </button>
           <button
             onClick={toggleDevMode}
@@ -104,6 +127,15 @@ export default function App() {
             <div style={{ fontSize: 12 }}>Monitoring League client and live game</div>
           </div>
         </Card>
+      )}
+
+      {appUpdateStatus === "downloaded" && (
+        <div style={{
+          background: "var(--bg-card)", border: "1px solid var(--green)", borderRadius: 8,
+          padding: "8px 16px", fontSize: 12, color: "var(--green)", textAlign: "center",
+        }}>
+          Update ready. Restart to apply.
+        </div>
       )}
 
       {devMode && <DevPanel logs={devLogs} onClear={clearDevLogs} />}

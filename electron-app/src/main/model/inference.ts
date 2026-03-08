@@ -28,7 +28,13 @@ export async function loadModel(modelDir: string, modelType = "live"): Promise<v
   const session = await ort.InferenceSession.create(onnxPath);
 
   const namesPath = join(modelDir, "feature_names.json");
+  if (!existsSync(namesPath)) {
+    throw new Error(`Feature names file not found at ${namesPath}; the model directory may be incomplete`);
+  }
   const featureNames: string[] = JSON.parse(readFileSync(namesPath, "utf-8"));
+  if (!Array.isArray(featureNames) || featureNames.length === 0) {
+    throw new Error(`Feature names file is empty or invalid at ${namesPath}`);
+  }
 
   const calPath = join(modelDir, "calibrator.json");
   const calibrator: Calibrator | null = existsSync(calPath)

@@ -10,6 +10,7 @@ export function useLiveGame() {
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [devMode, setDevModeState] = useState(false);
   const [devLogs, setDevLogs] = useState<DevLogEntry[]>([]);
+  const [appUpdateStatus, setAppUpdateStatus] = useState<string | null>(null);
   const devLogUnsub = useRef<(() => void) | null>(null);
 
   const toggleDevMode = useCallback(async () => {
@@ -49,7 +50,11 @@ export function useLiveGame() {
       setConnectionStatus(status);
     });
 
-    return () => { unsub1(); unsub2(); };
+    const unsub3 = window.lolGenius.onAppUpdateStatus((data) => {
+      setAppUpdateStatus(data.status);
+    });
+
+    return () => { unsub1(); unsub2(); unsub3(); };
   }, []);
 
   useEffect(() => {
@@ -67,5 +72,5 @@ export function useLiveGame() {
     return () => { devLogUnsub.current?.(); };
   }, [devMode]);
 
-  return { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs };
+  return { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs, appUpdateStatus };
 }

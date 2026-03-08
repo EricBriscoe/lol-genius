@@ -61,6 +61,7 @@ export interface ChampSelectUpdate {
 export interface GamePhaseChange {
   phase: "champ_select" | "in_game" | "none";
   pregameProb?: number;
+  pregameSummary?: Record<string, number>;
 }
 
 export interface LolGeniusAPI {
@@ -76,6 +77,9 @@ export interface LolGeniusAPI {
   setDevMode: (enabled: boolean) => Promise<void>;
   getDevMode: () => Promise<boolean>;
   onDevLog: (cb: (entry: DevLogEntry) => void) => () => void;
+  getAppVersion: () => Promise<string>;
+  setAlwaysOnTop: (enabled: boolean) => Promise<void>;
+  getAlwaysOnTop: () => Promise<boolean>;
 }
 
 declare global {

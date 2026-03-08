@@ -158,15 +158,22 @@ function verifyChecksums(dir: string): boolean {
 
 function downloadFile(url: string, dest: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { "User-Agent": "lol-genius-electron" } }, (res) => {
+    const req = https.get(url, { headers: { "User-Agent": "lol-genius-electron" }, timeout: 30_000 }, (res) => {
       if (res.statusCode === 302 || res.statusCode === 301) {
         downloadFile(res.headers.location!, dest).then(resolve, reject);
+        return;
+      }
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 400) {
+        res.resume();
+        reject(new Error(`Download failed: HTTP ${res.statusCode} for ${url}`));
         return;
       }
       const file = createWriteStream(dest);
       res.pipe(file);
       file.on("finish", () => { file.close(); resolve(); });
       file.on("error", reject);
-    }).on("error", reject);
+    });
+    req.on("error", reject);
+    req.on("timeout", () => { req.destroy(); reject(new Error(`Download timed out: ${url}`)); });
   });
 }

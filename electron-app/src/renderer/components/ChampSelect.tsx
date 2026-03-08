@@ -1,5 +1,6 @@
-import type { ChampSelectUpdate, ChampSelectPlayerInfo, PredictFactor } from "../types";
+import type { ChampSelectUpdate, ChampSelectPlayerInfo } from "../types";
 import { sectionTitle } from "../styles";
+import { toBlueProb } from "../utils";
 import Card from "./Card";
 import WinProbBar from "./WinProbBar";
 import KeyFactors from "./KeyFactors";
@@ -23,9 +24,7 @@ function champImageUrl(version: string, championKey: string): string {
 }
 
 export default function ChampSelect({ data }: Props) {
-  const blueProb = data.blue_win_probability != null
-    ? Math.round(data.blue_win_probability * 100)
-    : 50;
+  const blueProb = toBlueProb(data.blue_win_probability);
 
   const sortByPosition = (players: ChampSelectPlayerInfo[]) => {
     return [...players].sort((a, b) => {
@@ -96,7 +95,7 @@ export default function ChampSelect({ data }: Props) {
       {data.top_factors && data.top_factors.length > 0 && (
         <Card>
           <h3 style={sectionTitle}>Key Factors</h3>
-          <KeyFactors factors={data.top_factors as PredictFactor[]} />
+          <KeyFactors factors={data.top_factors} />
         </Card>
       )}
 
@@ -124,15 +123,25 @@ function PlayerRow({ player, side, version }: {
         width: 28, height: 28, borderRadius: 4, overflow: "hidden",
         background: "var(--bg-primary)", flexShrink: 0,
         border: player.isLocalPlayer ? `2px solid ${color}` : "1px solid var(--border)",
+        display: "flex", alignItems: "center", justifyContent: "center",
       }}>
-        {hasChamp && version && (
+        {hasChamp && version ? (
           <img
             src={champImageUrl(version, player.championKey)}
             alt={player.championName}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            onError={(e) => {
+              const img = e.target as HTMLImageElement;
+              const fallback = document.createElement("span");
+              fallback.textContent = player.championName[0] ?? "?";
+              Object.assign(fallback.style, {
+                fontSize: "12px", fontWeight: "700",
+                color: "var(--text-muted)",
+              });
+              img.replaceWith(fallback);
+            }}
           />
-        )}
+        ) : null}
       </div>
       <span style={{
         fontSize: 12, color: hasChamp ? "var(--text-primary)" : "var(--text-muted)",
@@ -155,7 +164,7 @@ function BanRow({ bans }: { bans: { blue: number[]; red: number[] } }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", gap: 4 }}>
           <span style={{ fontSize: 11, color: "var(--accent)", marginRight: 4 }}>Bans</span>
-          {blueBans.map((id, i) => (
+          {blueBans.map((_, i) => (
             <div key={i} style={{
               width: 20, height: 20, borderRadius: 3, background: "var(--bg-primary)",
               border: "1px solid var(--accent)", opacity: 0.6,
@@ -163,7 +172,7 @@ function BanRow({ bans }: { bans: { blue: number[]; red: number[] } }) {
           ))}
         </div>
         <div style={{ display: "flex", gap: 4 }}>
-          {redBans.map((id, i) => (
+          {redBans.map((_, i) => (
             <div key={i} style={{
               width: 20, height: 20, borderRadius: 3, background: "var(--bg-primary)",
               border: "1px solid var(--red)", opacity: 0.6,

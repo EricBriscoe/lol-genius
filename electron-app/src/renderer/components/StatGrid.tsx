@@ -1,11 +1,5 @@
 import type { LiveGameUpdate } from "../types";
-
-function fmtTime(seconds: number): string {
-  if (!isFinite(seconds) || seconds < 0) return "0:00";
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, "0")}`;
-}
+import { fmtTime } from "../utils";
 
 function diffColor(diff: number): string | undefined {
   return diff > 0 ? "var(--accent)" : diff < 0 ? "var(--red)" : undefined;
@@ -32,7 +26,7 @@ function fmtDiff(n: number): string {
 
 export default function StatGrid({ data }: { data: LiveGameUpdate }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
       <StatBox label="Game Time" value={fmtTime(data.game_time)} />
       <StatBox label="Kill Diff" value={fmtDiff(data.kill_diff)} color={diffColor(data.kill_diff)} />
       <StatBox label="CS Diff" value={fmtDiff(data.cs_diff)} color={diffColor(data.cs_diff)} />
