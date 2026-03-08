@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_DB: lol_genius
           POSTGRES_USER: lol_genius
@@ -35,6 +35,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://lol_genius:test_password@localhost:5432/lol_genius
+      TEST_DATABASE_URL: postgresql://lol_genius:test_password@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
