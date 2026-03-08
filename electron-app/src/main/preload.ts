@@ -20,4 +20,11 @@ contextBridge.exposeInMainWorld("lolGenius", {
   stopPolling: () => ipcRenderer.invoke("stop-polling"),
   getModelInfo: () => ipcRenderer.invoke("get-model-info"),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
+  setDevMode: (enabled: boolean) => ipcRenderer.invoke("set-dev-mode", enabled),
+  getDevMode: () => ipcRenderer.invoke("get-dev-mode"),
+  onDevLog: (cb: (entry: unknown) => void) => {
+    const listener = (_: unknown, d: unknown) => cb(d);
+    ipcRenderer.on("dev-log", listener);
+    return () => ipcRenderer.removeListener("dev-log", listener);
+  },
 });

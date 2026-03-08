@@ -1,14 +1,28 @@
-import { useState, useEffect } from "react";
-import type { LiveGameUpdate, ModelInfo } from "../types";
+import { useState, useEffect, useCallback, useRef } from "react";
+import type { LiveGameUpdate, ModelInfo, DevLogEntry } from "../types";
+
+const MAX_LOGS = 200;
 
 export function useLiveGame() {
   const [connectionStatus, setConnectionStatus] = useState<string>("connecting");
   const [current, setCurrent] = useState<LiveGameUpdate | null>(null);
   const [history, setHistory] = useState<{ game_time: number; probability: number }[]>([]);
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
+  const [devMode, setDevModeState] = useState(false);
+  const [devLogs, setDevLogs] = useState<DevLogEntry[]>([]);
+  const devLogUnsub = useRef<(() => void) | null>(null);
+
+  const toggleDevMode = useCallback(async () => {
+    const next = !devMode;
+    await window.lolGenius.setDevMode(next);
+    setDevModeState(next);
+  }, [devMode]);
+
+  const clearDevLogs = useCallback(() => setDevLogs([]), []);
 
   useEffect(() => {
     window.lolGenius.getModelInfo().then(setModelInfo);
+    window.lolGenius.getDevMode().then(setDevModeState);
 
     const unsub1 = window.lolGenius.onPredictionUpdate((data) => {
       if (data.status === "model_missing" || data.status === "poll_error") {
@@ -38,5 +52,20 @@ export function useLiveGame() {
     return () => { unsub1(); unsub2(); };
   }, []);
 
-  return { connectionStatus, current, history, modelInfo };
+  useEffect(() => {
+    if (devMode) {
+      devLogUnsub.current = window.lolGenius.onDevLog((entry) => {
+        setDevLogs((prev) => {
+          const next = [...prev, entry];
+          return next.length > MAX_LOGS ? next.slice(-MAX_LOGS) : next;
+        });
+      });
+    } else {
+      devLogUnsub.current?.();
+      devLogUnsub.current = null;
+    }
+    return () => { devLogUnsub.current?.(); };
+  }, [devMode]);
+
+  return { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs };
 }

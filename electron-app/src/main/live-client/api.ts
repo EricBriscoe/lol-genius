@@ -18,6 +18,7 @@ export async function fetchLiveGameData(): Promise<Record<string, unknown> | nul
         let body = "";
         res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         res.on("end", () => {
+          logger.debug("Live client response:", body.length, "bytes");
           try { resolve(JSON.parse(body)); }
           catch (e) { logger.debug("JSON parse failed:", e); resolve(null); }
         });

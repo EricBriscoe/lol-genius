@@ -3,7 +3,7 @@ import { join } from "path";
 import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling } from "./live-client/poller";
 import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate } from "./updater";
-import log from "./log";
+import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
 
 const logger = log.scope("main");
 
@@ -40,7 +40,13 @@ app.whenReady().then(async () => {
   createWindow();
 
   if (mainWindow) {
+    setLogWindow(mainWindow);
     setupAppUpdater(mainWindow);
+
+    if (loadDevModePreference()) {
+      setDevMode(true);
+      mainWindow.webContents.openDevTools();
+    }
   }
 
   const modelDir = getModelDir();
@@ -105,3 +111,16 @@ ipcMain.handle("check-for-updates", async () => {
   }
   return updated;
 });
+
+ipcMain.handle("set-dev-mode", (_, enabled: boolean) => {
+  setDevMode(enabled);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    if (enabled) {
+      mainWindow.webContents.openDevTools();
+    } else {
+      mainWindow.webContents.closeDevTools();
+    }
+  }
+});
+
+ipcMain.handle("get-dev-mode", () => isDevMode());
