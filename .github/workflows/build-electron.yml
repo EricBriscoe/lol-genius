@@ -50,6 +50,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${{ github.ref_name }}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --title "$tag" --generate-notes
           for f in dist-electron/*.exe dist-electron/*.dmg; do
             [ -f "$f" ] && gh release upload "$tag" "$f" --clobber
           done
