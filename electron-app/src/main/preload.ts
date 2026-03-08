@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld("lolGenius", {
     ipcRenderer.on("dev-log", listener);
     return () => ipcRenderer.removeListener("dev-log", listener);
   },
+  checkAppUpdates: () => ipcRenderer.invoke("check-app-updates"),
+  installAppUpdate: () => ipcRenderer.invoke("install-app-update"),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   setAlwaysOnTop: (enabled: boolean) => ipcRenderer.invoke("set-always-on-top", enabled),
   getAlwaysOnTop: () => ipcRenderer.invoke("get-always-on-top"),

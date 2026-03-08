@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling, setPregameData } from "./live-client/poller";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
-import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate } from "./updater";
+import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, installAppUpdate, stopAppUpdateTimer } from "./updater";
 import { loadChampionData } from "./model/ddragon";
 import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
 
@@ -162,6 +162,7 @@ app.whenReady().then(async () => {
 
 app.on("window-all-closed", () => {
   if (modelUpdateTimer) { clearInterval(modelUpdateTimer); modelUpdateTimer = null; }
+  stopAppUpdateTimer();
   stopPolling();
   stopLCUPolling();
   app.quit();
@@ -216,6 +217,8 @@ ipcMain.handle("set-dev-mode", (_, enabled: boolean) => {
 });
 
 ipcMain.handle("get-dev-mode", () => isDevMode());
+ipcMain.handle("check-app-updates", () => checkForAppUpdates());
+ipcMain.handle("install-app-update", () => installAppUpdate());
 ipcMain.handle("get-app-version", () => app.getVersion());
 ipcMain.handle("set-always-on-top", (_, enabled: boolean) => mainWindow?.setAlwaysOnTop(enabled));
 ipcMain.handle("get-always-on-top", () => mainWindow?.isAlwaysOnTop() ?? false);

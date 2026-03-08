@@ -64,16 +64,27 @@ export interface GamePhaseChange {
   pregameSummary?: Record<string, number>;
 }
 
+export type AppUpdateEvent =
+  | { status: "checking" }
+  | { status: "available" }
+  | { status: "not_available" }
+  | { status: "downloading"; percent: number }
+  | { status: "downloaded" }
+  | { status: "error"; message: string }
+  | { status: "model_updated" };
+
 export interface LolGeniusAPI {
   onPredictionUpdate: (cb: (data: LiveGameUpdate) => void) => () => void;
   onConnectionStatus: (cb: (status: string) => void) => () => void;
-  onAppUpdateStatus: (cb: (data: { status: string }) => void) => () => void;
+  onAppUpdateStatus: (cb: (data: AppUpdateEvent) => void) => () => void;
   onChampSelectUpdate: (cb: (data: ChampSelectUpdate) => void) => () => void;
   onGamePhaseChange: (cb: (data: GamePhaseChange) => void) => () => void;
   startPolling: () => Promise<void>;
   stopPolling: () => Promise<void>;
   getModelInfo: () => Promise<ModelInfo>;
   checkForUpdates: () => Promise<boolean>;
+  checkAppUpdates: () => Promise<void>;
+  installAppUpdate: () => Promise<void>;
   setDevMode: (enabled: boolean) => Promise<void>;
   getDevMode: () => Promise<boolean>;
   onDevLog: (cb: (entry: DevLogEntry) => void) => () => void;

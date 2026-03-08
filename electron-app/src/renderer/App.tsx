@@ -9,6 +9,7 @@ import DevPanel from "./components/DevPanel";
 import ChampSelect from "./components/ChampSelect";
 import { useLiveGame } from "./hooks/useLiveGame";
 import { useChampSelect } from "./hooks/useChampSelect";
+import type { AppUpdateEvent } from "./types";
 import { sectionTitle } from "./styles";
 import { toBlueProb } from "./utils";
 
@@ -129,18 +130,61 @@ export default function App() {
         </Card>
       )}
 
-      {appUpdateStatus === "downloaded" && (
-        <div style={{
-          background: "var(--bg-card)", border: "1px solid var(--green)", borderRadius: 8,
-          padding: "8px 16px", fontSize: 12, color: "var(--green)", textAlign: "center",
-        }}>
-          Update ready. Restart to apply.
-        </div>
-      )}
+      <UpdateBanner event={appUpdateStatus} />
 
       {devMode && <DevPanel logs={devLogs} onClear={clearDevLogs} />}
     </div>
   );
+}
+
+function UpdateBanner({ event }: { event: AppUpdateEvent | null }) {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    if (event?.status === "error") {
+      setDismissed(false);
+      const timer = setTimeout(() => setDismissed(true), 5000);
+      return () => clearTimeout(timer);
+    }
+    if (event?.status === "downloading" || event?.status === "downloaded") {
+      setDismissed(false);
+    }
+  }, [event]);
+
+  if (!event || dismissed) return null;
+
+  if (event.status === "downloading") {
+    return (
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--accent)", borderRadius: 8, padding: "8px 16px", fontSize: 12, color: "var(--accent)", position: "relative", overflow: "hidden" }}>
+        <div style={{ position: "absolute", inset: 0, background: "var(--accent)", opacity: 0.1, width: `${event.percent}%`, transition: "width 0.3s" }} />
+        <span style={{ position: "relative" }}>Downloading update... {event.percent}%</span>
+      </div>
+    );
+  }
+
+  if (event.status === "downloaded") {
+    return (
+      <div style={{ background: "var(--bg-card)", border: "1px solid var(--green)", borderRadius: 8, padding: "8px 16px", fontSize: 12, color: "var(--green)", display: "flex", justifyContent: "center", alignItems: "center", gap: 12 }}>
+        <span>Update ready. Restart to apply.</span>
+        <button
+          onClick={() => window.lolGenius.installAppUpdate()}
+          style={{ background: "var(--green)", color: "#000", border: "none", borderRadius: 4, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
+        >
+          Restart Now
+        </button>
+      </div>
+    );
+  }
+
+  if (event.status === "error") {
+    return (
+      <div style={{ background: "var(--bg-card)", borderRadius: 8, padding: "8px 16px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
+        Update check failed
+      </div>
+    );
+  }
+
+  return null;
 }
 
 function GamePhaseIndicator({ phase, connectionStatus }: { phase: string; connectionStatus: string }) {

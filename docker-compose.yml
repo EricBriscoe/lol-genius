@@ -1,3 +1,6 @@
+x-db-url: &db-url
+  DATABASE_URL: postgresql://lol_genius:${POSTGRES_PASSWORD:-lol_genius_dev}@postgres:5432/lol_genius
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -28,9 +31,9 @@ services:
       - "8080:8080"
     env_file: .env
     environment:
-      - LOL_GENIUS_REGION=na1
-      - LOL_GENIUS_ROUTING=americas
-      - PROXY_CACHE_MAX_MB=256
+      LOL_GENIUS_REGION: na1
+      LOL_GENIUS_ROUTING: americas
+      PROXY_CACHE_MAX_MB: 256
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/riot/v1/health"]
       interval: 30s
@@ -51,7 +54,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://lol_genius:${POSTGRES_PASSWORD:-lol_genius_dev}@postgres:5432/lol_genius
+      <<: *db-url
     command: ["init-db", "--wait"]
 
   crawler:
@@ -68,9 +71,9 @@ services:
       - ./data/ddragon:/app/data/ddragon
       - ./config.yaml:/app/config.yaml:ro
     environment:
-      - LOL_GENIUS_DOCKER=1
-      - RIOT_PROXY_URL=http://riot-proxy:8080
-      - DATABASE_URL=postgresql://lol_genius:${POSTGRES_PASSWORD:-lol_genius_dev}@postgres:5432/lol_genius
+      <<: *db-url
+      LOL_GENIUS_DOCKER: 1
+      RIOT_PROXY_URL: http://riot-proxy:8080
     command: ["crawl"]
     logging:
       driver: json-file
@@ -92,10 +95,10 @@ services:
       - ./data/ddragon:/app/data/ddragon
       - ./config.yaml:/app/config.yaml:ro
     environment:
-      - DATABASE_URL=postgresql://lol_genius:${POSTGRES_PASSWORD:-lol_genius_dev}@postgres:5432/lol_genius
-      - PROXY_URL=http://riot-proxy:8080
-      - MODEL_DIR=data/models
-      - DDRAGON_CACHE=data/ddragon
+      <<: *db-url
+      PROXY_URL: http://riot-proxy:8080
+      MODEL_DIR: data/models
+      DDRAGON_CACHE: data/ddragon
     ports:
       - "8081:8081"
     healthcheck:

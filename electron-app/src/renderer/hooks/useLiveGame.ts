@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { LiveGameUpdate, ModelInfo, DevLogEntry } from "../types";
+import type { LiveGameUpdate, ModelInfo, DevLogEntry, AppUpdateEvent } from "../types";
 
 const MAX_LOGS = 200;
 
@@ -10,7 +10,7 @@ export function useLiveGame() {
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [devMode, setDevModeState] = useState(false);
   const [devLogs, setDevLogs] = useState<DevLogEntry[]>([]);
-  const [appUpdateStatus, setAppUpdateStatus] = useState<string | null>(null);
+  const [appUpdateStatus, setAppUpdateStatus] = useState<AppUpdateEvent | null>(null);
   const devLogUnsub = useRef<(() => void) | null>(null);
 
   const toggleDevMode = useCallback(async () => {
@@ -51,7 +51,7 @@ export function useLiveGame() {
     });
 
     const unsub3 = window.lolGenius.onAppUpdateStatus((data) => {
-      setAppUpdateStatus(data.status);
+      setAppUpdateStatus(data);
     });
 
     return () => { unsub1(); unsub2(); unsub3(); };

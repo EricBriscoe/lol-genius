@@ -8,19 +8,64 @@ import log from "./log";
 
 const logger = log.scope("updater");
 
+const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
+let updateTimer: ReturnType<typeof setInterval> | null = null;
+
+function safeSend(win: BrowserWindow, channel: string, data: unknown): void {
+  if (!win.isDestroyed()) win.webContents.send(channel, data);
+}
+
 export function setupAppUpdater(win: BrowserWindow): void {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  autoUpdater.on("checking-for-update", () => {
+    safeSend(win, "app-update-status", { status: "checking" });
+  });
+
   autoUpdater.on("update-available", () => {
-    win.webContents.send("app-update-status", { status: "available" });
+    safeSend(win, "app-update-status", { status: "available" });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    safeSend(win, "app-update-status", { status: "not_available" });
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    safeSend(win, "app-update-status", { status: "downloading", percent: Math.round(progress.percent) });
   });
 
   autoUpdater.on("update-downloaded", () => {
-    win.webContents.send("app-update-status", { status: "downloaded" });
+    safeSend(win, "app-update-status", { status: "downloaded" });
   });
 
-  autoUpdater.checkForUpdatesAndNotify();
+  autoUpdater.on("error", (err) => {
+    logger.error("App update error:", err.message);
+    safeSend(win, "app-update-status", { status: "error", message: err.message });
+  });
+
+  checkForAppUpdates();
+
+  updateTimer = setInterval(() => checkForAppUpdates(), UPDATE_CHECK_INTERVAL);
+}
+
+export function checkForAppUpdates(): void {
+  try {
+    autoUpdater.checkForUpdatesAndNotify();
+  } catch (e) {
+    logger.error("Failed to check for app updates:", e);
+  }
+}
+
+export function installAppUpdate(): void {
+  autoUpdater.quitAndInstall();
+}
+
+export function stopAppUpdateTimer(): void {
+  if (updateTimer) {
+    clearInterval(updateTimer);
+    updateTimer = null;
+  }
 }
 
 const MODEL_FILES = [
