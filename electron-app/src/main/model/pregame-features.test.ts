@@ -6,6 +6,7 @@ import {
   extractDraftFeatures,
   extractInteractionFeatures,
   buildPregameFeatures,
+  getPregameSummaryFromFeatures,
 } from "./pregame-features";
 import { ALL_TAGS } from "./pregame-constants";
 import type { ChampSelectSession } from "../lcu-client/types";
@@ -207,4 +208,90 @@ describe("buildPregameFeatures", () => {
     expect(features.blue_top_rank_numeric).toBe(12.0);
     expect(features.top_rank_diff).toBe(0.0);
   });
+
+  it("filters output when featureNames provided", () => {
+    const session = makeSession(1);
+    const subset = ["patch_numeric", "blue_top_rank_numeric", "top_rank_diff", "nonexistent_feature"];
+    const features = buildPregameFeatures(session, null, subset);
+
+    expect(Object.keys(features)).toHaveLength(4);
+    expect(features.nonexistent_feature).toBe(0.0);
+    expect(features.patch_numeric).toBeDefined();
+  });
+
+  it("swaps teams when local player is on red side", () => {
+    const session = makeSession(2);
+    const features = buildPregameFeatures(session);
+
+    expect(features.blue_bans_count).toBe(3);
+    expect(features.red_bans_count).toBe(2);
+  });
+
+  it("enriches local player with ranked stats", () => {
+    const session = makeSession(1);
+    const rankedStats = {
+      queueMap: {
+        RANKED_SOLO_5x5: {
+          tier: "DIAMOND",
+          division: "II",
+          leaguePoints: 75,
+          wins: 120,
+          losses: 80,
+          isProvisional: false,
+        },
+      },
+    };
+
+    const features = buildPregameFeatures(session, rankedStats);
+    expect(features.blue_top_rank_numeric).toBeCloseTo(26.75, 1);
+    expect(features.blue_top_ranked_games).toBe(200);
+  });
 });
+
+describe("getPregameSummaryFromFeatures", () => {
+  it("computes diffs from feature map", () => {
+    const features = {
+      blue_melee_count: 3,
+      red_melee_count: 2,
+      blue_ad_ratio: 0.6,
+      red_ad_ratio: 0.4,
+      blue_avg_rank: 16,
+      red_avg_rank: 12,
+      blue_avg_team_winrate: 0.55,
+      red_avg_team_winrate: 0.5,
+    };
+    const summary = getPregameSummaryFromFeatures(features);
+    expect(summary.melee_count_diff).toBe(1);
+    expect(summary.ad_ratio_diff).toBeCloseTo(0.2);
+    expect(summary.avg_rank_diff).toBe(4);
+    expect(summary.avg_winrate_diff).toBeCloseTo(0.05);
+  });
+
+  it("returns zeros for empty features", () => {
+    const summary = getPregameSummaryFromFeatures({});
+    expect(summary.melee_count_diff).toBe(0);
+    expect(summary.scaling_score_diff).toBe(0);
+  });
+});
+
+function makeSession(localTeamId: 1 | 2): ChampSelectSession {
+  return {
+    myTeam: [
+      { summonerId: 1, championId: 0, assignedPosition: "top", spell1Id: 4, spell2Id: 12, team: localTeamId },
+      { summonerId: 2, championId: 0, assignedPosition: "jungle", spell1Id: 11, spell2Id: 4, team: localTeamId },
+      { summonerId: 3, championId: 0, assignedPosition: "middle", spell1Id: 4, spell2Id: 14, team: localTeamId },
+      { summonerId: 4, championId: 0, assignedPosition: "bottom", spell1Id: 7, spell2Id: 4, team: localTeamId },
+      { summonerId: 5, championId: 0, assignedPosition: "utility", spell1Id: 4, spell2Id: 3, team: localTeamId },
+    ],
+    theirTeam: [
+      { summonerId: 6, championId: 0, assignedPosition: "top", spell1Id: 4, spell2Id: 14, team: localTeamId === 1 ? 2 : 1 },
+      { summonerId: 7, championId: 0, assignedPosition: "jungle", spell1Id: 11, spell2Id: 4, team: localTeamId === 1 ? 2 : 1 },
+      { summonerId: 8, championId: 0, assignedPosition: "middle", spell1Id: 4, spell2Id: 14, team: localTeamId === 1 ? 2 : 1 },
+      { summonerId: 9, championId: 0, assignedPosition: "bottom", spell1Id: 4, spell2Id: 7, team: localTeamId === 1 ? 2 : 1 },
+      { summonerId: 10, championId: 0, assignedPosition: "utility", spell1Id: 4, spell2Id: 3, team: localTeamId === 1 ? 2 : 1 },
+    ],
+    bans: { myTeamBans: [157, 236], theirTeamBans: [92, 55, 24] },
+    timer: { phase: "FINALIZATION", adjustedTimeLeftInPhase: 15000 },
+    localPlayerCellId: 0,
+  };
+}

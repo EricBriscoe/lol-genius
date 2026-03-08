@@ -38,6 +38,7 @@ export interface ChampSelectPlayerInfo {
   position: string;
   championId: number;
   championName: string;
+  championKey: string;
   isLocalPlayer: boolean;
 }
 
@@ -52,6 +53,7 @@ export interface ChampSelectUpdate {
   red_team: ChampSelectTeamInfo;
   is_blue_side: boolean;
   timer_remaining: number;
+  ddragon_version: string;
   top_factors?: PredictFactor[];
   bans: { blue: number[]; red: number[] };
 }
