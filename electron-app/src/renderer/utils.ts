@@ -8,3 +8,7 @@ export function fmtTime(seconds: number): string {
 export function toBlueProb(raw: number | null | undefined): number {
   return raw != null ? Math.round(raw * 100) : 50;
 }
+
+export function titleCase(s: string): string {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}

@@ -5,6 +5,7 @@ import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling, setPregameData } from "./live-client/poller";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
 import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, installAppUpdate, stopAppUpdateTimer } from "./updater";
+import { safeSend } from "./ipc";
 import { loadChampionData } from "./model/ddragon";
 import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
 
@@ -14,6 +15,10 @@ let mainWindow: BrowserWindow | null = null;
 let modelUpdateTimer: ReturnType<typeof setInterval> | null = null;
 
 const MODEL_UPDATE_INTERVAL = 30 * 60 * 1000;
+
+function stopModelUpdateTimer(): void {
+  if (modelUpdateTimer) { clearInterval(modelUpdateTimer); modelUpdateTimer = null; }
+}
 
 process.on("uncaughtException", (error) => {
   logger.error("Uncaught exception:", error);
@@ -131,7 +136,7 @@ app.whenReady().then(async () => {
     loadChampionData(resourcesPath);
   } catch (e) {
     logger.error("Failed to load champion data:", e);
-    mainWindow?.webContents.send("connection-status", "ddragon_error");
+    safeSend(mainWindow, "connection-status", "ddragon_error");
   }
 
   await loadAndUpdateModel("live");
@@ -140,8 +145,8 @@ app.whenReady().then(async () => {
   modelUpdateTimer = setInterval(async () => {
     const liveUpdated = await loadAndUpdateModel("live");
     const pregameUpdated = await loadAndUpdateModel("pregame");
-    if ((liveUpdated || pregameUpdated) && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send("app-update-status", { status: "model_updated" });
+    if (liveUpdated || pregameUpdated) {
+      safeSend(mainWindow, "app-update-status", { status: "model_updated" });
     }
   }, MODEL_UPDATE_INTERVAL);
 
@@ -161,7 +166,7 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => {
-  if (modelUpdateTimer) { clearInterval(modelUpdateTimer); modelUpdateTimer = null; }
+  stopModelUpdateTimer();
   stopAppUpdateTimer();
   stopPolling();
   stopLCUPolling();

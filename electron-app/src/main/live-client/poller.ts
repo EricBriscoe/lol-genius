@@ -3,6 +3,7 @@ import { fetchLiveGameData } from "./api";
 import { parseLiveClientData, buildLiveFeatures, type MomentumState } from "../model/features";
 import { predict } from "../model/inference";
 import { computeTopFactors } from "../model/shap-factors";
+import { safeSend } from "../ipc";
 import log from "../log";
 
 const logger = log.scope("poller");
@@ -32,11 +33,7 @@ function resetState(): void {
   prevRedKills = 0;
 }
 
-function send(win: BrowserWindow, channel: string, data: unknown): void {
-  if (!win.isDestroyed()) {
-    win.webContents.send(channel, data);
-  }
-}
+const send = safeSend;
 
 async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
   const data = await fetchLiveGameData();

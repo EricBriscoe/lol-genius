@@ -1,44 +1,28 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+function onChannel(channel: string) {
+  return (cb: (data: never) => void) => {
+    const listener = (_: unknown, d: never) => cb(d);
+    ipcRenderer.on(channel, listener);
+    return () => ipcRenderer.removeListener(channel, listener);
+  };
+}
+
 contextBridge.exposeInMainWorld("lolGenius", {
-  onPredictionUpdate: (cb: (data: unknown) => void) => {
-    const listener = (_: unknown, d: unknown) => cb(d);
-    ipcRenderer.on("prediction-update", listener);
-    return () => ipcRenderer.removeListener("prediction-update", listener);
-  },
-  onConnectionStatus: (cb: (status: string) => void) => {
-    const listener = (_: unknown, s: string) => cb(s);
-    ipcRenderer.on("connection-status", listener);
-    return () => ipcRenderer.removeListener("connection-status", listener);
-  },
-  onAppUpdateStatus: (cb: (data: unknown) => void) => {
-    const listener = (_: unknown, d: unknown) => cb(d);
-    ipcRenderer.on("app-update-status", listener);
-    return () => ipcRenderer.removeListener("app-update-status", listener);
-  },
-  onChampSelectUpdate: (cb: (data: unknown) => void) => {
-    const listener = (_: unknown, d: unknown) => cb(d);
-    ipcRenderer.on("champ-select-update", listener);
-    return () => ipcRenderer.removeListener("champ-select-update", listener);
-  },
-  onGamePhaseChange: (cb: (data: unknown) => void) => {
-    const listener = (_: unknown, d: unknown) => cb(d);
-    ipcRenderer.on("game-phase-change", listener);
-    return () => ipcRenderer.removeListener("game-phase-change", listener);
-  },
+  onPredictionUpdate: onChannel("prediction-update"),
+  onConnectionStatus: onChannel("connection-status"),
+  onAppUpdateStatus: onChannel("app-update-status"),
+  onChampSelectUpdate: onChannel("champ-select-update"),
+  onGamePhaseChange: onChannel("game-phase-change"),
+  onDevLog: onChannel("dev-log"),
   startPolling: () => ipcRenderer.invoke("start-polling"),
   stopPolling: () => ipcRenderer.invoke("stop-polling"),
   getModelInfo: () => ipcRenderer.invoke("get-model-info"),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
-  setDevMode: (enabled: boolean) => ipcRenderer.invoke("set-dev-mode", enabled),
-  getDevMode: () => ipcRenderer.invoke("get-dev-mode"),
-  onDevLog: (cb: (entry: unknown) => void) => {
-    const listener = (_: unknown, d: unknown) => cb(d);
-    ipcRenderer.on("dev-log", listener);
-    return () => ipcRenderer.removeListener("dev-log", listener);
-  },
   checkAppUpdates: () => ipcRenderer.invoke("check-app-updates"),
   installAppUpdate: () => ipcRenderer.invoke("install-app-update"),
+  setDevMode: (enabled: boolean) => ipcRenderer.invoke("set-dev-mode", enabled),
+  getDevMode: () => ipcRenderer.invoke("get-dev-mode"),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   setAlwaysOnTop: (enabled: boolean) => ipcRenderer.invoke("set-always-on-top", enabled),
   getAlwaysOnTop: () => ipcRenderer.invoke("get-always-on-top"),

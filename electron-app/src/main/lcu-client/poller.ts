@@ -6,6 +6,7 @@ import { buildPregameFeatures, getPregameSummaryFromFeatures } from "../model/pr
 import { predict, isModelLoaded, getFeatureNames } from "../model/inference";
 import { computeTopFactors } from "../model/shap-factors";
 import { getModelDir } from "../updater";
+import { safeSend } from "../ipc";
 import * as ddragon from "../model/ddragon";
 import log from "../log";
 
@@ -29,9 +30,7 @@ let lastPregameSummary: Record<string, number> | null = null;
 let cachedRankedStats: RankedStats | null = null;
 
 function send(channel: string, data: unknown): void {
-  if (win && !win.isDestroyed()) {
-    win.webContents.send(channel, data);
-  }
+  safeSend(win, channel, data);
 }
 
 function setState(next: LCUState): void {

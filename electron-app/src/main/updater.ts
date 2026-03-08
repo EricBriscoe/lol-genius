@@ -5,15 +5,12 @@ import { createHash } from "crypto";
 import { createWriteStream, mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
 import log from "./log";
+import { safeSend } from "./ipc";
 
 const logger = log.scope("updater");
 
 const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
 let updateTimer: ReturnType<typeof setInterval> | null = null;
-
-function safeSend(win: BrowserWindow, channel: string, data: unknown): void {
-  if (!win.isDestroyed()) win.webContents.send(channel, data);
-}
 
 export function setupAppUpdater(win: BrowserWindow): void {
   autoUpdater.autoDownload = true;
@@ -76,13 +73,19 @@ const MODEL_FILES = [
   "feature_importance.json",
 ];
 
-export function getModelDir(modelType: "live" | "pregame" = "live"): string {
-  const subdir = modelType === "pregame" ? join("models", "pregame") : "models";
+function modelSubdir(modelType: "live" | "pregame"): string {
+  return modelType === "pregame" ? join("models", "pregame") : "models";
+}
 
-  const userDir = join(app.getPath("userData"), subdir);
+export function getUserModelDir(modelType: "live" | "pregame" = "live"): string {
+  return join(app.getPath("userData"), modelSubdir(modelType));
+}
+
+export function getModelDir(modelType: "live" | "pregame" = "live"): string {
+  const userDir = getUserModelDir(modelType);
   if (existsSync(join(userDir, "model.onnx"))) return userDir;
 
-  const bundled = join(process.resourcesPath ?? app.getAppPath(), subdir);
+  const bundled = join(process.resourcesPath ?? app.getAppPath(), modelSubdir(modelType));
   if (existsSync(join(bundled, "model.onnx"))) return bundled;
 
   return userDir;
@@ -132,9 +135,7 @@ export async function checkForModelUpdate(modelType: "live" | "pregame" = "live"
           const currentVersion = getModelVersion(modelType);
           if (currentVersion === modelRelease.tag_name) { resolve(false); return; }
 
-          const outDir = modelType === "pregame"
-            ? join(app.getPath("userData"), "models", "pregame")
-            : join(app.getPath("userData"), "models");
+          const outDir = getUserModelDir(modelType);
           mkdirSync(outDir, { recursive: true });
 
           const assets = modelRelease.assets as { name: string; browser_download_url: string }[];

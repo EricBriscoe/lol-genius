@@ -1,4 +1,5 @@
 import type { PredictFactor } from "../types";
+import { titleCase } from "../utils";
 
 const LABELS: Record<string, string> = {
   kill_diff: "Kill Lead",
@@ -16,7 +17,7 @@ const LABELS: Record<string, string> = {
 };
 
 function featureLabel(name: string): string {
-  return LABELS[name] ?? name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return LABELS[name] ?? titleCase(name);
 }
 
 export default function KeyFactors({ factors }: { factors: PredictFactor[] }) {

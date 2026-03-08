@@ -2,6 +2,7 @@ import log from "electron-log/main";
 import { app } from "electron";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
+import { safeSend } from "./ipc";
 import type { BrowserWindow } from "electron";
 
 log.transports.file.level = "info";
@@ -48,8 +49,8 @@ export function setLogWindow(win: BrowserWindow | null): void {
 }
 
 log.hooks.push((message) => {
-  if (devMode && logWindow && !logWindow.isDestroyed()) {
-    logWindow.webContents.send("dev-log", {
+  if (devMode) {
+    safeSend(logWindow, "dev-log", {
       timestamp: new Date().toISOString(),
       scope: (message.scope as string) ?? "",
       level: message.level ?? "info",

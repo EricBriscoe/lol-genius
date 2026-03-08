@@ -1,9 +1,21 @@
+import { useState, useEffect, useRef } from "react";
 import type { ChampSelectUpdate, ChampSelectPlayerInfo } from "../types";
 import { sectionTitle } from "../styles";
-import { toBlueProb } from "../utils";
+import { titleCase, toBlueProb } from "../utils";
 import Card from "./Card";
 import WinProbBar from "./WinProbBar";
 import KeyFactors from "./KeyFactors";
+
+const PHASE_LABELS: Record<string, string> = {
+  BAN_PICK: "Banning",
+  PLANNING: "Banning",
+  FINALIZATION: "Finalization",
+  GAME_STARTING: "Game Starting",
+};
+
+function formatPhase(phase: string): string {
+  return PHASE_LABELS[phase] ?? titleCase(phase);
+}
 
 const POSITION_LABELS: Record<string, string> = {
   top: "TOP",
@@ -23,30 +35,40 @@ function champImageUrl(version: string, championKey: string): string {
   return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${championKey}.png`;
 }
 
+function sortByPosition(players: ChampSelectPlayerInfo[]): ChampSelectPlayerInfo[] {
+  return [...players].sort((a, b) => {
+    const ai = POSITION_ORDER.indexOf(a.position?.toLowerCase());
+    const bi = POSITION_ORDER.indexOf(b.position?.toLowerCase());
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+}
+
 export default function ChampSelect({ data }: Props) {
   const blueProb = toBlueProb(data.blue_win_probability);
+  const serverSeconds = Math.ceil(data.timer_remaining / 1000);
 
-  const sortByPosition = (players: ChampSelectPlayerInfo[]) => {
-    return [...players].sort((a, b) => {
-      const ai = POSITION_ORDER.indexOf(a.position?.toLowerCase());
-      const bi = POSITION_ORDER.indexOf(b.position?.toLowerCase());
-      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    });
-  };
+  const [displaySeconds, setDisplaySeconds] = useState(serverSeconds);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    setDisplaySeconds(serverSeconds);
+  }, [serverSeconds]);
+
+  useEffect(() => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (displaySeconds <= 0) return;
+    intervalRef.current = setInterval(() => setDisplaySeconds((s) => Math.max(0, s - 1)), 1000);
+    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+  }, [serverSeconds]);
 
   const blueSorted = sortByPosition(data.blue_team.players);
   const redSorted = sortByPosition(data.red_team.players);
 
-  const phaseLabel =
-    data.phase === "BAN_PICK" || data.phase === "PLANNING" ? "Banning"
-    : data.phase === "FINALIZATION" ? "Finalization"
-    : data.phase;
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
-        {phaseLabel}
-        {data.timer_remaining > 0 && ` — ${Math.ceil(data.timer_remaining / 1000)}s`}
+        {formatPhase(data.phase)}
+        {displaySeconds > 0 && ` — ${displaySeconds}s`}
       </div>
 
       {data.blue_win_probability != null && (
