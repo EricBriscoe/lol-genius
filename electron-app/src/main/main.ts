@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, screen } from "electron";
 import { join } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { loadModel, getFeatureNames } from "./model/inference";
-import { startPolling, stopPolling, isPolling, setPregameData } from "./live-client/poller";
+import { startPolling, stopPolling, isPolling } from "./live-client/poller";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
 import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, installAppUpdate, stopAppUpdateTimer } from "./updater";
 import { safeSend } from "./ipc";
@@ -156,12 +156,6 @@ app.whenReady().then(async () => {
     }
 
     startLCUPolling(mainWindow);
-
-    ipcMain.on("game-phase-change", (_, data: { phase: string; pregameProb?: number; pregameSummary?: Record<string, number> }) => {
-      if (data.phase === "in_game" && data.pregameProb != null) {
-        setPregameData(data.pregameProb, data.pregameSummary ?? null);
-      }
-    });
   }
 });
 

@@ -78,6 +78,15 @@ export default function App() {
         <ChampSelect data={champSelectData} />
       )}
 
+      {phase === "in_game" && !current && (
+        <Card>
+          <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)" }}>
+            <div style={{ fontSize: 14, marginBottom: 8 }}>Game detected</div>
+            <div style={{ fontSize: 12 }}>Waiting for first prediction...</div>
+          </div>
+        </Card>
+      )}
+
       {phase === "in_game" && current && current.blue_win_probability != null && (
         <>
           <Card>

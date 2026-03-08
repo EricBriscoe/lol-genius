@@ -44,87 +44,92 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
 
   send(win, "connection-status", "connected");
 
-  const newGameId = (data as { gameData?: { gameId?: number } }).gameData?.gameId ?? null;
-  const gameIdReset = newGameId !== null && gameId !== null && newGameId !== gameId;
-  if (newGameId !== null) gameId = newGameId;
-
-  const gameState = parseLiveClientData(data as Parameters<typeof parseLiveClientData>[0]);
-  const currentGameTime = gameState.game_time;
-  const timeReset = lastGameTime !== null && currentGameTime < lastGameTime - 30;
-  const gameReset = gameIdReset || timeReset;
-  lastGameTime = currentGameTime;
-
-  if (gameReset) {
-    resetState();
-    gameId = newGameId;
-    lastGameTime = currentGameTime;
-  }
-
-  const killDiff = gameState.kill_diff;
-  const towerDiff = gameState.tower_diff;
-
-  let killDiffDelta = 0;
-  let recentKillShareDiff = 0;
-
-  if (prevDiffs) {
-    killDiffDelta = killDiff - prevDiffs.kill_diff;
-    const blueRecent = gameState.blue_kills - prevBlueKills;
-    const redRecent = gameState.red_kills - prevRedKills;
-    recentKillShareDiff =
-      blueRecent / Math.max(gameState.blue_kills, 1) -
-      redRecent / Math.max(gameState.red_kills, 1);
-  }
-
-  const killDiffAccel = killDiffDelta - prevKillDiffDelta;
-  peakKillDiff = Math.max(peakKillDiff, killDiff);
-  peakTowerDiff = Math.max(peakTowerDiff, towerDiff);
-
-  const momentum: MomentumState = {
-    prevDiffs,
-    peakKillDiff,
-    peakTowerDiff,
-    killDiffAccel,
-    recentKillShareDiff,
-  };
-
-  const features = buildLiveFeatures(gameState, momentum, pregameProb, pregameSummary ?? undefined);
-  logger.debug("Feature vector:", JSON.stringify(features));
-  logger.debug("Momentum:", JSON.stringify(momentum));
-
-  prevDiffs = { kill_diff: killDiff, cs_diff: gameState.cs_diff, tower_diff: towerDiff };
-  prevKillDiffDelta = killDiffDelta;
-  prevBlueKills = gameState.blue_kills;
-  prevRedKills = gameState.red_kills;
-
-  let prob: number;
   try {
-    prob = await predict(features);
+    const newGameId = (data as { gameData?: { gameId?: number } }).gameData?.gameId ?? null;
+    const gameIdReset = newGameId !== null && gameId !== null && newGameId !== gameId;
+    if (newGameId !== null) gameId = newGameId;
+
+    const gameState = parseLiveClientData(data as Parameters<typeof parseLiveClientData>[0]);
+    const currentGameTime = gameState.game_time;
+    const timeReset = lastGameTime !== null && currentGameTime < lastGameTime - 30;
+    const gameReset = gameIdReset || timeReset;
+    lastGameTime = currentGameTime;
+
+    if (gameReset) {
+      resetState();
+      gameId = newGameId;
+      lastGameTime = currentGameTime;
+    }
+
+    const killDiff = gameState.kill_diff;
+    const towerDiff = gameState.tower_diff;
+
+    let killDiffDelta = 0;
+    let recentKillShareDiff = 0;
+
+    if (prevDiffs) {
+      killDiffDelta = killDiff - prevDiffs.kill_diff;
+      const blueRecent = gameState.blue_kills - prevBlueKills;
+      const redRecent = gameState.red_kills - prevRedKills;
+      recentKillShareDiff =
+        blueRecent / Math.max(gameState.blue_kills, 1) -
+        redRecent / Math.max(gameState.red_kills, 1);
+    }
+
+    const killDiffAccel = killDiffDelta - prevKillDiffDelta;
+    peakKillDiff = Math.max(peakKillDiff, killDiff);
+    peakTowerDiff = Math.max(peakTowerDiff, towerDiff);
+
+    const momentum: MomentumState = {
+      prevDiffs,
+      peakKillDiff,
+      peakTowerDiff,
+      killDiffAccel,
+      recentKillShareDiff,
+    };
+
+    const features = buildLiveFeatures(gameState, momentum, pregameProb, pregameSummary ?? undefined);
+    logger.debug("Feature vector:", JSON.stringify(features));
+    logger.debug("Momentum:", JSON.stringify(momentum));
+
+    prevDiffs = { kill_diff: killDiff, cs_diff: gameState.cs_diff, tower_diff: towerDiff };
+    prevKillDiffDelta = killDiffDelta;
+    prevBlueKills = gameState.blue_kills;
+    prevRedKills = gameState.red_kills;
+
+    let prob: number;
+    try {
+      prob = await predict(features);
+    } catch (e) {
+      logger.error("Prediction failed:", e);
+      send(win, "prediction-update", { status: "model_missing", blue_win_probability: null });
+      return;
+    }
+
+    logger.debug("Probability:", prob);
+
+    const topFactors = await computeTopFactors(modelDir, features);
+
+    const update = {
+      status: "ok",
+      game_time: gameState.game_time,
+      blue_win_probability: prob,
+      kill_diff: gameState.kill_diff,
+      dragon_diff: gameState.dragon_diff,
+      tower_diff: gameState.tower_diff,
+      baron_diff: gameState.baron_diff,
+      cs_diff: gameState.cs_diff,
+      inhibitor_diff: gameState.inhibitor_diff,
+      elder_diff: gameState.elder_diff,
+      game_reset: gameReset,
+      top_factors: topFactors,
+    };
+
+    send(win, "prediction-update", update);
   } catch (e) {
-    logger.error("Prediction failed:", e);
-    send(win, "prediction-update", { status: "model_missing", blue_win_probability: null });
-    return;
+    logger.error("Poll processing failed:", e);
+    send(win, "prediction-update", { status: "poll_error", blue_win_probability: null });
   }
-
-  logger.debug("Probability:", prob);
-
-  const topFactors = await computeTopFactors(modelDir, features);
-
-  const update = {
-    status: "ok",
-    game_time: gameState.game_time,
-    blue_win_probability: prob,
-    kill_diff: gameState.kill_diff,
-    dragon_diff: gameState.dragon_diff,
-    tower_diff: gameState.tower_diff,
-    baron_diff: gameState.baron_diff,
-    cs_diff: gameState.cs_diff,
-    inhibitor_diff: gameState.inhibitor_diff,
-    elder_diff: gameState.elder_diff,
-    game_reset: gameReset,
-    top_factors: topFactors,
-  };
-
-  send(win, "prediction-update", update);
 }
 
 export function setPregameData(prob: number | null, summary: Record<string, number> | null): void {
