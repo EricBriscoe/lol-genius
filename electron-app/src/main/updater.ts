@@ -65,7 +65,7 @@ export async function checkForModelUpdate(): Promise<boolean> {
         try {
           const releases = JSON.parse(body);
           const modelRelease = releases.find(
-            (r: { tag_name: string }) => r.tag_name.startsWith("model-v"),
+            (r: { tag_name: string }) => r.tag_name.startsWith("model-v") && r.tag_name.includes("live"),
           );
           if (!modelRelease) { resolve(false); return; }
 

@@ -16,9 +16,14 @@ def export_onnx(model_dir: str, model_type: str = "pregame") -> Path:
 
     model, feature_names = load_model(model_dir, model_type)
     type_dir = Path(model_dir) / model_type
+    if not (type_dir / "model.json").exists():
+        type_dir = Path(model_dir)
 
     sklearn_model = xgb.XGBClassifier()
     sklearn_model.load_model(str(type_dir / "model.json"))
+
+    booster = sklearn_model.get_booster()
+    booster.feature_names = [f"f{i}" for i in range(len(feature_names))]
 
     initial_type = [("input", FloatTensorType([None, len(feature_names)]))]
     onnx_model = onnxmltools.convert_xgboost(sklearn_model, initial_types=initial_type)
