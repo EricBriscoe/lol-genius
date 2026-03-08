@@ -7,6 +7,7 @@ import { predict, isModelLoaded, getFeatureNames } from "../model/inference";
 import { computeTopFactors } from "../model/shap-factors";
 import { getModelDir } from "../updater";
 import { safeSend } from "../ipc";
+import { setPregameData } from "../live-client/poller";
 import * as ddragon from "../model/ddragon";
 import log from "../log";
 
@@ -108,6 +109,7 @@ function startGameflowPolling(): void {
     } else if (phase === "InProgress" || phase === "GameStart") {
       if (state !== "game_start") {
         setState("game_start");
+        setPregameData(lastPregameProb, lastPregameSummary);
         send("game-phase-change", {
           phase: "in_game",
           pregameProb: lastPregameProb,
