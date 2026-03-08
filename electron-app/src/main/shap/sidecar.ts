@@ -2,6 +2,9 @@ import { execFile } from "child_process";
 import { existsSync } from "fs";
 import { join } from "path";
 import { app } from "electron";
+import log from "../log";
+
+const logger = log.scope("shap");
 
 let sidecarPath: string | null = null;
 
@@ -41,12 +44,14 @@ export async function computeShap(
       { timeout: 30_000, maxBuffer: 1024 * 1024 },
       (error, stdout) => {
         if (error) {
+          logger.warn("SHAP sidecar error:", error.message);
           resolve(null);
           return;
         }
         try {
           resolve(JSON.parse(stdout));
-        } catch {
+        } catch (e) {
+          logger.warn("SHAP invalid JSON:", e);
           resolve(null);
         }
       },

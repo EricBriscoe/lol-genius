@@ -5,13 +5,23 @@
   "main": "dist/main/main.js",
   "author": "Eric Briscoe",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EricBriscoe/lol-genius.git",
+    "directory": "electron-app"
+  },
+  "homepage": "https://github.com/EricBriscoe/lol-genius#readme",
+  "bugs": { "url": "https://github.com/EricBriscoe/lol-genius/issues" },
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "package": "electron-builder"
+    "package": "electron-builder",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
+    "electron-log": "^5.2.0",
     "onnxruntime-node": "^1.20.0",
     "recharts": "^2.15.0",
     "lucide-react": "^0.468.0",
@@ -27,6 +37,7 @@
     "electron-vite": "^2.3.0",
     "typescript": "^5.7.0",
     "vite": "^6.0.0",
+    "vitest": "^3.0.0",
     "@vitejs/plugin-react": "^4.3.0"
   },
   "build": {
@@ -38,6 +49,10 @@
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.games"
     },
     "nsis": {
       "oneClick": false,

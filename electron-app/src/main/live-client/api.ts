@@ -1,5 +1,7 @@
 import https from "https";
+import log from "../log";
 
+const logger = log.scope("live-client");
 const agent = new https.Agent({ rejectUnauthorized: false });
 
 export async function fetchLiveGameData(): Promise<Record<string, unknown> | null> {
@@ -17,11 +19,14 @@ export async function fetchLiveGameData(): Promise<Record<string, unknown> | nul
         res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
         res.on("end", () => {
           try { resolve(JSON.parse(body)); }
-          catch { resolve(null); }
+          catch (e) { logger.debug("JSON parse failed:", e); resolve(null); }
         });
       },
     );
-    req.on("error", () => resolve(null));
+    req.on("error", (e) => {
+      logger.debug("Live client unreachable:", e.message);
+      resolve(null);
+    });
     req.on("timeout", () => { req.destroy(); resolve(null); });
   });
 }

@@ -1,8 +1,11 @@
 import { BrowserWindow } from "electron";
 import { fetchLiveGameData } from "./api";
-import { parseLiveClientData, buildLiveFeatures, type GameState, type MomentumState } from "../model/features";
+import { parseLiveClientData, buildLiveFeatures, type MomentumState } from "../model/features";
 import { predict, getFeatureImportance } from "../model/inference";
 import { computeShap } from "../shap/sidecar";
+import log from "../log";
+
+const logger = log.scope("poller");
 
 const POLL_INTERVAL = 15_000;
 
@@ -55,13 +58,9 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
   lastGameTime = currentGameTime;
 
   if (gameReset) {
-    prevDiffs = null;
-    peakKillDiff = 0;
-    peakTowerDiff = 0;
-    prevKillDiffDelta = 0;
-    prevBlueKills = 0;
-    prevRedKills = 0;
-    history = [];
+    resetState();
+    gameId = newGameId;
+    lastGameTime = currentGameTime;
   }
 
   const killDiff = gameState.kill_diff;
@@ -101,7 +100,8 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
   let prob: number;
   try {
     prob = await predict(features);
-  } catch {
+  } catch (e) {
+    logger.error("Prediction failed:", e);
     send(win, "prediction-update", { status: "model_missing", blue_win_probability: null });
     return;
   }

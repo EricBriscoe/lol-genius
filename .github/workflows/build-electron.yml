@@ -7,7 +7,16 @@ on:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            build-flag: --win
+            sidecar-name: shap_predict.exe
+          - os: macos-latest
+            build-flag: --mac
+            sidecar-name: shap_predict
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     defaults:
@@ -36,11 +45,11 @@ jobs:
       - name: Copy sidecar to extraResources
         run: |
           mkdir -p sidecar/dist
-          cp dist/shap_predict.exe sidecar/dist/
+          cp dist/${{ matrix.sidecar-name }} sidecar/dist/
         shell: bash
 
       - name: Build Electron app
-        run: npx electron-builder --win
+        run: npx electron-builder ${{ matrix.build-flag }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -48,7 +57,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $tag = "${{ github.ref_name }}"
-          $exe = Get-ChildItem -Path dist -Filter "*.exe" | Select-Object -First 1
-          gh release upload $tag $exe.FullName --clobber
-        shell: pwsh
+          tag="${{ github.ref_name }}"
+          for f in dist-electron/*.exe dist-electron/*.dmg; do
+            [ -f "$f" ] && gh release upload "$tag" "$f" --clobber
+          done
+        shell: bash

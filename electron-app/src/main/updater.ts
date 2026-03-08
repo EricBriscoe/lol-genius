@@ -1,8 +1,12 @@
 import { autoUpdater } from "electron-updater";
 import { app, BrowserWindow } from "electron";
 import https from "https";
-import { createWriteStream, mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
+import { createHash } from "crypto";
+import { createWriteStream, mkdirSync, existsSync, readFileSync, writeFileSync, unlinkSync } from "fs";
 import { join } from "path";
+import log from "./log";
+
+const logger = log.scope("updater");
 
 export function setupAppUpdater(win: BrowserWindow): void {
   autoUpdater.autoDownload = true;
@@ -72,6 +76,8 @@ export async function checkForModelUpdate(): Promise<boolean> {
           mkdirSync(outDir, { recursive: true });
 
           const assets = modelRelease.assets as { name: string; browser_download_url: string }[];
+          const checksumAsset = assets.find((a) => a.name === "checksums.sha256");
+
           let downloaded = 0;
           for (const file of MODEL_FILES) {
             const asset = assets.find((a) => a.name === file);
@@ -81,18 +87,64 @@ export async function checkForModelUpdate(): Promise<boolean> {
             downloaded++;
           }
 
+          if (checksumAsset) {
+            await downloadFile(checksumAsset.browser_download_url, join(outDir, "checksums.sha256"));
+          }
+
           if (downloaded > 0) {
+            if (checksumAsset && !verifyChecksums(outDir)) {
+              logger.error("Checksum verification failed, removing downloaded model files");
+              for (const file of MODEL_FILES) {
+                const path = join(outDir, file);
+                if (existsSync(path)) unlinkSync(path);
+              }
+              resolve(false);
+              return;
+            }
             writeFileSync(join(outDir, "version.txt"), modelRelease.tag_name);
             resolve(true);
           } else {
             resolve(false);
           }
-        } catch {
+        } catch (e) {
+          logger.error("Model update check failed:", e);
           resolve(false);
         }
       });
-    }).on("error", () => resolve(false));
+    }).on("error", (e) => {
+      logger.error("Model update request failed:", e.message);
+      resolve(false);
+    });
   });
+}
+
+function verifyChecksums(dir: string): boolean {
+  const checksumFile = join(dir, "checksums.sha256");
+  if (!existsSync(checksumFile)) return true;
+
+  const lines = readFileSync(checksumFile, "utf-8").trim().split("\n");
+  for (const line of lines) {
+    const [expectedHash, filename] = line.trim().split(/\s+/);
+    if (!expectedHash || !filename) continue;
+
+    const filePath = join(dir, filename);
+    if (!existsSync(filePath)) {
+      logger.warn(`Checksum file references missing file: ${filename}`);
+      continue;
+    }
+
+    const hash = createHash("sha256");
+    hash.update(readFileSync(filePath));
+    const actual = hash.digest("hex");
+
+    if (actual !== expectedHash) {
+      logger.error(`Checksum mismatch for ${filename}: expected ${expectedHash}, got ${actual}`);
+      return false;
+    }
+  }
+
+  logger.info("All checksums verified");
+  return true;
 }
 
 function downloadFile(url: string, dest: string): Promise<void> {

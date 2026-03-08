@@ -13,6 +13,9 @@ export default defineConfig({
   preload: {
     build: {
       outDir: "dist/preload",
+      lib: {
+        entry: "src/main/preload.ts",
+      },
     },
   },
   renderer: {
