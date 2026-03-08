@@ -39,17 +39,11 @@ jobs:
       - name: Build SHAP sidecar
         run: |
           pip install pyinstaller xgboost shap numpy pandas
-          pyinstaller --onefile --name shap_predict sidecar/shap_predict.py
-        shell: bash
-
-      - name: Copy sidecar to extraResources
-        run: |
-          mkdir -p sidecar/dist
-          cp dist/${{ matrix.sidecar-name }} sidecar/dist/
+          pyinstaller --onefile --distpath sidecar/dist --name shap_predict sidecar/shap_predict.py
         shell: bash
 
       - name: Build Electron app
-        run: npx electron-builder ${{ matrix.build-flag }}
+        run: npx electron-vite build && npx electron-builder ${{ matrix.build-flag }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
