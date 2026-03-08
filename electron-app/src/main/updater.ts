@@ -67,7 +67,17 @@ export async function checkForModelUpdate(modelType: "live" | "pregame" = "live"
       res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
       res.on("end", async () => {
         try {
+          if (res.statusCode !== 200) {
+            logger.warn(`GitHub API returned ${res.statusCode} for ${modelType} model check:`, body.slice(0, 200));
+            resolve(false);
+            return;
+          }
           const releases = JSON.parse(body);
+          if (!Array.isArray(releases)) {
+            logger.warn(`Unexpected GitHub API response for ${modelType}:`, body.slice(0, 200));
+            resolve(false);
+            return;
+          }
           const modelRelease = releases.find(
             (r: { tag_name: string }) =>
               r.tag_name.startsWith("model-v") && r.tag_name.includes(tagPattern),
