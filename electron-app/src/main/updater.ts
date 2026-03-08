@@ -32,20 +32,12 @@ const MODEL_FILES = [
 ];
 
 export function getModelDir(modelType: "live" | "pregame" = "live"): string {
-  if (modelType === "pregame") {
-    const userDir = join(app.getPath("userData"), "models", "pregame");
-    if (existsSync(join(userDir, "model.onnx"))) return userDir;
+  const subdir = modelType === "pregame" ? join("models", "pregame") : "models";
 
-    const bundled = join(process.resourcesPath ?? app.getAppPath(), "models", "pregame");
-    if (existsSync(join(bundled, "model.onnx"))) return bundled;
-
-    return userDir;
-  }
-
-  const userDir = join(app.getPath("userData"), "models");
+  const userDir = join(app.getPath("userData"), subdir);
   if (existsSync(join(userDir, "model.onnx"))) return userDir;
 
-  const bundled = join(process.resourcesPath ?? app.getAppPath(), "models");
+  const bundled = join(process.resourcesPath ?? app.getAppPath(), subdir);
   if (existsSync(join(bundled, "model.onnx"))) return bundled;
 
   return userDir;

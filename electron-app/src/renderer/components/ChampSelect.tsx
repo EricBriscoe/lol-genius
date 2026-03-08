@@ -1,4 +1,5 @@
-import type { ChampSelectUpdate, PredictFactor } from "../types";
+import type { ChampSelectUpdate, ChampSelectPlayerInfo, PredictFactor } from "../types";
+import { sectionTitle } from "../styles";
 import Card from "./Card";
 import WinProbBar from "./WinProbBar";
 import KeyFactors from "./KeyFactors";
@@ -17,12 +18,16 @@ interface Props {
   data: ChampSelectUpdate;
 }
 
+function champImageUrl(version: string, championKey: string): string {
+  return `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${championKey}.png`;
+}
+
 export default function ChampSelect({ data }: Props) {
   const blueProb = data.blue_win_probability != null
     ? Math.round(data.blue_win_probability * 100)
     : 50;
 
-  const sortByPosition = (players: ChampSelectUpdate["blue_team"]["players"]) => {
+  const sortByPosition = (players: ChampSelectPlayerInfo[]) => {
     return [...players].sort((a, b) => {
       const ai = POSITION_ORDER.indexOf(a.position?.toLowerCase());
       const bi = POSITION_ORDER.indexOf(b.position?.toLowerCase());
@@ -59,7 +64,7 @@ export default function ChampSelect({ data }: Props) {
               {data.is_blue_side ? "Your Team" : "Blue Side"}
             </div>
             {blueSorted.map((p, i) => (
-              <PlayerRow key={i} player={p} side="blue" />
+              <PlayerRow key={i} player={p} side="blue" version={data.ddragon_version} />
             ))}
           </div>
 
@@ -82,7 +87,7 @@ export default function ChampSelect({ data }: Props) {
               {!data.is_blue_side ? "Your Team" : "Red Side"}
             </div>
             {redSorted.map((p, i) => (
-              <PlayerRow key={i} player={p} side="red" />
+              <PlayerRow key={i} player={p} side="red" version={data.ddragon_version} />
             ))}
           </div>
         </div>
@@ -100,11 +105,12 @@ export default function ChampSelect({ data }: Props) {
   );
 }
 
-function PlayerRow({ player, side }: {
-  player: { position: string; championId: number; championName: string; isLocalPlayer: boolean };
+function PlayerRow({ player, side, version }: {
+  player: ChampSelectPlayerInfo;
   side: "blue" | "red";
+  version: string;
 }) {
-  const hasChamp = player.championId > 0;
+  const hasChamp = player.championId > 0 && player.championKey;
   const color = side === "blue" ? "var(--accent)" : "var(--red)";
   const isRight = side === "red";
 
@@ -119,9 +125,9 @@ function PlayerRow({ player, side }: {
         background: "var(--bg-primary)", flexShrink: 0,
         border: player.isLocalPlayer ? `2px solid ${color}` : "1px solid var(--border)",
       }}>
-        {hasChamp && (
+        {hasChamp && version && (
           <img
-            src={`https://ddragon.leagueoflegends.com/cdn/15.5.1/img/champion/${encodeURIComponent(player.championName.replace(/[^a-zA-Z]/g, ""))}.png`}
+            src={champImageUrl(version, player.championKey)}
             alt={player.championName}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
             onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
@@ -149,16 +155,16 @@ function BanRow({ bans }: { bans: { blue: number[]; red: number[] } }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ display: "flex", gap: 4 }}>
           <span style={{ fontSize: 11, color: "var(--accent)", marginRight: 4 }}>Bans</span>
-          {blueBans.map((id) => (
-            <div key={id} style={{
+          {blueBans.map((id, i) => (
+            <div key={i} style={{
               width: 20, height: 20, borderRadius: 3, background: "var(--bg-primary)",
               border: "1px solid var(--accent)", opacity: 0.6,
             }} />
           ))}
         </div>
         <div style={{ display: "flex", gap: 4 }}>
-          {redBans.map((id) => (
-            <div key={id} style={{
+          {redBans.map((id, i) => (
+            <div key={i} style={{
               width: 20, height: 20, borderRadius: 3, background: "var(--bg-primary)",
               border: "1px solid var(--red)", opacity: 0.6,
             }} />
@@ -169,11 +175,3 @@ function BanRow({ bans }: { bans: { blue: number[]; red: number[] } }) {
     </Card>
   );
 }
-
-const sectionTitle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: "var(--text-secondary)",
-  textTransform: "uppercase",
-  letterSpacing: "0.5px",
-};

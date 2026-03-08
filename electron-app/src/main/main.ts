@@ -11,6 +11,21 @@ const logger = log.scope("main");
 
 let mainWindow: BrowserWindow | null = null;
 
+async function loadAndUpdateModel(modelType: "live" | "pregame"): Promise<boolean> {
+  try {
+    await loadModel(getModelDir(modelType), modelType);
+  } catch (e) {
+    logger.warn(`${modelType} model not loaded:`, e);
+  }
+
+  const updated = await checkForModelUpdate(modelType);
+  if (updated) {
+    try { await loadModel(getModelDir(modelType), modelType); }
+    catch (e) { logger.error(`${modelType} model reload failed:`, e); }
+  }
+  return updated;
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 900,
@@ -55,31 +70,8 @@ app.whenReady().then(async () => {
   const resourcesPath = process.resourcesPath ?? app.getAppPath();
   loadChampionData(resourcesPath);
 
-  const liveModelDir = getModelDir("live");
-  try {
-    await loadModel(liveModelDir, "live");
-  } catch (e) {
-    logger.warn("Live model not loaded:", e);
-  }
-
-  const pregameModelDir = getModelDir("pregame");
-  try {
-    await loadModel(pregameModelDir, "pregame");
-  } catch (e) {
-    logger.warn("Pregame model not loaded:", e);
-  }
-
-  const liveUpdated = await checkForModelUpdate("live");
-  if (liveUpdated) {
-    try { await loadModel(getModelDir("live"), "live"); }
-    catch (e) { logger.error("Live model reload failed:", e); }
-  }
-
-  const pregameUpdated = await checkForModelUpdate("pregame");
-  if (pregameUpdated) {
-    try { await loadModel(getModelDir("pregame"), "pregame"); }
-    catch (e) { logger.error("Pregame model reload failed:", e); }
-  }
+  await loadAndUpdateModel("live");
+  await loadAndUpdateModel("pregame");
 
   if (mainWindow) {
     if (!isPolling()) {
@@ -134,15 +126,9 @@ ipcMain.handle("get-model-info", () => ({
 }));
 
 ipcMain.handle("check-for-updates", async () => {
-  const liveUpdated = await checkForModelUpdate("live");
-  if (liveUpdated) {
-    await loadModel(getModelDir("live"), "live");
-  }
-  const pregameUpdated = await checkForModelUpdate("pregame");
-  if (pregameUpdated) {
-    await loadModel(getModelDir("pregame"), "pregame");
-  }
-  return liveUpdated || pregameUpdated;
+  const a = await loadAndUpdateModel("live");
+  const b = await loadAndUpdateModel("pregame");
+  return a || b;
 });
 
 ipcMain.handle("set-dev-mode", (_, enabled: boolean) => {

@@ -3,8 +3,8 @@ import { findLockfile, readLockfile, watchLockfile } from "./lockfile";
 import { createLCUClient, type LCUClient } from "./api";
 import type { LCUCredentials, ChampSelectSession, RankedStats } from "./types";
 import { buildPregameFeatures, getPregameSummaryFromFeatures } from "../model/pregame-features";
-import { predict, isModelLoaded, getFeatureNames, getFeatureImportance } from "../model/inference";
-import { computeShap } from "../shap/sidecar";
+import { predict, isModelLoaded, getFeatureNames } from "../model/inference";
+import { computeTopFactors } from "../model/shap-factors";
 import * as ddragon from "../model/ddragon";
 import log from "../log";
 
@@ -162,21 +162,8 @@ function startChampSelectPolling(): void {
         lastPregameProb = probability;
         lastPregameSummary = getPregameSummaryFromFeatures(features);
 
-        if (modelDir) {
-          const shapValues = await computeShap(modelDir + "/pregame", features);
-          if (shapValues) {
-            topFactors = Object.entries(shapValues)
-              .map(([feature, impact]) => ({ feature, impact }))
-              .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
-              .slice(0, 8);
-          }
-        }
-
-        if (topFactors.length === 0) {
-          topFactors = getFeatureImportance(pregameModelType)
-            .slice(0, 8)
-            .map((f) => ({ feature: f.feature, impact: f.importance }));
-        }
+        const pregameDir = modelDir ? modelDir + "/pregame" : null;
+        topFactors = await computeTopFactors(pregameDir, features, pregameModelType);
       } catch (e) {
         logger.error("Pregame prediction failed:", e);
       }
@@ -202,6 +189,7 @@ function buildChampSelectUpdate(
       position: p.assignedPosition,
       championId: p.championId,
       championName: p.championId > 0 ? ddragon.getChampionName(p.championId) : "",
+      championKey: p.championId > 0 ? ddragon.getChampionInternalName(p.championId) : "",
       isLocalPlayer: isMyTeam && isPlayerLocalByCell(p, session),
     }));
 
@@ -212,6 +200,7 @@ function buildChampSelectUpdate(
     red_team: { players: mapPlayers(isBlue ? session.theirTeam : session.myTeam, !isBlue) },
     is_blue_side: isBlue,
     timer_remaining: session.timer?.adjustedTimeLeftInPhase ?? 0,
+    ddragon_version: ddragon.getChampionVersion(),
     top_factors: topFactors ?? [],
     bans: {
       blue: isBlue ? (session.bans?.myTeamBans ?? []) : (session.bans?.theirTeamBans ?? []),

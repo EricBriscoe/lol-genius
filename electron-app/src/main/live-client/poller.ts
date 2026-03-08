@@ -1,8 +1,8 @@
 import { BrowserWindow } from "electron";
 import { fetchLiveGameData } from "./api";
 import { parseLiveClientData, buildLiveFeatures, type MomentumState } from "../model/features";
-import { predict, getFeatureImportance } from "../model/inference";
-import { computeShap } from "../shap/sidecar";
+import { predict } from "../model/inference";
+import { computeTopFactors } from "../model/shap-factors";
 import log from "../log";
 
 const logger = log.scope("poller");
@@ -110,19 +110,7 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
 
   logger.debug("Probability:", prob);
 
-  let topFactors: { feature: string; impact: number }[] = [];
-  const shapValues = await computeShap(modelDir, features);
-  if (shapValues) {
-    logger.debug("SHAP values:", JSON.stringify(shapValues));
-    topFactors = Object.entries(shapValues)
-      .map(([feature, impact]) => ({ feature, impact }))
-      .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
-      .slice(0, 8);
-  } else {
-    topFactors = getFeatureImportance()
-      .slice(0, 8)
-      .map((f) => ({ feature: f.feature, impact: f.importance }));
-  }
+  const topFactors = await computeTopFactors(modelDir, features);
 
   const update = {
     status: "ok",

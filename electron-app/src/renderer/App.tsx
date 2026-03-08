@@ -8,6 +8,7 @@ import DevPanel from "./components/DevPanel";
 import ChampSelect from "./components/ChampSelect";
 import { useLiveGame } from "./hooks/useLiveGame";
 import { useChampSelect } from "./hooks/useChampSelect";
+import { sectionTitle } from "./styles";
 
 export default function App() {
   const { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs } = useLiveGame();
@@ -149,10 +150,3 @@ function GamePhaseIndicator({ phase, connectionStatus }: { phase: string; connec
   );
 }
 
-const sectionTitle: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: "var(--text-secondary)",
-  textTransform: "uppercase",
-  letterSpacing: "0.5px",
-};
