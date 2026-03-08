@@ -6,61 +6,71 @@ import log from "../log";
 
 const logger = log.scope("inference");
 
-let session: ort.InferenceSession | null = null;
-let featureNames: string[] = [];
-let calibrator: Calibrator | null = null;
-let featureImportance: { feature: string; importance: number }[] = [];
-let loadedModelDir: string | null = null;
+interface ModelState {
+  session: ort.InferenceSession;
+  featureNames: string[];
+  calibrator: Calibrator | null;
+  featureImportance: { feature: string; importance: number }[];
+  modelDir: string;
+}
 
-export async function loadModel(modelDir: string): Promise<void> {
-  if (loadedModelDir === modelDir && session) return;
+const models = new Map<string, ModelState>();
+
+export async function loadModel(modelDir: string, modelType = "live"): Promise<void> {
+  const existing = models.get(modelType);
+  if (existing?.modelDir === modelDir) return;
 
   const onnxPath = join(modelDir, "model.onnx");
   if (!existsSync(onnxPath)) {
     throw new Error(`Model not found at ${onnxPath}`);
   }
 
-  session = await ort.InferenceSession.create(onnxPath);
+  const session = await ort.InferenceSession.create(onnxPath);
 
   const namesPath = join(modelDir, "feature_names.json");
-  featureNames = JSON.parse(readFileSync(namesPath, "utf-8"));
+  const featureNames: string[] = JSON.parse(readFileSync(namesPath, "utf-8"));
 
   const calPath = join(modelDir, "calibrator.json");
-  calibrator = existsSync(calPath)
+  const calibrator: Calibrator | null = existsSync(calPath)
     ? JSON.parse(readFileSync(calPath, "utf-8"))
     : null;
 
   const impPath = join(modelDir, "feature_importance.json");
-  featureImportance = existsSync(impPath)
+  const featureImportance: { feature: string; importance: number }[] = existsSync(impPath)
     ? JSON.parse(readFileSync(impPath, "utf-8"))
     : [];
 
-  loadedModelDir = modelDir;
-  logger.debug("Loaded model from", modelDir, "features:", featureNames.length, "calibrator:", !!calibrator);
+  models.set(modelType, { session, featureNames, calibrator, featureImportance, modelDir });
+  logger.debug(`Loaded ${modelType} model from`, modelDir, "features:", featureNames.length, "calibrator:", !!calibrator);
 }
 
-export function getFeatureNames(): string[] {
-  return featureNames;
+export function isModelLoaded(modelType = "live"): boolean {
+  return models.has(modelType);
 }
 
-export function getFeatureImportance(): { feature: string; importance: number }[] {
-  return featureImportance;
+export function getFeatureNames(modelType = "live"): string[] {
+  return models.get(modelType)?.featureNames ?? [];
 }
 
-export async function predict(features: Record<string, number>): Promise<number> {
-  if (!session) throw new Error("Model not loaded");
+export function getFeatureImportance(modelType = "live"): { feature: string; importance: number }[] {
+  return models.get(modelType)?.featureImportance ?? [];
+}
 
-  const values = new Float32Array(featureNames.length);
-  for (let i = 0; i < featureNames.length; i++) {
-    values[i] = features[featureNames[i]] ?? 0.0;
+export async function predict(features: Record<string, number>, modelType = "live"): Promise<number> {
+  const model = models.get(modelType);
+  if (!model) throw new Error(`Model "${modelType}" not loaded`);
+
+  const values = new Float32Array(model.featureNames.length);
+  for (let i = 0; i < model.featureNames.length; i++) {
+    values[i] = features[model.featureNames[i]] ?? 0.0;
   }
 
-  logger.debug("Inference input:", featureNames.length, "features");
-  const tensor = new ort.Tensor("float32", values, [1, featureNames.length]);
-  const inputName = session.inputNames[0];
-  const results = await session.run({ [inputName]: tensor });
+  logger.debug(`${modelType} inference:`, model.featureNames.length, "features");
+  const tensor = new ort.Tensor("float32", values, [1, model.featureNames.length]);
+  const inputName = model.session.inputNames[0];
+  const results = await model.session.run({ [inputName]: tensor });
 
-  const outputName = session.outputNames[0];
+  const outputName = model.session.outputNames[0];
   const output = results[outputName];
 
   let prob: number;
@@ -70,8 +80,8 @@ export async function predict(features: Record<string, number>): Promise<number>
     prob = (output.data as Float32Array)[0];
   }
 
-  if (calibrator) {
-    prob = calibrate(prob, calibrator);
+  if (model.calibrator) {
+    prob = calibrate(prob, model.calibrator);
   }
 
   return prob;

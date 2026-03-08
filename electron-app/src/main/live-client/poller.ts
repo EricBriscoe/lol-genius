@@ -18,6 +18,8 @@ let peakTowerDiff = 0;
 let prevKillDiffDelta = 0;
 let prevBlueKills = 0;
 let prevRedKills = 0;
+let pregameProb = 0.5;
+let pregameSummary: Record<string, number> | null = null;
 
 function resetState(): void {
   gameId = null;
@@ -88,7 +90,7 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
     recentKillShareDiff,
   };
 
-  const features = buildLiveFeatures(gameState, momentum);
+  const features = buildLiveFeatures(gameState, momentum, pregameProb, pregameSummary ?? undefined);
   logger.debug("Feature vector:", JSON.stringify(features));
   logger.debug("Momentum:", JSON.stringify(momentum));
 
@@ -138,6 +140,11 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
   };
 
   send(win, "prediction-update", update);
+}
+
+export function setPregameData(prob: number | null, summary: Record<string, number> | null): void {
+  pregameProb = prob ?? 0.5;
+  pregameSummary = summary;
 }
 
 export function startPolling(win: BrowserWindow, modelDir: string): void {

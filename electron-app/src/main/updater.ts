@@ -31,7 +31,17 @@ const MODEL_FILES = [
   "feature_importance.json",
 ];
 
-export function getModelDir(): string {
+export function getModelDir(modelType: "live" | "pregame" = "live"): string {
+  if (modelType === "pregame") {
+    const userDir = join(app.getPath("userData"), "models", "pregame");
+    if (existsSync(join(userDir, "model.onnx"))) return userDir;
+
+    const bundled = join(process.resourcesPath ?? app.getAppPath(), "models", "pregame");
+    if (existsSync(join(bundled, "model.onnx"))) return bundled;
+
+    return userDir;
+  }
+
   const userDir = join(app.getPath("userData"), "models");
   if (existsSync(join(userDir, "model.onnx"))) return userDir;
 
@@ -41,8 +51,8 @@ export function getModelDir(): string {
   return userDir;
 }
 
-export function getModelVersion(): string | null {
-  const dir = getModelDir();
+export function getModelVersion(modelType: "live" | "pregame" = "live"): string | null {
+  const dir = getModelDir(modelType);
   const versionFile = join(dir, "version.txt");
   if (existsSync(versionFile)) {
     return readFileSync(versionFile, "utf-8").trim();
@@ -50,11 +60,13 @@ export function getModelVersion(): string | null {
   return null;
 }
 
-export async function checkForModelUpdate(): Promise<boolean> {
+export async function checkForModelUpdate(modelType: "live" | "pregame" = "live"): Promise<boolean> {
+  const tagPattern = modelType === "pregame" ? "pregame" : "live";
+
   return new Promise((resolve) => {
     const options = {
       hostname: "api.github.com",
-      path: "/repos/EricBriscoe/lol-genius/releases?per_page=10",
+      path: "/repos/EricBriscoe/lol-genius/releases?per_page=20",
       headers: { "User-Agent": "lol-genius-electron" },
     };
 
@@ -65,18 +77,21 @@ export async function checkForModelUpdate(): Promise<boolean> {
         try {
           const releases = JSON.parse(body);
           const modelRelease = releases.find(
-            (r: { tag_name: string }) => r.tag_name.startsWith("model-v") && r.tag_name.includes("live"),
+            (r: { tag_name: string }) =>
+              r.tag_name.startsWith("model-v") && r.tag_name.includes(tagPattern),
           );
           if (!modelRelease) { resolve(false); return; }
 
-          const currentVersion = getModelVersion();
+          const currentVersion = getModelVersion(modelType);
           if (currentVersion === modelRelease.tag_name) { resolve(false); return; }
 
-          const outDir = join(app.getPath("userData"), "models");
+          const outDir = modelType === "pregame"
+            ? join(app.getPath("userData"), "models", "pregame")
+            : join(app.getPath("userData"), "models");
           mkdirSync(outDir, { recursive: true });
 
           const assets = modelRelease.assets as { name: string; browser_download_url: string }[];
-          logger.debug("Found model release:", modelRelease.tag_name, "assets:", assets.length);
+          logger.debug(`Found ${modelType} model release:`, modelRelease.tag_name, "assets:", assets.length);
           const checksumAsset = assets.find((a) => a.name === "checksums.sha256");
 
           let downloaded = 0;
@@ -109,12 +124,12 @@ export async function checkForModelUpdate(): Promise<boolean> {
             resolve(false);
           }
         } catch (e) {
-          logger.error("Model update check failed:", e);
+          logger.error(`${modelType} model update check failed:`, e);
           resolve(false);
         }
       });
     }).on("error", (e) => {
-      logger.error("Model update request failed:", e.message);
+      logger.error(`${modelType} model update request failed:`, e.message);
       resolve(false);
     });
   });

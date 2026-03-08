@@ -167,6 +167,8 @@ export interface MomentumState {
 export function buildLiveFeatures(
   gameState: GameState,
   momentum: MomentumState,
+  pregameProb = 0.5,
+  pregameSummary?: Record<string, number>,
 ): Record<string, number> {
   const gameTime = snapToSnapshot(gameState.game_time);
   const killDiff = gameState.kill_diff;
@@ -202,12 +204,17 @@ export function buildLiveFeatures(
     first_blood_blue: gameState.first_blood_blue,
     first_tower_blue: gameState.first_tower_blue,
     first_dragon_blue: gameState.first_dragon_blue,
-    pregame_blue_win_prob: 0.5,
-    avg_rank_diff: 0, rank_spread_diff: 0, avg_winrate_diff: 0,
-    avg_mastery_diff: 0, melee_count_diff: 0, ad_ratio_diff: 0,
+    pregame_blue_win_prob: pregameProb,
+    avg_rank_diff: pregameSummary?.avg_rank_diff ?? 0,
+    rank_spread_diff: 0,
+    avg_winrate_diff: pregameSummary?.avg_winrate_diff ?? 0,
+    avg_mastery_diff: 0,
+    melee_count_diff: pregameSummary?.melee_count_diff ?? 0,
+    ad_ratio_diff: pregameSummary?.ad_ratio_diff ?? 0,
     total_games_diff: 0, hot_streak_count_diff: 0, veteran_count_diff: 0,
     mastery_level7_count_diff: 0, avg_champ_wr_diff: 0,
-    scaling_score_diff: 0, max_scaling_score_diff: 0, stat_growth_diff: 0,
+    scaling_score_diff: pregameSummary?.scaling_score_diff ?? 0,
+    max_scaling_score_diff: 0, stat_growth_diff: 0,
     scaling_advantage_realized: 0,
     early_game_window_closing: 0,
     kill_diff_delta: momentum.prevDiffs

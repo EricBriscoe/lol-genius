@@ -16,6 +16,16 @@ contextBridge.exposeInMainWorld("lolGenius", {
     ipcRenderer.on("app-update-status", listener);
     return () => ipcRenderer.removeListener("app-update-status", listener);
   },
+  onChampSelectUpdate: (cb: (data: unknown) => void) => {
+    const listener = (_: unknown, d: unknown) => cb(d);
+    ipcRenderer.on("champ-select-update", listener);
+    return () => ipcRenderer.removeListener("champ-select-update", listener);
+  },
+  onGamePhaseChange: (cb: (data: unknown) => void) => {
+    const listener = (_: unknown, d: unknown) => cb(d);
+    ipcRenderer.on("game-phase-change", listener);
+    return () => ipcRenderer.removeListener("game-phase-change", listener);
+  },
   startPolling: () => ipcRenderer.invoke("start-polling"),
   stopPolling: () => ipcRenderer.invoke("stop-polling"),
   getModelInfo: () => ipcRenderer.invoke("get-model-info"),

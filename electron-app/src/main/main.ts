@@ -1,8 +1,10 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
 import { loadModel, getFeatureNames } from "./model/inference";
-import { startPolling, stopPolling, isPolling } from "./live-client/poller";
+import { startPolling, stopPolling, isPolling, setPregameData } from "./live-client/poller";
+import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
 import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate } from "./updater";
+import { loadChampionData } from "./model/ddragon";
 import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
 
 const logger = log.scope("main");
@@ -33,6 +35,7 @@ function createWindow(): void {
   mainWindow.on("closed", () => {
     mainWindow = null;
     stopPolling();
+    stopLCUPolling();
   });
 }
 
@@ -49,29 +52,53 @@ app.whenReady().then(async () => {
     }
   }
 
-  const modelDir = getModelDir();
+  const resourcesPath = process.resourcesPath ?? app.getAppPath();
+  loadChampionData(resourcesPath);
+
+  const liveModelDir = getModelDir("live");
   try {
-    await loadModel(modelDir);
+    await loadModel(liveModelDir, "live");
   } catch (e) {
-    logger.warn("Model not loaded:", e);
+    logger.warn("Live model not loaded:", e);
   }
 
-  const updated = await checkForModelUpdate();
-  if (updated) {
-    try {
-      await loadModel(getModelDir());
-    } catch (e) {
-      logger.error("Model reload failed:", e);
+  const pregameModelDir = getModelDir("pregame");
+  try {
+    await loadModel(pregameModelDir, "pregame");
+  } catch (e) {
+    logger.warn("Pregame model not loaded:", e);
+  }
+
+  const liveUpdated = await checkForModelUpdate("live");
+  if (liveUpdated) {
+    try { await loadModel(getModelDir("live"), "live"); }
+    catch (e) { logger.error("Live model reload failed:", e); }
+  }
+
+  const pregameUpdated = await checkForModelUpdate("pregame");
+  if (pregameUpdated) {
+    try { await loadModel(getModelDir("pregame"), "pregame"); }
+    catch (e) { logger.error("Pregame model reload failed:", e); }
+  }
+
+  if (mainWindow) {
+    if (!isPolling()) {
+      startPolling(mainWindow, getModelDir("live"));
     }
-  }
 
-  if (mainWindow && !isPolling()) {
-    startPolling(mainWindow, getModelDir());
+    startLCUPolling(mainWindow, getModelDir("live"));
+
+    ipcMain.on("game-phase-change", (_, data: { phase: string; pregameProb?: number; pregameSummary?: Record<string, number> }) => {
+      if (data.phase === "in_game" && data.pregameProb != null) {
+        setPregameData(data.pregameProb, data.pregameSummary ?? null);
+      }
+    });
   }
 });
 
 app.on("window-all-closed", () => {
   stopPolling();
+  stopLCUPolling();
   app.quit();
 });
 
@@ -84,8 +111,8 @@ app.on("activate", () => {
 ipcMain.handle("start-polling", () => {
   if (mainWindow) {
     const win = mainWindow;
-    const modelDir = getModelDir();
-    loadModel(modelDir).then(() => {
+    const modelDir = getModelDir("live");
+    loadModel(modelDir, "live").then(() => {
       startPolling(win, modelDir);
     }).catch((e) => {
       logger.error("Model load failed for polling:", e);
@@ -98,18 +125,24 @@ ipcMain.handle("stop-polling", () => {
 });
 
 ipcMain.handle("get-model-info", () => ({
-  version: getModelVersion(),
-  featureCount: getFeatureNames().length,
-  modelDir: getModelDir(),
+  version: getModelVersion("live"),
+  featureCount: getFeatureNames("live").length,
+  modelDir: getModelDir("live"),
   polling: isPolling(),
+  pregameVersion: getModelVersion("pregame"),
+  pregameFeatureCount: getFeatureNames("pregame").length,
 }));
 
 ipcMain.handle("check-for-updates", async () => {
-  const updated = await checkForModelUpdate();
-  if (updated) {
-    await loadModel(getModelDir());
+  const liveUpdated = await checkForModelUpdate("live");
+  if (liveUpdated) {
+    await loadModel(getModelDir("live"), "live");
   }
-  return updated;
+  const pregameUpdated = await checkForModelUpdate("pregame");
+  if (pregameUpdated) {
+    await loadModel(getModelDir("pregame"), "pregame");
+  }
+  return liveUpdated || pregameUpdated;
 });
 
 ipcMain.handle("set-dev-mode", (_, enabled: boolean) => {
