@@ -535,8 +535,10 @@ def runs(ctx, limit, detail, note):
             click.echo(f"  Run: {run['run_id']}")
             click.echo(f"{'=' * 60}")
             click.echo(f"  Created:        {run['created_at']}")
+            train, test = run['train_count'], run['test_count']
             click.echo(
-                f"  Matches:        {run['total_matches']:,} (train={run['train_count']:,}, test={run['test_count']:,})"
+                f"  Matches:        {run['total_matches']:,}"
+                f" (train={train:,}, test={test:,})"
             )
             click.echo(f"  Features:       {run['feature_count']}")
             click.echo(f"  Patches:        {run['patch_min']} - {run['patch_max']}")
@@ -570,13 +572,19 @@ def runs(ctx, limit, detail, note):
             click.echo("No training runs recorded yet.")
             return
 
+        hdr = (
+            f"  {'Run ID':<18s} {'Matches':>8s} {'Feats':>6s}"
+            f" {'Acc':>7s} {'AUC':>7s} {'LogL':>7s}"
+            f" {'Iter':>5s} {'Time':>7s}  Notes"
+        )
+        sep = (
+            f"  {'-' * 18} {'-' * 8} {'-' * 6}"
+            f" {'-' * 7} {'-' * 7} {'-' * 7}"
+            f" {'-' * 5} {'-' * 7}  {'-' * 20}"
+        )
         click.echo(f"\n{'=' * 100}")
-        click.echo(
-            f"  {'Run ID':<18s} {'Matches':>8s} {'Feats':>6s} {'Acc':>7s} {'AUC':>7s} {'LogL':>7s} {'Iter':>5s} {'Time':>7s}  Notes"
-        )
-        click.echo(
-            f"  {'-' * 18} {'-' * 8} {'-' * 6} {'-' * 7} {'-' * 7} {'-' * 7} {'-' * 5} {'-' * 7}  {'-' * 20}"
-        )
+        click.echo(hdr)
+        click.echo(sep)
         for r in all_runs:
             acc = f"{r['accuracy']:.4f}" if r.get("accuracy") is not None else "   -   "
             auc = f"{r['auc_roc']:.4f}" if r.get("auc_roc") is not None else "   -   "
@@ -592,8 +600,13 @@ def runs(ctx, limit, detail, note):
                 else "   -   "
             )
             nt = (r.get("notes") or "")[:20]
+            rid = r['run_id']
+            mtch = r['total_matches']
+            fc = r['feature_count']
             click.echo(
-                f"  {r['run_id']:<18s} {r['total_matches']:>8,} {r['feature_count']:>6} {acc:>7s} {auc:>7s} {ll:>7s} {it:>5s} {tm:>7s}  {nt}"
+                f"  {rid:<18s} {mtch:>8,} {fc:>6}"
+                f" {acc:>7s} {auc:>7s} {ll:>7s}"
+                f" {it:>5s} {tm:>7s}  {nt}"
             )
         click.echo(f"{'=' * 100}")
         click.echo(

@@ -503,7 +503,10 @@ class LiveGamePoller:
                             "live_game_update",
                             {
                                 "status": "no_data",
-                                "error": f"No response from Live Client API at {self.host}:{self.port}",
+                                "error": (
+                                    "No response from Live Client API"
+                                    f" at {self.host}:{self.port}"
+                                ),
                                 "blue_win_probability": None,
                             },
                         )

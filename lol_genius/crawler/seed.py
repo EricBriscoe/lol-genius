@@ -77,7 +77,8 @@ def seed_accounts(api, db: MatchDB, config: Config) -> int:
 
     pbar.close()
     log.info(
-        f"Seeded {total_added} accounts across {len(tiers)} tiers ({per_tier_target} target per tier)"
+        "Seeded %d accounts across %d tiers (%d target per tier)",
+        total_added, len(tiers), per_tier_target,
     )
     return total_added
 

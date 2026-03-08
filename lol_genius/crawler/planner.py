@@ -116,13 +116,19 @@ def plan_next_action(
     if metrics.enrichment_ratio < ENRICHMENT_THRESHOLD:
         return CrawlAction(
             action="enrich",
-            reason=f"enrichment at {metrics.enrichment_ratio:.1%}, need >{ENRICHMENT_THRESHOLD:.0%}",
+            reason=(
+                f"enrichment at {metrics.enrichment_ratio:.1%},"
+                f" need >{ENRICHMENT_THRESHOLD:.0%}"
+            ),
         )
 
     if maintenance and metrics.stale_ratio > STALE_ENRICHMENT_THRESHOLD:
         return CrawlAction(
             action="re_enrich",
-            reason=f"stale enrichment data: {metrics.stale_ratio:.1%} ({metrics.stale_rank_count} stale ranks)",
+            reason=(
+                f"stale enrichment data: {metrics.stale_ratio:.1%}"
+                f" ({metrics.stale_rank_count} stale ranks)"
+            ),
         )
 
     if (
@@ -133,14 +139,22 @@ def plan_next_action(
         return CrawlAction(
             action="crawl",
             patch=metrics.current_patch if use_filter else None,
-            reason=f"current patch ({metrics.current_patch}) at {metrics.current_patch_ratio:.1%}, need >{CURRENT_PATCH_THRESHOLD:.0%}",
+            reason=(
+                f"current patch ({metrics.current_patch})"
+                f" at {metrics.current_patch_ratio:.1%},"
+                f" need >{CURRENT_PATCH_THRESHOLD:.0%}"
+            ),
         )
 
     if metrics.weakest_tier and metrics.tier_balance_ratio < TIER_BALANCE_THRESHOLD:
         return CrawlAction(
             action="reseed",
             tier=metrics.weakest_tier,
-            reason=f"tier balance {metrics.tier_balance_ratio:.2f}, need >{TIER_BALANCE_THRESHOLD:.2f} — weakest: {metrics.weakest_tier}",
+            reason=(
+                f"tier balance {metrics.tier_balance_ratio:.2f},"
+                f" need >{TIER_BALANCE_THRESHOLD:.2f}"
+                f" — weakest: {metrics.weakest_tier}"
+            ),
         )
 
     if not maintenance:
@@ -159,19 +173,31 @@ def plan_next_action(
 
 def log_assessment(metrics: DataMetrics, action: CrawlAction) -> None:
     tier_str = ", ".join(
-        f"{t}: {c}" for t, c in sorted(metrics.tier_counts.items(), key=lambda x: -x[1])
+        f"{t}: {c}"
+        for t, c in sorted(metrics.tier_counts.items(), key=lambda x: -x[1])
     )
+    m = metrics
     lines = [
         "",
         "--- Data Quality Assessment ---",
-        f"  Matches: {metrics.total_matches:,} (enriched: {metrics.enriched_matches:,}, {metrics.enrichment_ratio:.1%})",
-        f"  Current patch: {metrics.current_patch} — {metrics.current_patch_matches:,} matches ({metrics.current_patch_ratio:.1%})",
-        f"  Tier balance: {metrics.tier_balance_ratio:.2f} | {tier_str}",
-        f"  Queue depth: {metrics.queue_depth:,}",
+        (
+            f"  Matches: {m.total_matches:,}"
+            f" (enriched: {m.enriched_matches:,},"
+            f" {m.enrichment_ratio:.1%})"
+        ),
+        (
+            f"  Current patch: {m.current_patch}"
+            f" — {m.current_patch_matches:,} matches"
+            f" ({m.current_patch_ratio:.1%})"
+        ),
+        f"  Tier balance: {m.tier_balance_ratio:.2f} | {tier_str}",
+        f"  Queue depth: {m.queue_depth:,}",
     ]
-    if metrics.total_enriched_players > 0:
+    if m.total_enriched_players > 0:
         lines.append(
-            f"  Staleness: {metrics.stale_ratio:.1%} ({metrics.stale_rank_count} stale ranks) of {metrics.total_enriched_players} players"
+            f"  Staleness: {m.stale_ratio:.1%}"
+            f" ({m.stale_rank_count} stale ranks)"
+            f" of {m.total_enriched_players} players"
         )
     action_line = f"  Action: {action.action.upper()} — {action.reason}"
     if action.sleep_seconds:
