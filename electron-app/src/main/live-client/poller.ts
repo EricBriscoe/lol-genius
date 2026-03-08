@@ -18,7 +18,6 @@ let peakTowerDiff = 0;
 let prevKillDiffDelta = 0;
 let prevBlueKills = 0;
 let prevRedKills = 0;
-let history: { game_time: number; probability: number }[] = [];
 
 function resetState(): void {
   gameId = null;
@@ -29,7 +28,6 @@ function resetState(): void {
   prevKillDiffDelta = 0;
   prevBlueKills = 0;
   prevRedKills = 0;
-  history = [];
 }
 
 function send(win: BrowserWindow, channel: string, data: unknown): void {
@@ -91,6 +89,8 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
   };
 
   const features = buildLiveFeatures(gameState, momentum);
+  logger.debug("Feature vector:", JSON.stringify(features));
+  logger.debug("Momentum:", JSON.stringify(momentum));
 
   prevDiffs = { kill_diff: killDiff, cs_diff: gameState.cs_diff, tower_diff: towerDiff };
   prevKillDiffDelta = killDiffDelta;
@@ -106,9 +106,12 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
     return;
   }
 
+  logger.debug("Probability:", prob);
+
   let topFactors: { feature: string; impact: number }[] = [];
   const shapValues = await computeShap(modelDir, features);
   if (shapValues) {
+    logger.debug("SHAP values:", JSON.stringify(shapValues));
     topFactors = Object.entries(shapValues)
       .map(([feature, impact]) => ({ feature, impact }))
       .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
@@ -133,10 +136,6 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
     game_reset: gameReset,
     top_factors: topFactors,
   };
-
-  if (gameReset) history = [];
-  history.push({ game_time: gameState.game_time, probability: Math.round(prob * 1000) / 10 });
-  if (history.length > 100) history = history.slice(-100);
 
   send(win, "prediction-update", update);
 }

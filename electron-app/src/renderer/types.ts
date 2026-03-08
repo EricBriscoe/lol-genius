@@ -25,6 +25,13 @@ export interface ModelInfo {
   polling: boolean;
 }
 
+export interface DevLogEntry {
+  timestamp: string;
+  scope: string;
+  level: string;
+  message: string;
+}
+
 export interface LolGeniusAPI {
   onPredictionUpdate: (cb: (data: LiveGameUpdate) => void) => () => void;
   onConnectionStatus: (cb: (status: string) => void) => () => void;
@@ -33,6 +40,9 @@ export interface LolGeniusAPI {
   stopPolling: () => Promise<void>;
   getModelInfo: () => Promise<ModelInfo>;
   checkForUpdates: () => Promise<boolean>;
+  setDevMode: (enabled: boolean) => Promise<void>;
+  getDevMode: () => Promise<boolean>;
+  onDevLog: (cb: (entry: DevLogEntry) => void) => () => void;
 }
 
 declare global {

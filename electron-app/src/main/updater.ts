@@ -76,12 +76,14 @@ export async function checkForModelUpdate(): Promise<boolean> {
           mkdirSync(outDir, { recursive: true });
 
           const assets = modelRelease.assets as { name: string; browser_download_url: string }[];
+          logger.debug("Found model release:", modelRelease.tag_name, "assets:", assets.length);
           const checksumAsset = assets.find((a) => a.name === "checksums.sha256");
 
           let downloaded = 0;
           for (const file of MODEL_FILES) {
             const asset = assets.find((a) => a.name === file);
             if (!asset) continue;
+            logger.debug("Downloading:", file);
 
             await downloadFile(asset.browser_download_url, join(outDir, file));
             downloaded++;

@@ -2,6 +2,9 @@ import * as ort from "onnxruntime-node";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { calibrate, type Calibrator } from "./calibrator";
+import log from "../log";
+
+const logger = log.scope("inference");
 
 let session: ort.InferenceSession | null = null;
 let featureNames: string[] = [];
@@ -33,6 +36,7 @@ export async function loadModel(modelDir: string): Promise<void> {
     : [];
 
   loadedModelDir = modelDir;
+  logger.debug("Loaded model from", modelDir, "features:", featureNames.length, "calibrator:", !!calibrator);
 }
 
 export function getFeatureNames(): string[] {
@@ -51,6 +55,7 @@ export async function predict(features: Record<string, number>): Promise<number>
     values[i] = features[featureNames[i]] ?? 0.0;
   }
 
+  logger.debug("Inference input:", featureNames.length, "features");
   const tensor = new ort.Tensor("float32", values, [1, featureNames.length]);
   const inputName = session.inputNames[0];
   const results = await session.run({ [inputName]: tensor });

@@ -33,9 +33,11 @@ export async function computeShap(
 ): Promise<Record<string, number> | null> {
   const binary = findSidecar();
   if (!binary) return null;
+  logger.debug("Sidecar binary:", binary);
 
   const modelPath = join(modelDir, "model.json");
   if (!existsSync(modelPath)) return null;
+  logger.debug("SHAP input:", Object.keys(features).length, "features");
 
   return new Promise((resolve) => {
     const child = execFile(

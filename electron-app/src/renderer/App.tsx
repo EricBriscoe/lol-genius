@@ -1,13 +1,14 @@
-import { Wifi, WifiOff, AlertTriangle, RefreshCw } from "lucide-react";
+import { Wifi, WifiOff, AlertTriangle, RefreshCw, Bug } from "lucide-react";
 import Card from "./components/Card";
 import WinProbBar from "./components/WinProbBar";
 import StatGrid from "./components/StatGrid";
 import KeyFactors from "./components/KeyFactors";
 import ProbChart from "./components/ProbChart";
+import DevPanel from "./components/DevPanel";
 import { useLiveGame } from "./hooks/useLiveGame";
 
 export default function App() {
-  const { connectionStatus, current, history, modelInfo } = useLiveGame();
+  const { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs } = useLiveGame();
 
   const blueProb = current?.blue_win_probability != null
     ? Math.round(current.blue_win_probability * 100)
@@ -31,6 +32,13 @@ export default function App() {
             title="Check for model updates"
           >
             <RefreshCw size={14} />
+          </button>
+          <button
+            onClick={toggleDevMode}
+            style={{ background: "none", border: "none", cursor: "pointer", color: devMode ? "var(--accent)" : "var(--text-muted)", padding: 4 }}
+            title={devMode ? "Disable developer mode" : "Enable developer mode"}
+          >
+            <Bug size={14} />
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             {isConnected ? (
@@ -96,6 +104,8 @@ export default function App() {
           </div>
         </Card>
       )}
+
+      {devMode && <DevPanel logs={devLogs} onClear={clearDevLogs} />}
     </div>
   );
 }
