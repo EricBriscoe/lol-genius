@@ -43,9 +43,7 @@ jobs:
         shell: bash
 
       - name: Build Electron app
-        run: npx electron-vite build && npx electron-builder ${{ matrix.build-flag }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-vite build && npx electron-builder ${{ matrix.build-flag }} --publish never
 
       - name: Upload to release
         env:
