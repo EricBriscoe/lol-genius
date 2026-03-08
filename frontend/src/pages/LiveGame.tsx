@@ -12,7 +12,7 @@ import {
 import { Wifi, WifiOff, Play, Square, AlertTriangle } from "lucide-react";
 import Card from "../components/Card";
 import { startLiveGame, stopLiveGame, fetchLiveGameStatus } from "../api";
-import { sectionTitle } from "../styles";
+import { sectionTitle, tooltipStyle } from "../styles";
 import type { LiveGameUpdate, LiveGameStatus, PredictFactor } from "../types";
 import { formatFeatureName } from "../utils";
 
@@ -311,7 +311,7 @@ export default function LiveGame({ latestUpdate }: Props) {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis
                   dataKey="game_time"
-                  tickFormatter={(v) => fmtTime(v)}
+                  tickFormatter={fmtTime}
                   tick={{ fill: "var(--text-secondary)", fontSize: 10 }}
                   label={{ value: "Game Time", position: "insideBottom", offset: -2, fill: "var(--text-muted)", fontSize: 11 }}
                 />
@@ -321,7 +321,7 @@ export default function LiveGame({ latestUpdate }: Props) {
                   tickFormatter={(v) => `${v}%`}
                 />
                 <Tooltip
-                  contentStyle={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }}
+                  contentStyle={tooltipStyle}
                   formatter={(v) => [`${v ?? 0}%`, "Blue Win %"]}
                   labelFormatter={(v) => `Time: ${fmtTime(v)}`}
                 />
