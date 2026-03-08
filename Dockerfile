@@ -11,8 +11,10 @@ RUN useradd --create-home appuser \
     && mkdir -p /app/data/models /app/data/ddragon \
     && chown -R appuser:appuser /app/data
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY pyproject.toml .
+RUN mkdir -p lol_genius && touch lol_genius/__init__.py \
+    && pip install --no-cache-dir -e . \
+    && rm -rf lol_genius
 
 COPY --chown=appuser:appuser . .
 RUN pip install --no-cache-dir -e .

@@ -1,5 +1,6 @@
 # lol-genius
 
+[![CI](https://github.com/EricBriscoe/lol-genius/actions/workflows/ci.yml/badge.svg)](https://github.com/EricBriscoe/lol-genius/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 
@@ -47,6 +48,18 @@ flowchart LR
 | `frontend/` | React + Recharts dashboard UI |
 | `proxy/` | Riot API proxy with caching and rate limiting |
 | `electron-app/` | Standalone desktop app for live predictions |
+
+## Model Performance
+
+The pregame model predicts blue team win probability using ~160 features derived entirely from pre-game data (no target leakage). SHAP values reveal which features drive each prediction.
+
+**SHAP Summary** — top features by impact on model output:
+
+![SHAP Summary](docs/images/shap_summary.png)
+
+**Calibration Curve** — predicted probabilities closely match observed win rates:
+
+![Calibration Curve](docs/images/calibration.png)
 
 ## Electron App
 
