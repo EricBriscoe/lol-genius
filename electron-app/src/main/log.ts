@@ -54,7 +54,9 @@ log.hooks.push((message) => {
       scope: (message.scope as string) ?? "",
       level: message.level ?? "info",
       message: message.data?.map((d: unknown) =>
-        typeof d === "string" ? d : JSON.stringify(d),
+        typeof d === "string" ? d
+          : d instanceof Error ? `${d.message}${d.stack ? "\n" + d.stack : ""}`
+          : JSON.stringify(d),
       ).join(" ") ?? "",
     });
   }
