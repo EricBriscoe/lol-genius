@@ -7,8 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 
 RUN useradd --create-home appuser
 
-COPY requirements.proxy.txt .
-RUN pip install --no-cache-dir -r requirements.proxy.txt
+RUN pip install --no-cache-dir httpx fastapi "uvicorn[standard]" python-dotenv
 
 COPY --chown=appuser:appuser lol_genius/api/client.py lol_genius/api/client.py
 COPY --chown=appuser:appuser lol_genius/api/__init__.py lol_genius/api/__init__.py

@@ -6,9 +6,8 @@ dist/
 build/
 data/
 .env
-*.db
-*.db-wal
-*.db-shm
+htmlcov/
+.coverage
 node_modules/
 .DS_Store
 .pytest_cache/
@@ -20,3 +19,8 @@ electron-app/models/*.json
 electron-app/sidecar/dist/
 electron-app/sidecar/build/
 electron-app/sidecar/*.spec
+.ruff_cache/
+.idea/
+.vscode/
+*.swp
+*.swo
