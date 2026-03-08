@@ -245,7 +245,8 @@ class TestRiotHTTPClientGet:
             json={"ok": True},
             request=httpx.Request("GET", "https://example.com"),
         )
-        with patch.object(client.rate_limiter, "acquire", wraps=client.rate_limiter.acquire) as mock_acq:
+        rl = client.rate_limiter
+        with patch.object(rl, "acquire", wraps=rl.acquire) as mock_acq:
             client.get("https://example.com/unknown", priority="high")
             mock_acq.assert_called_with(priority="high")
 

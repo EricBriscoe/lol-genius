@@ -262,7 +262,12 @@ def drain_unenriched(
                         )
                         used, budget = api.rate_window_usage()
                         log.info(
-                            f"Enriching {unenriched_total:,} | {enriched_count} done | {rate_hr:.0f}/hr | ETA {eta_str} | API {used}/{budget} req/2min"
+                            "Enriching %s | %d done"
+                            " | %.0f/hr | ETA %s"
+                            " | API %d/%d req/2min",
+                            f"{unenriched_total:,}",
+                            enriched_count,
+                            rate_hr, eta_str, used, budget,
                         )
                         last_log_count = enriched_count
                         last_log_time = now
@@ -385,9 +390,13 @@ def _crawl_batch(
                         used, budget = api.rate_window_usage()
                         eta = _format_eta(total_added, rate_hr, config.match_count)
                         log.info(
-                            f"Crawl batch: {puuids_processed}/{len(puuids)} PUUIDs | "
-                            f"{matches_added} new matches ({total_added:,} total) | "
-                            f"{rate_hr:.0f}/hr | {eta} | API {used}/{budget} req/2min"
+                            "Crawl batch: %d/%d PUUIDs"
+                            " | %d new matches (%s total)"
+                            " | %.0f/hr | %s"
+                            " | API %d/%d req/2min",
+                            puuids_processed, len(puuids),
+                            matches_added, f"{total_added:,}",
+                            rate_hr, eta, used, budget,
                         )
                         last_batch_log = now
 
@@ -457,7 +466,10 @@ def crawl_matches(
                 rate_hr = progress_rolling.rate_per_hour()
                 eta = _format_eta(current, rate_hr, target)
                 log.info(
-                    f"Progress: {current:,} / {target:,} matches ({current / target:.1%}) | {rate_hr:.0f}/hr | {eta}"
+                    "Progress: %s / %s matches (%.1f%%)"
+                    " | %.0f/hr | %s",
+                    f"{current:,}", f"{target:,}",
+                    current / target * 100, rate_hr, eta,
                 )
                 last_log_count = current
                 last_log_time = now

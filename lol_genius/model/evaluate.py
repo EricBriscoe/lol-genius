@@ -48,9 +48,10 @@ def evaluate_model(
     log.info(f"  TN={cm[0][0]:5d}  FP={cm[0][1]:5d}")
     log.info(f"  FN={cm[1][0]:5d}  TP={cm[1][1]:5d}")
 
-    log.info(
-        f"\nClassification Report:\n{classification_report(y_test, y_pred, target_names=['Red Win', 'Blue Win'])}"
+    report = classification_report(
+        y_test, y_pred, target_names=['Red Win', 'Blue Win']
     )
+    log.info(f"\nClassification Report:\n{report}")
 
     if model_dir:
         _plot_calibration(y_test, y_proba, model_dir)

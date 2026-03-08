@@ -125,83 +125,154 @@ class MatchDB:
         with self.transaction():
             self._execute(
                 """INSERT INTO matches
-                   (match_id, game_version, patch, game_duration, queue_id, blue_win, game_creation,
-                    game_start_timestamp, game_end_timestamp, platform_id)
-                   VALUES (%(match_id)s, %(game_version)s, %(patch)s, %(game_duration)s, %(queue_id)s, %(blue_win)s, %(game_creation)s,
-                           %(game_start_timestamp)s, %(game_end_timestamp)s, %(platform_id)s)
+                   (match_id, game_version, patch, game_duration,
+                    queue_id, blue_win, game_creation,
+                    game_start_timestamp, game_end_timestamp,
+                    platform_id)
+                   VALUES (
+                    %(match_id)s, %(game_version)s, %(patch)s,
+                    %(game_duration)s, %(queue_id)s, %(blue_win)s,
+                    %(game_creation)s, %(game_start_timestamp)s,
+                    %(game_end_timestamp)s, %(platform_id)s)
                    ON CONFLICT (match_id) DO NOTHING""",
                 match,
             )
             for p in participants:
                 self._execute(
                     """INSERT INTO participants
-                       (match_id, puuid, summoner_id, team_id, champion_id, champion_name, team_position, win,
-                        kills, deaths, assists, total_damage, cs, vision_score, gold_earned,
-                        summoner1_id, summoner2_id, summoner_level,
-                        perks_primary_style, perks_sub_style, perks_keystone, perks_offense, perks_flex, perks_defense,
-                        magic_damage_to_champions, physical_damage_to_champions, true_damage_to_champions,
-                        total_damage_taken, damage_self_mitigated,
-                        wards_placed, wards_killed, detector_wards_placed,
-                        gold_spent, time_ccing_others, total_heal, total_heals_on_teammates,
-                        double_kills, triple_kills, quadra_kills, penta_kills, largest_killing_spree,
-                        item0, item1, item2, item3, item4, item5, item6,
-                        neutral_minions_killed, total_minions_killed, champion_level)
-                       VALUES (%(match_id)s, %(puuid)s, %(summoner_id)s, %(team_id)s, %(champion_id)s, %(champion_name)s,
-                               %(team_position)s, %(win)s, %(kills)s, %(deaths)s, %(assists)s, %(total_damage)s, %(cs)s,
-                               %(vision_score)s, %(gold_earned)s,
-                               %(summoner1_id)s, %(summoner2_id)s, %(summoner_level)s,
-                               %(perks_primary_style)s, %(perks_sub_style)s, %(perks_keystone)s, %(perks_offense)s, %(perks_flex)s, %(perks_defense)s,
-                               %(magic_damage_to_champions)s, %(physical_damage_to_champions)s, %(true_damage_to_champions)s,
-                               %(total_damage_taken)s, %(damage_self_mitigated)s,
-                               %(wards_placed)s, %(wards_killed)s, %(detector_wards_placed)s,
-                               %(gold_spent)s, %(time_ccing_others)s, %(total_heal)s, %(total_heals_on_teammates)s,
-                               %(double_kills)s, %(triple_kills)s, %(quadra_kills)s, %(penta_kills)s, %(largest_killing_spree)s,
-                               %(item0)s, %(item1)s, %(item2)s, %(item3)s, %(item4)s, %(item5)s, %(item6)s,
-                               %(neutral_minions_killed)s, %(total_minions_killed)s, %(champion_level)s)
-                       ON CONFLICT (match_id, puuid) DO NOTHING""",
+                       (match_id, puuid, summoner_id, team_id,
+                        champion_id, champion_name,
+                        team_position, win,
+                        kills, deaths, assists, total_damage,
+                        cs, vision_score, gold_earned,
+                        summoner1_id, summoner2_id,
+                        summoner_level,
+                        perks_primary_style, perks_sub_style,
+                        perks_keystone, perks_offense,
+                        perks_flex, perks_defense,
+                        magic_damage_to_champions,
+                        physical_damage_to_champions,
+                        true_damage_to_champions,
+                        total_damage_taken,
+                        damage_self_mitigated,
+                        wards_placed, wards_killed,
+                        detector_wards_placed,
+                        gold_spent, time_ccing_others,
+                        total_heal, total_heals_on_teammates,
+                        double_kills, triple_kills,
+                        quadra_kills, penta_kills,
+                        largest_killing_spree,
+                        item0, item1, item2, item3,
+                        item4, item5, item6,
+                        neutral_minions_killed,
+                        total_minions_killed, champion_level)
+                       VALUES (
+                        %(match_id)s, %(puuid)s,
+                        %(summoner_id)s, %(team_id)s,
+                        %(champion_id)s, %(champion_name)s,
+                        %(team_position)s, %(win)s,
+                        %(kills)s, %(deaths)s,
+                        %(assists)s, %(total_damage)s,
+                        %(cs)s, %(vision_score)s,
+                        %(gold_earned)s,
+                        %(summoner1_id)s, %(summoner2_id)s,
+                        %(summoner_level)s,
+                        %(perks_primary_style)s,
+                        %(perks_sub_style)s,
+                        %(perks_keystone)s, %(perks_offense)s,
+                        %(perks_flex)s, %(perks_defense)s,
+                        %(magic_damage_to_champions)s,
+                        %(physical_damage_to_champions)s,
+                        %(true_damage_to_champions)s,
+                        %(total_damage_taken)s,
+                        %(damage_self_mitigated)s,
+                        %(wards_placed)s, %(wards_killed)s,
+                        %(detector_wards_placed)s,
+                        %(gold_spent)s, %(time_ccing_others)s,
+                        %(total_heal)s,
+                        %(total_heals_on_teammates)s,
+                        %(double_kills)s, %(triple_kills)s,
+                        %(quadra_kills)s, %(penta_kills)s,
+                        %(largest_killing_spree)s,
+                        %(item0)s, %(item1)s, %(item2)s,
+                        %(item3)s, %(item4)s, %(item5)s,
+                        %(item6)s,
+                        %(neutral_minions_killed)s,
+                        %(total_minions_killed)s,
+                        %(champion_level)s)
+                       ON CONFLICT (match_id, puuid)
+                       DO NOTHING""",
                     p,
                 )
 
             if bans:
                 for b in bans:
                     self._execute(
-                        """INSERT INTO match_bans (match_id, team_id, champion_id, pick_turn)
-                           VALUES (%(match_id)s, %(team_id)s, %(champion_id)s, %(pick_turn)s)""",
+                        """INSERT INTO match_bans
+                           (match_id, team_id, champion_id,
+                            pick_turn)
+                           VALUES (
+                            %(match_id)s, %(team_id)s,
+                            %(champion_id)s, %(pick_turn)s)""",
                         b,
                     )
 
             if objectives:
                 for o in objectives:
                     self._execute(
-                        """INSERT INTO match_team_objectives (match_id, team_id, objective, first, kills)
-                           VALUES (%(match_id)s, %(team_id)s, %(objective)s, %(first)s, %(kills)s)
-                           ON CONFLICT (match_id, team_id, objective) DO NOTHING""",
+                        """INSERT INTO match_team_objectives
+                           (match_id, team_id, objective,
+                            first, kills)
+                           VALUES (
+                            %(match_id)s, %(team_id)s,
+                            %(objective)s, %(first)s,
+                            %(kills)s)
+                           ON CONFLICT
+                            (match_id, team_id, objective)
+                           DO NOTHING""",
                         o,
                     )
 
             if raw_json:
                 self._execute(
-                    "INSERT INTO match_raw_json (match_id, raw_json) VALUES (%s, %s::jsonb) ON CONFLICT (match_id) DO NOTHING",
+                    """INSERT INTO match_raw_json
+                       (match_id, raw_json)
+                       VALUES (%s, %s::jsonb)
+                       ON CONFLICT (match_id) DO NOTHING""",
                     (match["match_id"], raw_json),
                 )
 
             self._execute(
-                "INSERT INTO match_enrichment_status (match_id, enriched) VALUES (%s, 0) ON CONFLICT (match_id) DO NOTHING",
+                """INSERT INTO match_enrichment_status
+                   (match_id, enriched) VALUES (%s, 0)
+                   ON CONFLICT (match_id) DO NOTHING""",
                 (match["match_id"],),
             )
 
     def insert_summoner_rank(self, rank_data: dict) -> None:
         self._execute(
             """INSERT INTO summoner_ranks
-               (puuid, summoner_id, queue_type, tier, rank, league_points, wins, losses,
-                veteran, inactive, fresh_blood, hot_streak)
-               VALUES (%(puuid)s, %(summoner_id)s, %(queue_type)s, %(tier)s, %(rank)s, %(league_points)s, %(wins)s, %(losses)s,
-                       %(veteran)s, %(inactive)s, %(fresh_blood)s, %(hot_streak)s)
-               ON CONFLICT (puuid, queue_type, fetched_at) DO UPDATE SET
-                   tier = EXCLUDED.tier, rank = EXCLUDED.rank, league_points = EXCLUDED.league_points,
-                   wins = EXCLUDED.wins, losses = EXCLUDED.losses,
-                   veteran = EXCLUDED.veteran, inactive = EXCLUDED.inactive,
-                   fresh_blood = EXCLUDED.fresh_blood, hot_streak = EXCLUDED.hot_streak""",
+               (puuid, summoner_id, queue_type, tier,
+                rank, league_points, wins, losses,
+                veteran, inactive, fresh_blood,
+                hot_streak)
+               VALUES (
+                %(puuid)s, %(summoner_id)s,
+                %(queue_type)s, %(tier)s, %(rank)s,
+                %(league_points)s, %(wins)s, %(losses)s,
+                %(veteran)s, %(inactive)s,
+                %(fresh_blood)s, %(hot_streak)s)
+               ON CONFLICT (puuid, queue_type, fetched_at)
+               DO UPDATE SET
+                   tier = EXCLUDED.tier,
+                   rank = EXCLUDED.rank,
+                   league_points = EXCLUDED.league_points,
+                   wins = EXCLUDED.wins,
+                   losses = EXCLUDED.losses,
+                   veteran = EXCLUDED.veteran,
+                   inactive = EXCLUDED.inactive,
+                   fresh_blood = EXCLUDED.fresh_blood,
+                   hot_streak = EXCLUDED.hot_streak""",
             rank_data,
         )
         self._maybe_commit()
@@ -210,7 +281,9 @@ class MatchDB:
         added = 0
         for puuid in puuids:
             cur = self._execute(
-                "INSERT INTO crawl_queue (puuid, seed_tier) VALUES (%s, %s) ON CONFLICT (puuid) DO NOTHING",
+                """INSERT INTO crawl_queue (puuid, seed_tier)
+                   VALUES (%s, %s)
+                   ON CONFLICT (puuid) DO NOTHING""",
                 (puuid, tier),
             )
             if cur.rowcount > 0:
@@ -248,7 +321,10 @@ class MatchDB:
 
     def mark_puuid_done(self, puuid: str) -> None:
         self._execute(
-            "UPDATE crawl_queue SET status = 'done', processed_at = current_timestamp WHERE puuid = %s",
+            """UPDATE crawl_queue
+               SET status = 'done',
+                   processed_at = current_timestamp
+               WHERE puuid = %s""",
             (puuid,),
         )
         self._maybe_commit()
@@ -262,7 +338,10 @@ class MatchDB:
 
     def mark_match_enriched(self, match_id: str) -> None:
         self._execute(
-            "UPDATE match_enrichment_status SET enriched = 1, enriched_at = current_timestamp WHERE match_id = %s",
+            """UPDATE match_enrichment_status
+               SET enriched = 1,
+                   enriched_at = current_timestamp
+               WHERE match_id = %s""",
             (match_id,),
         )
         self._maybe_commit()
@@ -317,7 +396,9 @@ class MatchDB:
         self, puuid: str, queue_type: str = "RANKED_SOLO_5x5"
     ) -> dict | None:
         row = self._fetchone(
-            "SELECT * FROM summoner_ranks WHERE puuid = %s AND queue_type = %s ORDER BY fetched_at DESC LIMIT 1",
+            """SELECT * FROM summoner_ranks
+               WHERE puuid = %s AND queue_type = %s
+               ORDER BY fetched_at DESC LIMIT 1""",
             (puuid, queue_type),
         )
         return dict(row) if row else None
@@ -332,14 +413,22 @@ class MatchDB:
         for r in records:
             self._execute(
                 """INSERT INTO champion_mastery
-                   (puuid, champion_id, mastery_level, mastery_points, last_play_time, champion_points_until_next_level)
-                   VALUES (%(puuid)s, %(champion_id)s, %(mastery_level)s, %(mastery_points)s,
-                           %(last_play_time)s, %(champion_points_until_next_level)s)
-                   ON CONFLICT (puuid, champion_id) DO UPDATE SET
-                       mastery_level = EXCLUDED.mastery_level, mastery_points = EXCLUDED.mastery_points,
-                       last_play_time = EXCLUDED.last_play_time,
-                       champion_points_until_next_level = EXCLUDED.champion_points_until_next_level,
-                       fetched_at = current_timestamp""",
+                   (puuid, champion_id, mastery_level,
+                    mastery_points, last_play_time,
+                    champion_points_until_next_level)
+                   VALUES (
+                    %(puuid)s, %(champion_id)s,
+                    %(mastery_level)s, %(mastery_points)s,
+                    %(last_play_time)s,
+                    %(champion_points_until_next_level)s)
+                   ON CONFLICT (puuid, champion_id)
+                   DO UPDATE SET
+                    mastery_level = EXCLUDED.mastery_level,
+                    mastery_points = EXCLUDED.mastery_points,
+                    last_play_time = EXCLUDED.last_play_time,
+                    champion_points_until_next_level =
+                        EXCLUDED.champion_points_until_next_level,
+                    fetched_at = current_timestamp""",
                 r,
             )
         self._maybe_commit()
@@ -537,16 +626,28 @@ class MatchDB:
     def insert_model_run(self, run: dict) -> None:
         self._execute(
             """INSERT INTO model_runs
-               (run_id, model_type, total_matches, train_count, test_count, feature_count,
-                patch_min, patch_max, target_mean, hyperparameters,
-                best_iteration, best_train_score, training_seconds,
-                accuracy, auc_roc, log_loss, tn, fp, fn, tp,
+               (run_id, model_type, total_matches,
+                train_count, test_count, feature_count,
+                patch_min, patch_max, target_mean,
+                hyperparameters,
+                best_iteration, best_train_score,
+                training_seconds,
+                accuracy, auc_roc, log_loss,
+                tn, fp, fn, tp,
                 top_features, notes)
-               VALUES (%(run_id)s, %(model_type)s, %(total_matches)s, %(train_count)s, %(test_count)s, %(feature_count)s,
-                       %(patch_min)s, %(patch_max)s, %(target_mean)s, %(hyperparameters)s,
-                       %(best_iteration)s, %(best_train_score)s, %(training_seconds)s,
-                       %(accuracy)s, %(auc_roc)s, %(log_loss)s, %(tn)s, %(fp)s, %(fn)s, %(tp)s,
-                       %(top_features)s, %(notes)s)""",
+               VALUES (
+                %(run_id)s, %(model_type)s,
+                %(total_matches)s, %(train_count)s,
+                %(test_count)s, %(feature_count)s,
+                %(patch_min)s, %(patch_max)s,
+                %(target_mean)s, %(hyperparameters)s,
+                %(best_iteration)s,
+                %(best_train_score)s,
+                %(training_seconds)s,
+                %(accuracy)s, %(auc_roc)s,
+                %(log_loss)s, %(tn)s, %(fp)s,
+                %(fn)s, %(tp)s,
+                %(top_features)s, %(notes)s)""",
             run,
         )
         self._maybe_commit()
@@ -593,7 +694,9 @@ class MatchDB:
                WHERE sr.fetched_at < %s
                AND NOT EXISTS (
                    SELECT 1 FROM summoner_ranks sr2
-                   WHERE sr2.puuid = sr.puuid AND sr2.queue_type = sr.queue_type AND sr2.fetched_at >= %s
+                   WHERE sr2.puuid = sr.puuid
+                     AND sr2.queue_type = sr.queue_type
+                     AND sr2.fetched_at >= %s
                )""",
             (cutoff, cutoff),
         )["cnt"]
@@ -617,7 +720,9 @@ class MatchDB:
                WHERE sr.fetched_at < %s
                AND NOT EXISTS (
                    SELECT 1 FROM summoner_ranks sr2
-                   WHERE sr2.puuid = sr.puuid AND sr2.queue_type = sr.queue_type AND sr2.fetched_at >= %s
+                   WHERE sr2.puuid = sr.puuid
+                     AND sr2.queue_type = sr.queue_type
+                     AND sr2.fetched_at >= %s
                )
                LIMIT %s""",
             (cutoff, cutoff, limit),
@@ -630,7 +735,10 @@ class MatchDB:
                 WHERE (puuid, queue_type, fetched_at) IN (
                     SELECT puuid, queue_type, fetched_at FROM (
                         SELECT puuid, queue_type, fetched_at,
-                            ROW_NUMBER() OVER (PARTITION BY puuid, queue_type ORDER BY fetched_at DESC) as rn
+                            ROW_NUMBER() OVER (
+                                PARTITION BY puuid, queue_type
+                                ORDER BY fetched_at DESC
+                            ) as rn
                         FROM summoner_ranks
                     ) sub WHERE rn > {keep}
                 )"""
@@ -644,14 +752,18 @@ class MatchDB:
 
     def insert_match_raw_json(self, match_id: str, raw_json: str) -> None:
         self._execute(
-            "INSERT INTO match_raw_json (match_id, raw_json) VALUES (%s, %s::jsonb) ON CONFLICT (match_id) DO NOTHING",
+            """INSERT INTO match_raw_json (match_id, raw_json)
+               VALUES (%s, %s::jsonb)
+               ON CONFLICT (match_id) DO NOTHING""",
             (match_id, raw_json),
         )
         self._maybe_commit()
 
     def insert_league_raw_json(self, puuid: str, raw_json: str) -> None:
         self._execute(
-            "INSERT INTO league_raw_json (puuid, raw_json) VALUES (%s, %s::jsonb) ON CONFLICT (puuid, fetched_at) DO NOTHING",
+            """INSERT INTO league_raw_json (puuid, raw_json)
+               VALUES (%s, %s::jsonb)
+               ON CONFLICT (puuid, fetched_at) DO NOTHING""",
             (puuid, raw_json),
         )
         self._maybe_commit()
@@ -660,8 +772,11 @@ class MatchDB:
         self, puuid: str, champion_id: int, raw_json: str
     ) -> None:
         self._execute(
-            """INSERT INTO mastery_raw_json (puuid, champion_id, raw_json) VALUES (%s, %s, %s::jsonb)
-               ON CONFLICT (puuid, champion_id) DO UPDATE SET raw_json = EXCLUDED.raw_json, fetched_at = current_timestamp""",
+            """INSERT INTO mastery_raw_json (puuid, champion_id, raw_json)
+               VALUES (%s, %s, %s::jsonb)
+               ON CONFLICT (puuid, champion_id) DO UPDATE SET
+                   raw_json = EXCLUDED.raw_json,
+                   fetched_at = current_timestamp""",
             (puuid, champion_id, raw_json),
         )
         self._maybe_commit()
@@ -840,7 +955,10 @@ class MatchDB:
             params.append(tier)
         where = " AND ".join(conditions)
         row = self._fetchone(
-            f"SELECT COUNT(DISTINCT m.match_id) as cnt FROM matches m JOIN participants p ON p.match_id = m.match_id WHERE {where}",
+            f"""SELECT COUNT(DISTINCT m.match_id) as cnt
+                FROM matches m
+                JOIN participants p ON p.match_id = m.match_id
+                WHERE {where}""",
             params,
         )
         return row["cnt"]
@@ -895,7 +1013,9 @@ class MatchDB:
     def set_setting(self, key: str, value: str) -> None:
         self._execute(
             """INSERT INTO settings (key, value) VALUES (%s, %s)
-               ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = current_timestamp""",
+               ON CONFLICT (key) DO UPDATE SET
+                   value = EXCLUDED.value,
+                   updated_at = current_timestamp""",
             (key, value),
         )
         self._maybe_commit()
@@ -964,7 +1084,8 @@ class MatchDB:
             (puuids,),
         )
         masteries = self._fetchall(
-            "SELECT puuid, champion_id, mastery_points, mastery_level FROM champion_mastery WHERE puuid = ANY(%s)",
+            """SELECT puuid, champion_id, mastery_points, mastery_level
+               FROM champion_mastery WHERE puuid = ANY(%s)""",
             (puuids,),
         )
         return [dict(r) for r in ranks], [dict(r) for r in masteries]
@@ -974,10 +1095,18 @@ class MatchDB:
     ) -> dict[int, float]:
         rows = self._fetchall(
             """SELECT p.champion_id,
-                      SUM(CASE WHEN m.game_duration >= 1500 AND p.win::boolean THEN 1 ELSE 0 END) AS late_wins,
-                      SUM(CASE WHEN m.game_duration >= 1500 THEN 1 ELSE 0 END) AS late_games,
-                      SUM(CASE WHEN m.game_duration < 1500 AND p.win::boolean THEN 1 ELSE 0 END) AS early_wins,
-                      SUM(CASE WHEN m.game_duration < 1500 THEN 1 ELSE 0 END) AS early_games,
+                      SUM(CASE WHEN m.game_duration >= 1500
+                          AND p.win::boolean THEN 1 ELSE 0 END
+                      ) AS late_wins,
+                      SUM(CASE WHEN m.game_duration >= 1500
+                          THEN 1 ELSE 0 END
+                      ) AS late_games,
+                      SUM(CASE WHEN m.game_duration < 1500
+                          AND p.win::boolean THEN 1 ELSE 0 END
+                      ) AS early_wins,
+                      SUM(CASE WHEN m.game_duration < 1500
+                          THEN 1 ELSE 0 END
+                      ) AS early_games,
                       COUNT(*) AS total_games
                FROM participants p
                JOIN matches m ON p.match_id = m.match_id

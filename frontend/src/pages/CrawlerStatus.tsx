@@ -175,7 +175,7 @@ export default function CrawlerStatus({ live }: Props) {
               <Tooltip
                 contentStyle={tooltipStyle}
                 labelStyle={{ color: "var(--text-primary)" }}
-                formatter={(value: number) => [value, "matches/hr"]}
+                formatter={(value) => [value ?? 0, "matches/hr"]}
               />
               <Area
                 type="monotone"

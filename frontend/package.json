@@ -9,16 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "lucide-react": "^0.468",
+    "lucide-react": "^0.577",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^2.15"
+    "recharts": "^3.8"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@vitejs/plugin-react": "^4.3",
-    "typescript": "~5.7",
-    "vite": "^6.0"
+    "@vitejs/plugin-react": "^5.1",
+    "typescript": "~5.9",
+    "vite": "^7.3"
   }
 }
