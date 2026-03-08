@@ -3,6 +3,9 @@ import { join } from "path";
 import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling } from "./live-client/poller";
 import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate } from "./updater";
+import log from "./log";
+
+const logger = log.scope("main");
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -43,16 +46,16 @@ app.whenReady().then(async () => {
   const modelDir = getModelDir();
   try {
     await loadModel(modelDir);
-  } catch {
-    // Model may not be bundled yet
+  } catch (e) {
+    logger.warn("Model not loaded:", e);
   }
 
   const updated = await checkForModelUpdate();
   if (updated) {
     try {
       await loadModel(getModelDir());
-    } catch {
-      // ignore
+    } catch (e) {
+      logger.error("Model reload failed:", e);
     }
   }
 
@@ -74,9 +77,12 @@ app.on("activate", () => {
 
 ipcMain.handle("start-polling", () => {
   if (mainWindow) {
+    const win = mainWindow;
     const modelDir = getModelDir();
     loadModel(modelDir).then(() => {
-      startPolling(mainWindow!, modelDir);
+      startPolling(win, modelDir);
+    }).catch((e) => {
+      logger.error("Model load failed for polling:", e);
     });
   }
 });
