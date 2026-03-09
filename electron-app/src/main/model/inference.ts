@@ -16,9 +16,9 @@ interface ModelState {
 
 const models = new Map<string, ModelState>();
 
-export async function loadModel(modelDir: string, modelType = "live"): Promise<void> {
+export async function loadModel(modelDir: string, modelType = "live", force = false): Promise<void> {
   const existing = models.get(modelType);
-  if (existing?.modelDir === modelDir) return;
+  if (!force && existing?.modelDir === modelDir) return;
 
   const onnxPath = join(modelDir, "model.onnx");
   if (!existsSync(onnxPath)) {
