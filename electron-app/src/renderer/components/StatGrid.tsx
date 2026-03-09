@@ -7,15 +7,9 @@ function diffColor(diff: number): string | undefined {
 
 function StatBox({ label, value, color }: { label: string; value: string | number; color?: string }) {
   return (
-    <div style={{
-      background: "var(--bg-primary)",
-      border: "1px solid var(--border)",
-      borderRadius: 8,
-      padding: "12px 16px",
-      textAlign: "center",
-    }}>
-      <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{label}</div>
-      <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: color || "var(--text-primary)" }}>{value}</div>
+    <div className="stat-box">
+      <div className="stat-box__label">{label}</div>
+      <div className="stat-box__value" style={color ? { color } : undefined}>{value}</div>
     </div>
   );
 }
@@ -26,7 +20,7 @@ function fmtDiff(n: number): string {
 
 export default function StatGrid({ data }: { data: LiveGameUpdate }) {
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12 }}>
+    <div className="stat-grid">
       <StatBox label="Game Time" value={fmtTime(data.game_time)} />
       <StatBox label="Kill Diff" value={fmtDiff(data.kill_diff)} color={diffColor(data.kill_diff)} />
       <StatBox label="CS Diff" value={fmtDiff(data.cs_diff)} color={diffColor(data.cs_diff)} />

@@ -10,7 +10,7 @@ interface Props {
 
 export default function ProbChart({ data }: Props) {
   return (
-    <div style={{ height: 240, marginTop: 12 }}>
+    <div className="chart-container">
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -26,7 +26,7 @@ export default function ProbChart({ data }: Props) {
             tickFormatter={(v: number) => `${v}%`}
           />
           <Tooltip
-            contentStyle={{ background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }}
+            contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }}
             formatter={(v) => [`${v ?? 0}%`, "Blue Win %"]}
             labelFormatter={fmtTime}
           />

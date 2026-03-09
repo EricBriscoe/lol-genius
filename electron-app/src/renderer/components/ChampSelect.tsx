@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import type { ChampSelectUpdate, ChampSelectPlayerInfo } from "../types";
-import { sectionTitle } from "../styles";
 import { titleCase, toBlueProb } from "../utils";
 import Card from "./Card";
 import WinProbBar from "./WinProbBar";
@@ -65,23 +64,23 @@ export default function ChampSelect({ data }: Props) {
   const redSorted = sortByPosition(data.red_team.players);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
+    <div className="champ-select">
+      <div className="champ-select__phase">
         {formatPhase(data.phase)}
         {displaySeconds > 0 && ` — ${displaySeconds}s`}
       </div>
 
       {data.blue_win_probability != null && (
         <Card>
-          <h3 style={sectionTitle}>Win Probability</h3>
+          <h3 className="section-title">Win Probability</h3>
           <WinProbBar blueProb={blueProb} />
         </Card>
       )}
 
       <Card>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 0 }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--accent)", marginBottom: 4, textAlign: "center" }}>
+        <div className="champ-select__grid">
+          <div className="champ-select__team">
+            <div className="champ-select__team-label champ-select__team-label--blue">
               {data.is_blue_side ? "Your Team" : "Blue Side"}
             </div>
             {blueSorted.map((p, i) => (
@@ -89,22 +88,16 @@ export default function ChampSelect({ data }: Props) {
             ))}
           </div>
 
-          <div style={{
-            display: "flex", flexDirection: "column", justifyContent: "center",
-            gap: 4, padding: "0 12px", alignItems: "center",
-          }}>
+          <div className="champ-select__positions">
             {POSITION_ORDER.map((pos) => (
-              <div key={pos} style={{
-                fontSize: 10, fontWeight: 600, color: "var(--text-muted)",
-                height: 32, display: "flex", alignItems: "center",
-              }}>
+              <div key={pos} className="champ-select__position-label">
                 {POSITION_LABELS[pos]}
               </div>
             ))}
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: "var(--red)", marginBottom: 4, textAlign: "center" }}>
+          <div className="champ-select__team">
+            <div className="champ-select__team-label champ-select__team-label--red">
               {!data.is_blue_side ? "Your Team" : "Red Side"}
             </div>
             {redSorted.map((p, i) => (
@@ -116,7 +109,7 @@ export default function ChampSelect({ data }: Props) {
 
       {data.top_factors && data.top_factors.length > 0 && (
         <Card>
-          <h3 style={sectionTitle}>Key Factors</h3>
+          <h3 className="section-title">Key Factors</h3>
           <KeyFactors factors={data.top_factors} />
         </Card>
       )}
@@ -132,26 +125,28 @@ function PlayerRow({ player, side, version }: {
   version: string;
 }) {
   const hasChamp = player.championId > 0 && player.championKey;
-  const color = side === "blue" ? "var(--accent)" : "var(--red)";
   const isRight = side === "red";
 
+  let iconCls = "player-icon";
+  if (player.isLocalPlayer) iconCls += ` player-icon--local-${side}`;
+
+  let nameCls = "player-name";
+  if (player.isLocalPlayer) nameCls += " player-name--local";
+  if (!hasChamp) nameCls += " player-name--empty";
+
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 8, height: 32,
-      flexDirection: isRight ? "row-reverse" : "row",
-      opacity: hasChamp ? 1 : 0.4,
-    }}>
-      <div style={{
-        width: 28, height: 28, borderRadius: 4, overflow: "hidden",
-        background: "var(--bg-primary)", flexShrink: 0,
-        border: player.isLocalPlayer ? `2px solid ${color}` : "1px solid var(--border)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}>
+    <div
+      className="player-row"
+      style={{
+        flexDirection: isRight ? "row-reverse" : "row",
+        opacity: hasChamp ? 1 : 0.4,
+      }}
+    >
+      <div className={iconCls}>
         {hasChamp && version ? (
           <img
             src={champImageUrl(version, player.championKey)}
             alt={player.championName}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
             onError={(e) => {
               const img = e.target as HTMLImageElement;
               const fallback = document.createElement("span");
@@ -165,10 +160,7 @@ function PlayerRow({ player, side, version }: {
           />
         ) : null}
       </div>
-      <span style={{
-        fontSize: 12, color: hasChamp ? "var(--text-primary)" : "var(--text-muted)",
-        fontWeight: player.isLocalPlayer ? 600 : 400,
-      }}>
+      <span className={nameCls}>
         {hasChamp ? player.championName : "Picking..."}
       </span>
     </div>
@@ -183,24 +175,18 @@ function BanRow({ bans }: { bans: { blue: number[]; red: number[] } }) {
 
   return (
     <Card>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ display: "flex", gap: 4 }}>
-          <span style={{ fontSize: 11, color: "var(--accent)", marginRight: 4 }}>Bans</span>
+      <div className="ban-row">
+        <div className="ban-group">
+          <span className="ban-label ban-label--blue">Bans</span>
           {blueBans.map((_, i) => (
-            <div key={i} style={{
-              width: 20, height: 20, borderRadius: 3, background: "var(--bg-primary)",
-              border: "1px solid var(--accent)", opacity: 0.6,
-            }} />
+            <div key={i} className="ban-slot ban-slot--blue" />
           ))}
         </div>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div className="ban-group">
           {redBans.map((_, i) => (
-            <div key={i} style={{
-              width: 20, height: 20, borderRadius: 3, background: "var(--bg-primary)",
-              border: "1px solid var(--red)", opacity: 0.6,
-            }} />
+            <div key={i} className="ban-slot ban-slot--red" />
           ))}
-          <span style={{ fontSize: 11, color: "var(--red)", marginLeft: 4 }}>Bans</span>
+          <span className="ban-label ban-label--red">Bans</span>
         </div>
       </div>
     </Card>
