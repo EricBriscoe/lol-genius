@@ -50,9 +50,9 @@ export default function App() {
             </span>
           )}
           <button
-            onClick={() => window.lolGenius.checkForUpdates()}
+            onClick={() => { window.lolGenius.checkForUpdates(); window.lolGenius.checkAppUpdates(); }}
             style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
-            title="Check for model updates"
+            title="Check for updates"
           >
             <RefreshCw size={14} />
           </button>
