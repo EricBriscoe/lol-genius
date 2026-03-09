@@ -354,6 +354,8 @@ def train(ctx, tune, live, notes):
 
     model, run_id = train_model(X, y, config.model_dir, **train_kwargs)
 
+    _run_evaluation(config, model_type, model=model, run_id=run_id)
+
     if not live and match_ids is not None:
         import xgboost as xgb
 
@@ -387,27 +389,25 @@ def train(ctx, tune, live, notes):
     click.echo(f"Training complete. Run ID: {run_id}")
 
 
-@cli.command()
-@click.pass_context
-@cli_error_handler
-def evaluate(ctx):
-    """Evaluate trained model and generate reports."""
-    import pandas as pd
-
-    config = _get_config(ctx)
+def _run_evaluation(config, model_type: str, *, model=None, run_id: str | None = None):
     from pathlib import Path
 
-    from lol_genius.model.evaluate import evaluate_model
-    from lol_genius.model.train import load_model
+    import pandas as pd
 
-    type_dir = Path(config.model_dir) / "pregame"
-    model, feature_names = load_model(config.model_dir)
+    from lol_genius.model.evaluate import evaluate_model
+
+    type_dir = Path(config.model_dir) / model_type
+
+    if model is None:
+        from lol_genius.model.train import load_model
+        model, _ = load_model(config.model_dir, model_type)
+
+    if run_id is None:
+        run_id_path = type_dir / "run_id.txt"
+        run_id = run_id_path.read_text().strip() if run_id_path.exists() else None
 
     X_test = pd.read_parquet(type_dir / "X_test.parquet")
     y_test = pd.read_parquet(type_dir / "y_test.parquet").squeeze()
-
-    run_id_path = type_dir / "run_id.txt"
-    run_id = run_id_path.read_text().strip() if run_id_path.exists() else None
 
     evaluate_model(
         model,
@@ -417,6 +417,18 @@ def evaluate(ctx):
         database_url=config.database_url,
         run_id=run_id,
     )
+
+
+@cli.command()
+@click.option(
+    "--live/--no-live", default=False, help="Evaluate live model instead of pregame"
+)
+@click.pass_context
+@cli_error_handler
+def evaluate(ctx, live):
+    """Evaluate trained model and generate reports."""
+    config = _get_config(ctx)
+    _run_evaluation(config, "live" if live else "pregame")
 
 
 @cli.command()
