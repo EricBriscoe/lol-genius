@@ -19,8 +19,6 @@ contextBridge.exposeInMainWorld("lolGenius", {
   stopPolling: () => ipcRenderer.invoke("stop-polling"),
   getModelInfo: () => ipcRenderer.invoke("get-model-info"),
   checkForUpdates: () => ipcRenderer.invoke("check-for-updates"),
-  checkAppUpdates: () => ipcRenderer.invoke("check-app-updates"),
-  installAppUpdate: () => ipcRenderer.invoke("install-app-update"),
   setDevMode: (enabled: boolean) => ipcRenderer.invoke("set-dev-mode", enabled),
   getDevMode: () => ipcRenderer.invoke("get-dev-mode"),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),

@@ -51,7 +51,7 @@ export default function App() {
             </span>
           )}
           <button
-            onClick={() => { window.lolGenius.checkForUpdates(); window.lolGenius.checkAppUpdates(); }}
+            onClick={() => { window.lolGenius.checkForUpdates(); }}
             style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
             title="Check for updates"
           >
@@ -148,53 +148,26 @@ export default function App() {
 }
 
 function UpdateBanner({ event }: { event: AppUpdateEvent | null }) {
-  const [dismissed, setDismissed] = useState(false);
   const [visible, setVisible] = useState(false);
 
-  useEffect(() => {
-    if (event?.status === "error") {
-      setDismissed(false);
-      setVisible(true);
-      const timer = setTimeout(() => setDismissed(true), 5000);
-      return () => clearTimeout(timer);
-    }
-    if (event?.status === "downloading" || event?.status === "downloaded") {
-      setDismissed(false);
-      setVisible(true);
-    }
-  }, [event]);
+  const status = event?.status;
+  const show = status === "downloading" || status === "restarting";
 
   useEffect(() => {
-    if (!event || dismissed) setVisible(false);
-  }, [event, dismissed]);
+    if (show) setVisible(true);
+    else { const t = setTimeout(() => setVisible(false), 300); return () => clearTimeout(t); }
+  }, [show]);
 
-  const show = !!event && !dismissed;
   if (!show && !visible) return null;
 
-  const { status } = event!;
-  const slideStyle: React.CSSProperties = {
-    ...toastStyle,
-    transform: show ? "translateY(0)" : "translateY(20px)",
-    opacity: show ? 1 : 0,
-    pointerEvents: show ? "auto" : "none",
-    ...(status === "downloaded" ? { display: "flex", alignItems: "center", gap: 6 } : {}),
-  };
-
-  const color = status === "downloading" ? "var(--accent)" : status === "downloaded" ? "var(--green)" : "var(--text-muted)";
+  const color = status === "downloading" ? "var(--accent)" : "var(--green)";
 
   return (
-    <div style={slideStyle}>
+    <div style={{ ...toastStyle, transform: show ? "translateY(0)" : "translateY(20px)", opacity: show ? 1 : 0 }}>
       <span style={{ color }}>
-        {status === "downloading" && `↓ Updating… ${event!.percent}%`}
-        {status === "downloaded" && "Update ready"}
-        {status === "error" && "Update failed"}
+        {status === "downloading" && `Updating… ${(event as { percent: number }).percent}%`}
+        {status === "restarting" && "Restarting to update…"}
       </span>
-      {status === "downloaded" && (
-        <>
-          <span style={{ color: "var(--text-muted)" }}>·</span>
-          <button onClick={() => window.lolGenius.installAppUpdate()} style={restartBtnStyle}>Restart</button>
-        </>
-      )}
     </div>
   );
 }
@@ -233,14 +206,4 @@ const toastStyle: React.CSSProperties = {
   transition: "transform 0.3s ease, opacity 0.3s ease",
 };
 
-const restartBtnStyle: React.CSSProperties = {
-  background: "none",
-  border: "none",
-  padding: 0,
-  color: "var(--green)",
-  fontSize: 11,
-  fontWeight: 600,
-  cursor: "pointer",
-  textDecoration: "underline",
-};
 
