@@ -1,5 +1,5 @@
 import { computeShap } from "../shap/sidecar";
-import { getFeatureImportance } from "./inference";
+import { getFeatureImportance, predict } from "./inference";
 
 export async function computeTopFactors(
   modelDir: string | null,
@@ -17,7 +17,20 @@ export async function computeTopFactors(
     }
   }
 
-  return getFeatureImportance(modelType)
-    .slice(0, count)
-    .map((f) => ({ feature: f.feature, impact: f.importance }));
+  const staticImportance = getFeatureImportance(modelType);
+  const topFeatures = staticImportance.slice(0, count);
+  if (topFeatures.length === 0) return [];
+
+  const baseProb = await predict(features, modelType);
+  const results: { feature: string; impact: number }[] = [];
+
+  for (const { feature } of topFeatures) {
+    const modified = { ...features, [feature]: 0 };
+    const modifiedProb = await predict(modified, modelType);
+    results.push({ feature, impact: baseProb - modifiedProb });
+  }
+
+  return results
+    .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
+    .slice(0, count);
 }

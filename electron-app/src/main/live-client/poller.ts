@@ -99,7 +99,7 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
 
     let prob: number;
     try {
-      prob = await predict(features);
+      prob = await predict(features, "live");
     } catch (e) {
       logger.error("Prediction failed:", e);
       send(win, "prediction-update", { status: "model_missing", blue_win_probability: null });
@@ -108,7 +108,7 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
 
     logger.debug("Probability:", prob);
 
-    const topFactors = await computeTopFactors(modelDir, features);
+    const topFactors = await computeTopFactors(modelDir, features, "live");
 
     const update = {
       status: "ok",
