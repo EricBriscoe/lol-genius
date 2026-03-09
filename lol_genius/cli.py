@@ -265,6 +265,23 @@ def fetch_timelines(ctx):
         db.close()
 
 
+@cli.command("backfill-timelines")
+@click.pass_context
+@cli_error_handler
+def backfill_timelines(ctx):
+    """Re-extract timeline snapshots from stored raw JSON (no API calls)."""
+    config = _get_config(ctx)
+
+    from lol_genius.crawler.fetch_timelines import backfill_timelines_from_raw
+    from lol_genius.db.queries import MatchDB
+
+    db = MatchDB(config.database_url)
+    try:
+        backfill_timelines_from_raw(db)
+    finally:
+        db.close()
+
+
 @cli.command()
 @click.option("--tune/--no-tune", default=False, help="Run hyperparameter tuning")
 @click.option(

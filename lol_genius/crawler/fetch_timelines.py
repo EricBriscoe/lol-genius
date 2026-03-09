@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 
 from lol_genius.features.timeline import SNAPSHOT_SECONDS
@@ -176,6 +177,14 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
     return snapshots
 
 
+def _process_timeline(db, match_id: str, timeline: dict) -> bool:
+    snapshots = extract_timeline_snapshots(timeline)
+    if not snapshots:
+        return False
+    db.save_timeline_snapshots(match_id, snapshots)
+    return True
+
+
 def fetch_match_timelines(api, db, limit: int | None = None) -> None:
     match_ids = db.get_match_ids_without_timelines()
     log.info(f"Fetching timelines for {len(match_ids)} matches")
@@ -187,9 +196,8 @@ def fetch_match_timelines(api, db, limit: int | None = None) -> None:
             if not timeline:
                 log.warning(f"No timeline data for {match_id}")
                 continue
-            snapshots = extract_timeline_snapshots(timeline)
-            if snapshots:
-                db.save_timeline_snapshots(match_id, snapshots)
+            db.insert_timeline_raw_json(match_id, json.dumps(timeline))
+            if _process_timeline(db, match_id, timeline):
                 success += 1
                 if limit is not None and success >= limit:
                     break
@@ -197,3 +205,18 @@ def fetch_match_timelines(api, db, limit: int | None = None) -> None:
             log.warning(f"Failed to fetch timeline for {match_id}: {e}")
 
     log.info(f"Timeline fetch complete: {success}/{len(match_ids)} succeeded")
+
+
+def backfill_timelines_from_raw(db) -> None:
+    rows = db.get_all_timeline_raw_json()
+    log.info(f"Backfilling timelines from {len(rows)} stored raw JSONs")
+
+    success = 0
+    for match_id, timeline in rows:
+        try:
+            if _process_timeline(db, match_id, timeline):
+                success += 1
+        except Exception as e:
+            log.warning(f"Failed to backfill timeline for {match_id}: {e}")
+
+    log.info(f"Backfill complete: {success}/{len(rows)} succeeded")

@@ -781,6 +781,21 @@ class MatchDB:
         )
         self._maybe_commit()
 
+    def insert_timeline_raw_json(self, match_id: str, raw_json: str) -> None:
+        self._execute(
+            """INSERT INTO timeline_raw_json (match_id, raw_json)
+               VALUES (%s, %s::jsonb)
+               ON CONFLICT (match_id) DO NOTHING""",
+            (match_id, raw_json),
+        )
+        self._maybe_commit()
+
+    def get_all_timeline_raw_json(self) -> list[tuple[str, dict]]:
+        rows = self._fetchall(
+            "SELECT match_id, raw_json FROM timeline_raw_json"
+        )
+        return [(r["match_id"], r["raw_json"]) for r in rows]
+
     def get_match_bans(self, match_id: str) -> list[dict]:
         rows = self._fetchall(
             "SELECT * FROM match_bans WHERE match_id = %s", (match_id,)
