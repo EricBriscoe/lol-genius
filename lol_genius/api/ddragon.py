@@ -14,6 +14,23 @@ BASE_URL = "https://ddragon.leagueoflegends.com"
 AP_TAGS = {"Mage", "Support"}
 AD_TAGS = {"Fighter", "Assassin", "Marksman"}
 
+INFINITE_SCALERS: set[str] = {
+    "Nasus", "Veigar", "Senna", "Sion", "Chogath", "Kindred", "Thresh",
+    "Swain", "Smolder", "Belveth", "Syndra", "Draven", "AurelionSol",
+    "Shyvana", "Dog", "Silco",
+}
+
+SCALING_TIERS: dict[str, int] = {
+    "Pantheon": 1, "Draven": 1, "Renekton": 1, "LeeSin": 1, "Elise": 1,
+    "Jayce": 1, "Nidalee": 1, "Olaf": 1, "Darius": 1, "Caitlyn": 2,
+    "Lucian": 2, "Syndra": 2, "Rumble": 2, "Talon": 2, "Zed": 2,
+    "KhaZix": 2, "RekSai": 2, "Hecarim": 2, "Leblanc": 2,
+    "Jinx": 4, "Vayne": 4, "Kogmaw": 4, "Azir": 4, "Ryze": 4,
+    "Fiora": 4, "Camille": 4, "Viktor": 4, "Orianna": 4, "Aphelios": 4,
+    "Kassadin": 5, "Kayle": 5, "Nasus": 5, "Veigar": 5, "Senna": 5,
+    "Sion": 5, "Smolder": 5, "AurelionSol": 5, "Kindred": 5, "Belveth": 5,
+}
+
 
 class DataDragon:
     def __init__(self, cache_dir: str):
@@ -150,6 +167,18 @@ class DataDragon:
             std = stds[k] if stds[k] > 0 else 1.0
             score += w * (val - means[k]) / std
         return round(score, 4)
+
+    def get_scaling_tier(self, champion_id: int) -> int:
+        champ = self.get_champion(champion_id)
+        if not champ:
+            return 3
+        return SCALING_TIERS.get(champ["id"], 3)
+
+    def is_infinite_scaler(self, champion_id: int) -> bool:
+        champ = self.get_champion(champion_id)
+        if not champ:
+            return False
+        return champ["id"] in INFINITE_SCALERS
 
     def get_champion_id_by_name(self, name: str) -> int | None:
         if not self._champions:

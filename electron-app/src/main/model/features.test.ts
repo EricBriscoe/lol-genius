@@ -122,6 +122,8 @@ describe("buildLiveFeatures", () => {
     blue_inhibitors: 0, red_inhibitors: 0, inhibitor_diff: 0,
     blue_elder: 0, red_elder: 0, elder_diff: 0,
     first_blood_blue: 1, first_tower_blue: 1, first_dragon_blue: 1,
+    blue_estimated_gold: 5000, red_estimated_gold: 4500, estimated_gold_diff: 500,
+    blue_avg_level: 6.0, red_avg_level: 5.0, blue_max_level: 7, red_max_level: 6,
   };
 
   const momentum: MomentumState = {
@@ -157,8 +159,8 @@ describe("buildLiveFeatures", () => {
   it("guards against division by zero with small game time", () => {
     const earlyState: GameState = { ...baseState, game_time: 0 };
     const features = buildLiveFeatures(earlyState, momentum);
-    // game_time=0 snaps to 300, gameMinutes = max(300/60, 1) = 5, kill_rate_diff = 3/5
-    expect(features.kill_rate_diff).toBeCloseTo(0.6);
+    // game_time=0, gameMinutes = max(0/60, 1) = 1, kill_rate_diff = 3/1
+    expect(features.kill_rate_diff).toBeCloseTo(3.0);
   });
 
   it("computes derived momentum values correctly", () => {
@@ -177,7 +179,7 @@ describe("buildLiveFeatures", () => {
 
 describe("constants sanity", () => {
   it("LIVE_FEATURE_NAMES has expected count", () => {
-    expect(LIVE_FEATURE_NAMES.length).toBe(53);
+    expect(LIVE_FEATURE_NAMES.length).toBe(66);
   });
 
   it("SNAPSHOT_SECONDS is sorted ascending", () => {

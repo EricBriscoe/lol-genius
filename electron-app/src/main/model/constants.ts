@@ -1,5 +1,8 @@
 export const SNAPSHOT_SECONDS = [300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 3000];
 
+export const LATE_GAME_SECONDS = 1800.0;
+export const EARLY_GAME_WINDOW_SECONDS = 1500.0;
+
 export const TIMELINE_FEATURE_NAMES = [
   "game_time_seconds",
   "blue_kills",
@@ -44,6 +47,8 @@ const PREGAME_SUMMARY_COLS = [
   "scaling_score_diff",
   "max_scaling_score_diff",
   "stat_growth_diff",
+  "scaling_tier_diff",
+  "infinite_scaler_count_diff",
 ];
 
 const SCALING_INTERACTION_COLS = [
@@ -65,6 +70,26 @@ const TEMPORAL_COLS = [
   "dragon_rate_diff",
   "kill_diff_accel",
   "recent_kill_share_diff",
+  "game_phase_early",
+  "game_phase_mid",
+  "game_phase_late",
+  "objective_density",
+];
+
+const GOLD_ESTIMATION_COLS = [
+  "blue_estimated_gold",
+  "red_estimated_gold",
+  "estimated_gold_diff",
+];
+
+const LEVEL_COLS = [
+  "avg_level_diff",
+  "max_level_diff",
+];
+
+const CHAMPION_SCALING_COLS = [
+  "scaling_tier_x_time",
+  "infinite_scaler_x_time",
 ];
 
 export const LIVE_FEATURE_NAMES = [
@@ -74,4 +99,7 @@ export const LIVE_FEATURE_NAMES = [
   ...SCALING_INTERACTION_COLS,
   ...MOMENTUM_COLS,
   ...TEMPORAL_COLS,
+  ...GOLD_ESTIMATION_COLS,
+  ...LEVEL_COLS,
+  ...CHAMPION_SCALING_COLS,
 ];
