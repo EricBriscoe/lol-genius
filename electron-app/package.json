@@ -24,7 +24,7 @@
     "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7",
+    "better-sqlite3": "^12.6.2",
     "electron-log": "^5.4",
     "electron-updater": "^6.8",
     "lucide-react": "^0.577",
@@ -57,7 +57,10 @@
       "icon": "assets/icon.ico"
     },
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "icon": "assets/icon.png",
       "category": "public.app-category.games",
       "notarize": true
