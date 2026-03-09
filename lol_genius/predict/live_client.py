@@ -158,6 +158,9 @@ def _snap_to_snapshot(game_time: float) -> int:
     return min(SNAPSHOT_SECONDS, key=lambda t: abs(t - game_time))
 
 
+_NEUTRAL_DEFAULTS = {"pregame_blue_win_prob": 0.5}
+
+
 def build_live_features(
     game_state: dict,
     pregame_win_prob: float | None = None,
@@ -172,7 +175,8 @@ def build_live_features(
     from lol_genius.features.timeline import LIVE_FEATURE_NAMES
 
     summary = pregame_summary or {}
-    game_time = _snap_to_snapshot(game_state.get("game_time", 0))
+    raw_game_time = game_state.get("game_time", 0)
+    snapped_game_time = _snap_to_snapshot(raw_game_time)
     kill_diff = game_state.get("kill_diff", 0)
     cs_diff = game_state.get("cs_diff", 0)
     tower_diff = game_state.get("tower_diff", 0)
@@ -180,10 +184,24 @@ def build_live_features(
 
     prev = prev_diffs or {}
     scaling_score_diff = summary.get("scaling_score_diff", 0.0)
-    game_minutes = max(game_time / 60.0, 1.0)
+    raw_game_minutes = max(raw_game_time / 60.0, 1.0)
+
+    blue_dragons = game_state.get("blue_dragons", 0)
+    red_dragons = game_state.get("red_dragons", 0)
+    blue_barons = game_state.get("blue_barons", 0)
+    red_barons = game_state.get("red_barons", 0)
+    blue_heralds = game_state.get("blue_heralds", 0)
+    red_heralds = game_state.get("red_heralds", 0)
+
+    abs_kill_diff = abs(kill_diff)
+    abs_tower_diff = abs(tower_diff)
+
+    total_objectives = (
+        blue_dragons + red_dragons + blue_barons + red_barons + blue_heralds + red_heralds
+    )
 
     mapping = {
-        "game_time_seconds": game_time,
+        "game_time_seconds": snapped_game_time,
         "blue_kills": game_state.get("blue_kills", 0),
         "red_kills": game_state.get("red_kills", 0),
         "kill_diff": kill_diff,
@@ -192,13 +210,13 @@ def build_live_features(
         "blue_towers": game_state.get("blue_towers", 0),
         "red_towers": game_state.get("red_towers", 0),
         "tower_diff": tower_diff,
-        "blue_dragons": game_state.get("blue_dragons", 0),
-        "red_dragons": game_state.get("red_dragons", 0),
+        "blue_dragons": blue_dragons,
+        "red_dragons": red_dragons,
         "dragon_diff": dragon_diff,
-        "blue_barons": game_state.get("blue_barons", 0),
-        "red_barons": game_state.get("red_barons", 0),
-        "blue_heralds": game_state.get("blue_heralds", 0),
-        "red_heralds": game_state.get("red_heralds", 0),
+        "blue_barons": blue_barons,
+        "red_barons": red_barons,
+        "blue_heralds": blue_heralds,
+        "red_heralds": red_heralds,
         "blue_inhibitors": game_state.get("blue_inhibitors", 0),
         "red_inhibitors": game_state.get("red_inhibitors", 0),
         "blue_elder": game_state.get("blue_elder", 0),
@@ -226,21 +244,25 @@ def build_live_features(
         "scaling_score_diff": scaling_score_diff,
         "max_scaling_score_diff": summary.get("max_scaling_score_diff", 0.0),
         "stat_growth_diff": summary.get("stat_growth_diff", 0.0),
-        "scaling_advantage_realized": scaling_score_diff * (game_time / 1800.0),
+        "scaling_advantage_realized": scaling_score_diff * (raw_game_time / 1800.0),
         "early_game_window_closing": scaling_score_diff
-        * max(0.0, 1.0 - game_time / 1500.0),
+        * max(0.0, 1.0 - raw_game_time / 1500.0),
         "kill_diff_delta": kill_diff - prev.get("kill_diff", kill_diff),
         "cs_diff_delta": cs_diff - prev.get("cs_diff", cs_diff),
         "tower_diff_delta": tower_diff - prev.get("tower_diff", tower_diff),
-        "kill_lead_erosion": max(peak_kill_diff, kill_diff) - kill_diff,
-        "tower_lead_erosion": max(peak_tower_diff, tower_diff) - tower_diff,
-        "kill_rate_diff": kill_diff / game_minutes,
-        "cs_rate_diff": cs_diff / game_minutes,
-        "dragon_rate_diff": dragon_diff / game_minutes,
+        "kill_lead_erosion": max(peak_kill_diff, abs_kill_diff) - abs_kill_diff,
+        "tower_lead_erosion": max(peak_tower_diff, abs_tower_diff) - abs_tower_diff,
+        "kill_rate_diff": kill_diff / raw_game_minutes,
+        "cs_rate_diff": cs_diff / raw_game_minutes,
+        "dragon_rate_diff": dragon_diff / raw_game_minutes,
         "kill_diff_accel": kill_diff_accel,
         "recent_kill_share_diff": recent_kill_share_diff,
+        "game_phase_early": 1.0 if raw_game_time <= 900 else 0.0,
+        "game_phase_mid": 1.0 if 900 < raw_game_time <= 1500 else 0.0,
+        "game_phase_late": 1.0 if raw_game_time > 1500 else 0.0,
+        "objective_density": total_objectives / raw_game_minutes,
     }
-    return {col: mapping.get(col, 0) for col in LIVE_FEATURE_NAMES}
+    return {col: mapping.get(col, _NEUTRAL_DEFAULTS.get(col, 0)) for col in LIVE_FEATURE_NAMES}
 
 
 POLL_INTERVAL = 15
@@ -275,6 +297,8 @@ class LiveGamePoller:
         self._prev_kill_diff_delta: float = 0.0
         self._prev_blue_kills: int = 0
         self._prev_red_kills: int = 0
+        self._last_snapshot: int | None = None
+        self._prev_recent_kill_share_diff: float = 0.0
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
@@ -578,6 +602,8 @@ class LiveGamePoller:
             self._prev_kill_diff_delta = 0.0
             self._prev_blue_kills = 0
             self._prev_red_kills = 0
+            self._last_snapshot = None
+            self._prev_recent_kill_share_diff = 0.0
             self._pregame_summary = None
             self._enriching = False
 
@@ -586,26 +612,37 @@ class LiveGamePoller:
         blue_kills = game_state.get("blue_kills", 0)
         red_kills = game_state.get("red_kills", 0)
 
-        if self._prev_diffs is not None:
+        current_snapshot = _snap_to_snapshot(current_game_time)
+        snapshot_changed = (
+            self._last_snapshot is None or current_snapshot != self._last_snapshot
+        )
+
+        if snapshot_changed and self._prev_diffs is not None:
             kill_diff_delta = kill_diff - self._prev_diffs.get("kill_diff", kill_diff)
             blue_recent = blue_kills - self._prev_blue_kills
             red_recent = red_kills - self._prev_red_kills
             recent_kill_share_diff = blue_recent / max(
                 blue_kills, 1
             ) - red_recent / max(red_kills, 1)
+            self._prev_recent_kill_share_diff = recent_kill_share_diff
+        elif self._prev_diffs is not None:
+            kill_diff_delta = self._prev_kill_diff_delta
+            recent_kill_share_diff = self._prev_recent_kill_share_diff
         else:
             kill_diff_delta = 0.0
             recent_kill_share_diff = 0.0
 
         kill_diff_accel = kill_diff_delta - self._prev_kill_diff_delta
+        abs_kill_diff = abs(kill_diff)
+        abs_tower_diff = abs(tower_diff)
         if self._peak_kill_diff is None:
-            peak_kill_diff = kill_diff
+            peak_kill_diff = abs_kill_diff
         else:
-            peak_kill_diff = max(self._peak_kill_diff, kill_diff)
+            peak_kill_diff = max(self._peak_kill_diff, abs_kill_diff)
         if self._peak_tower_diff is None:
-            peak_tower_diff = tower_diff
+            peak_tower_diff = abs_tower_diff
         else:
-            peak_tower_diff = max(self._peak_tower_diff, tower_diff)
+            peak_tower_diff = max(self._peak_tower_diff, abs_tower_diff)
 
         with self._lock:
             pregame_summary = self._pregame_summary
@@ -619,16 +656,18 @@ class LiveGamePoller:
             kill_diff_accel=kill_diff_accel,
             recent_kill_share_diff=recent_kill_share_diff,
         )
-        self._prev_diffs = {
-            "kill_diff": kill_diff,
-            "cs_diff": game_state.get("cs_diff", 0),
-            "tower_diff": tower_diff,
-        }
+        if snapshot_changed:
+            self._prev_diffs = {
+                "kill_diff": kill_diff,
+                "cs_diff": game_state.get("cs_diff", 0),
+                "tower_diff": tower_diff,
+            }
+            self._prev_kill_diff_delta = kill_diff_delta
+            self._prev_blue_kills = blue_kills
+            self._prev_red_kills = red_kills
+            self._last_snapshot = current_snapshot
         self._peak_kill_diff = peak_kill_diff
         self._peak_tower_diff = peak_tower_diff
-        self._prev_kill_diff_delta = kill_diff_delta
-        self._prev_blue_kills = blue_kills
-        self._prev_red_kills = red_kills
 
         try:
             model, feature_names = load_model(self.model_dir, "live")
@@ -645,11 +684,15 @@ class LiveGamePoller:
         feat_df = pd.DataFrame([features])
         missing = [col for col in feature_names if col not in feat_df.columns]
         if missing:
-            log.warning(
-                "Missing %d features (filling with 0.0): %s", len(missing), missing[:5]
-            )
+            if len(missing) > len(feature_names) // 2:
+                log.error(
+                    "More than half of features missing (%d/%d): %s",
+                    len(missing), len(feature_names), missing[:10],
+                )
+            else:
+                log.warning("Missing %d features: %s", len(missing), missing[:5])
             for col in missing:
-                feat_df[col] = 0.0
+                feat_df[col] = _NEUTRAL_DEFAULTS.get(col, 0.0)
         feat_df = feat_df[feature_names]
 
         dmat = xgb.DMatrix(feat_df, feature_names=feature_names)
@@ -690,6 +733,7 @@ class LiveGamePoller:
             "elder_diff": game_state.get("elder_diff", 0),
             "game_reset": game_reset,
             "top_factors": top_factors,
+            "pregame_ready": pregame_summary is not None,
         }
         with self._lock:
             self.status = "ok"

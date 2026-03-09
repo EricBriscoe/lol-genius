@@ -11,6 +11,7 @@ export interface LiveGameUpdate {
   game_reset?: boolean;
   status?: string;
   top_factors?: PredictFactor[];
+  pregame_ready?: boolean;
 }
 
 export interface PredictFactor {

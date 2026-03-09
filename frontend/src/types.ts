@@ -66,6 +66,7 @@ export interface LiveGameUpdate {
   status?: string;
   error?: string;
   top_factors?: PredictFactor[];
+  pregame_ready?: boolean;
 }
 
 export interface LiveGameStatus {

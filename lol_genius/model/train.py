@@ -30,6 +30,16 @@ DEFAULT_PARAMS = {
     "tree_method": "hist",
 }
 
+LIVE_DEFAULT_PARAMS = {
+    **DEFAULT_PARAMS,
+    "max_depth": 5,
+    "subsample": 0.8,
+    "colsample_bytree": 0.7,
+    "min_child_weight": 5,
+    "gamma": 0.2,
+    "reg_lambda": 1.0,
+}
+
 PARAM_PRESETS = {
     "default": {**DEFAULT_PARAMS},
     "aggressive": {
@@ -137,7 +147,8 @@ def train_model(
     early_stopping_rounds: int = 75,
 ) -> tuple[xgb.Booster, str]:
 
-    resolved_params = {**DEFAULT_PARAMS, **(params or {})}
+    base = LIVE_DEFAULT_PARAMS if model_type == "live" else DEFAULT_PARAMS
+    resolved_params = {**base, **(params or {})}
 
     run_id = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     model_path = Path(model_dir) / model_type

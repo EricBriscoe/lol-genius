@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
-import { Wifi, WifiOff, Play, Square, AlertTriangle } from "lucide-react";
+import { Wifi, WifiOff, Play, Square, AlertTriangle, Loader2 } from "lucide-react";
 import Card from "../components/Card";
 import { startLiveGame, stopLiveGame, fetchLiveGameStatus } from "../api";
 import { sectionTitle, tooltipStyle } from "../styles";
@@ -293,6 +293,13 @@ export default function LiveGame({ latestUpdate }: Props) {
             <StatBox label="Elder Diff" value={current.elder_diff >= 0 ? `+${current.elder_diff}` : current.elder_diff} color={diffColor(current.elder_diff)} />
           </div>
         </>
+      )}
+
+      {current && current.blue_win_probability != null && pollerStatus === "ok" && current.pregame_ready === false && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12, color: "var(--text-muted)" }}>
+          <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+          Pregame data loading...
+        </div>
       )}
 
       {current?.top_factors && current.top_factors.length > 0 && (

@@ -79,6 +79,10 @@ _TEMPORAL_COLS = [
     "dragon_rate_diff",
     "kill_diff_accel",
     "recent_kill_share_diff",
+    "game_phase_early",
+    "game_phase_mid",
+    "game_phase_late",
+    "objective_density",
 ]
 
 LIVE_FEATURE_NAMES = (
@@ -420,12 +424,11 @@ def build_timeline_feature_matrix(
             src = col.replace("_delta", "")
             df[col] = df.groupby("__mid")[src].diff().fillna(0.0)
 
-        df["kill_lead_erosion"] = (
-            df.groupby("__mid")["kill_diff"].cummax() - df["kill_diff"]
-        )
-        df["tower_lead_erosion"] = (
-            df.groupby("__mid")["tower_diff"].cummax() - df["tower_diff"]
-        )
+        df["__abs_kd"] = df["kill_diff"].abs()
+        df["kill_lead_erosion"] = df.groupby("__mid")["__abs_kd"].cummax() - df["__abs_kd"]
+        df["__abs_td"] = df["tower_diff"].abs()
+        df["tower_lead_erosion"] = df.groupby("__mid")["__abs_td"].cummax() - df["__abs_td"]
+        df.drop(columns=["__abs_kd", "__abs_td"], inplace=True)
 
         game_minutes = (df["game_time_seconds"] / 60.0).clip(lower=1.0)
         df["kill_rate_diff"] = df["kill_diff"] / game_minutes
@@ -441,6 +444,17 @@ def build_timeline_feature_matrix(
         df["recent_kill_share_diff"] = blue_kills_delta / df["blue_kills"].clip(
             lower=1
         ) - red_kills_delta / df["red_kills"].clip(lower=1)
+
+        gts_phase = df["game_time_seconds"]
+        df["game_phase_early"] = (gts_phase <= 900).astype(float)
+        df["game_phase_mid"] = ((gts_phase > 900) & (gts_phase <= 1500)).astype(float)
+        df["game_phase_late"] = (gts_phase > 1500).astype(float)
+        total_objectives = (
+            df["blue_dragons"] + df["red_dragons"]
+            + df["blue_barons"] + df["red_barons"]
+            + df["blue_heralds"] + df["red_heralds"]
+        )
+        df["objective_density"] = total_objectives / game_minutes
 
         df = df.drop(columns=["__mid"])
 
