@@ -23,26 +23,21 @@ function featureLabel(name: string): string {
 export default function KeyFactors({ factors }: { factors: PredictFactor[] }) {
   const maxImpact = Math.max(...factors.map((f) => Math.abs(f.impact)), 0.001);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 12 }}>
+    <div className="key-factors">
       {factors.map((f) => {
         const label = featureLabel(f.feature);
         const pct = (Math.abs(f.impact) / maxImpact) * 100;
         const positive = f.impact >= 0;
         return (
-          <div key={f.feature} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 140, textAlign: "right", fontSize: 12, color: "var(--text-secondary)", flexShrink: 0 }}>
-              {label}
+          <div key={f.feature} className="key-factors__row">
+            <div className="key-factors__label">{label}</div>
+            <div className="key-factors__bar-track">
+              <div
+                className={`key-factors__bar-fill key-factors__bar-fill--${positive ? "positive" : "negative"}`}
+                style={{ width: `${pct}%` }}
+              />
             </div>
-            <div style={{ flex: 1, height: 12, background: "var(--bg-primary)", borderRadius: 4, overflow: "hidden" }}>
-              <div style={{
-                width: `${pct}%`,
-                height: "100%",
-                background: positive ? "var(--accent)" : "var(--red)",
-                borderRadius: 4,
-                transition: "width 0.4s ease",
-              }} />
-            </div>
-            <div className="mono" style={{ width: 52, fontSize: 11, color: positive ? "var(--accent)" : "var(--red)", textAlign: "right", flexShrink: 0 }}>
+            <div className="key-factors__impact" style={{ color: positive ? "var(--accent)" : "var(--red)" }}>
               {positive ? "+" : ""}{f.impact.toFixed(3)}
             </div>
           </div>

@@ -1,38 +1,24 @@
 export default function WinProbBar({ blueProb }: { blueProb: number }) {
   const redProb = 100 - blueProb;
+  const blueWinning = blueProb >= 50;
+
   return (
-    <div style={{ margin: "16px 0 8px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 13, fontWeight: 600 }}>
-        <span style={{ color: "var(--accent)" }}>Blue {blueProb}%</span>
-        <span style={{ color: "var(--red)" }}>Red {redProb}%</span>
+    <div className="win-prob">
+      <div className="win-prob__labels">
+        <span className="win-prob__label--blue">Blue {blueProb}%</span>
+        <span className="win-prob__label--red">Red {redProb}%</span>
       </div>
-      <div style={{ height: 28, borderRadius: 8, overflow: "hidden", display: "flex" }}>
-        <div style={{
-          width: `${blueProb}%`,
-          background: "var(--accent)",
-          transition: "width 0.5s ease",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "flex-end",
-          paddingRight: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          color: "var(--bg-primary)",
-        }}>
+      <div className="win-prob__track">
+        <div
+          className={`win-prob__fill win-prob__fill--blue${blueWinning ? " win-prob__fill--winning" : ""}`}
+          style={{ width: `${blueProb}%` }}
+        >
           {blueProb > 20 && `${blueProb}%`}
         </div>
-        <div style={{
-          flex: 1,
-          background: "var(--red)",
-          display: "flex",
-          alignItems: "center",
-          paddingLeft: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          color: "var(--bg-primary)",
-        }}>
+        <div className={`win-prob__fill win-prob__fill--red${!blueWinning ? " win-prob__fill--winning" : ""}`}>
           {redProb > 20 && `${redProb}%`}
         </div>
+        <div className="win-prob__edge" style={{ left: `${blueProb}%` }} />
       </div>
     </div>
   );

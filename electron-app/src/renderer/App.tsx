@@ -10,7 +10,6 @@ import ChampSelect from "./components/ChampSelect";
 import { useLiveGame } from "./hooks/useLiveGame";
 import { useChampSelect } from "./hooks/useChampSelect";
 import type { AppUpdateEvent } from "./types";
-import { sectionTitle } from "./styles";
 import { toBlueProb } from "./utils";
 
 export default function App() {
@@ -38,35 +37,35 @@ export default function App() {
 
   return (
     <>
-    <div style={{ maxWidth: 880, margin: "0 auto", padding: "24px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
-          <h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--text-primary)" }}>lol-genius</h1>
-          {appVersion && <span style={{ fontSize: 11, color: "var(--text-muted)" }}>v{appVersion}</span>}
+    <div className="app-container">
+      <div className="app-header">
+        <div className="app-header__title-group">
+          <h1 className="app-header__title">lol-genius</h1>
+          {appVersion && <span className="app-header__version">v{appVersion}</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div className="app-header__controls">
           {modelInfo && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+            <span className="app-header__model-info">
               Model: {modelInfo.version ?? "bundled"} ({modelInfo.featureCount} features)
             </span>
           )}
           <button
             onClick={() => { window.lolGenius.checkForUpdates(); }}
-            style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 4 }}
+            className="icon-btn"
             title="Check for updates"
           >
             <RefreshCw size={14} />
           </button>
           <button
             onClick={toggleAlwaysOnTop}
-            style={{ background: "none", border: "none", cursor: "pointer", color: alwaysOnTop ? "var(--accent)" : "var(--text-muted)", padding: 4 }}
+            className={`icon-btn${alwaysOnTop ? " icon-btn--active" : ""}`}
             title={alwaysOnTop ? "Unpin window" : "Pin window on top"}
           >
             <Pin size={14} />
           </button>
           <button
             onClick={toggleDevMode}
-            style={{ background: "none", border: "none", cursor: "pointer", color: devMode ? "var(--accent)" : "var(--text-muted)", padding: 4 }}
+            className={`icon-btn${devMode ? " icon-btn--active" : ""}`}
             title={devMode ? "Disable developer mode" : "Enable developer mode"}
           >
             <Bug size={14} />
@@ -81,9 +80,9 @@ export default function App() {
 
       {phase === "in_game" && !current && (
         <Card>
-          <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)" }}>
-            <div style={{ fontSize: 14, marginBottom: 8 }}>Game detected</div>
-            <div style={{ fontSize: 12 }}>Waiting for first prediction...</div>
+          <div className="waiting-state">
+            <div className="waiting-state__title">Game detected</div>
+            <div className="waiting-state__subtitle">Waiting for first prediction...</div>
           </div>
         </Card>
       )}
@@ -91,7 +90,7 @@ export default function App() {
       {phase === "in_game" && current && current.blue_win_probability != null && (
         <>
           <Card>
-            <h3 style={sectionTitle}>Win Probability</h3>
+            <h3 className="section-title">Win Probability</h3>
             <WinProbBar blueProb={blueProb} />
           </Card>
 
@@ -101,21 +100,21 @@ export default function App() {
 
       {phase === "in_game" && current?.top_factors && current.top_factors.length > 0 && (
         <Card>
-          <h3 style={sectionTitle}>Key Factors</h3>
+          <h3 className="section-title">Key Factors</h3>
           <KeyFactors factors={current.top_factors} />
         </Card>
       )}
 
       {phase === "in_game" && history.length > 1 && (
         <Card>
-          <h3 style={sectionTitle}>Win Probability History</h3>
+          <h3 className="section-title">Win Probability History</h3>
           <ProbChart data={history} />
         </Card>
       )}
 
       {connectionStatus === "model_missing" && (
-        <Card style={{ borderColor: "var(--red)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: "var(--red)", fontSize: 13 }}>
+        <Card variant="error">
+          <div className="alert-message alert-message--error">
             <AlertTriangle size={16} />
             No model found. Train a live model and export it, or check for model updates.
           </div>
@@ -123,8 +122,8 @@ export default function App() {
       )}
 
       {phase === "idle" && connectionStatus !== "model_missing" && (
-        <Card style={{ borderColor: "var(--gold)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", color: "var(--gold)", fontSize: 13 }}>
+        <Card variant="warning">
+          <div className="alert-message alert-message--warning">
             <AlertTriangle size={16} />
             No game detected — open League client or start a match to see predictions
           </div>
@@ -133,9 +132,9 @@ export default function App() {
 
       {!current && phase === "idle" && connectionStatus === "connecting" && (
         <Card>
-          <div style={{ textAlign: "center", padding: "60px 0", color: "var(--text-muted)" }}>
-            <div style={{ fontSize: 14, marginBottom: 8 }}>Waiting for game...</div>
-            <div style={{ fontSize: 12 }}>Monitoring League client and live game</div>
+          <div className="waiting-state">
+            <div className="waiting-state__title">Waiting for game...</div>
+            <div className="waiting-state__subtitle">Monitoring League client and live game</div>
           </div>
         </Card>
       )}
@@ -163,7 +162,7 @@ function UpdateBanner({ event }: { event: AppUpdateEvent | null }) {
   const color = status === "downloading" ? "var(--accent)" : "var(--green)";
 
   return (
-    <div style={{ ...toastStyle, transform: show ? "translateY(0)" : "translateY(20px)", opacity: show ? 1 : 0 }}>
+    <div className="toast" style={{ transform: show ? "translateY(0)" : "translateY(20px)", opacity: show ? 1 : 0 }}>
       <span style={{ color }}>
         {status === "downloading" && `Updating… ${(event as { percent: number }).percent}%`}
         {status === "restarting" && "Restarting to update…"}
@@ -174,9 +173,9 @@ function UpdateBanner({ event }: { event: AppUpdateEvent | null }) {
 
 function PhaseChip({ icon: Icon, color, label }: { icon: React.ElementType; color: string; label: string }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div className="phase-chip">
       <Icon size={14} style={{ color }} />
-      <span style={{ fontSize: 11, color }}>{label}</span>
+      <span className="phase-chip__label" style={{ color }}>{label}</span>
     </div>
   );
 }
@@ -189,21 +188,3 @@ function GamePhaseIndicator({ phase, connectionStatus }: { phase: string; connec
   const Icon = connectionStatus === "lcu_connected" ? Monitor : MonitorOff;
   return <PhaseChip icon={Icon} color="var(--text-muted)" label={label} />;
 }
-
-const toastStyle: React.CSSProperties = {
-  position: "fixed",
-  bottom: 16,
-  right: 16,
-  maxWidth: 240,
-  padding: "6px 12px",
-  borderRadius: 20,
-  fontSize: 11,
-  fontWeight: 500,
-  zIndex: 9999,
-  backdropFilter: "blur(12px)",
-  WebkitBackdropFilter: "blur(12px)",
-  background: "rgba(30,30,30,0.85)",
-  transition: "transform 0.3s ease, opacity 0.3s ease",
-};
-
-
