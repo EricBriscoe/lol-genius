@@ -31,3 +31,69 @@ export interface RankedStats {
     isProvisional: boolean;
   }>;
 }
+
+export interface CurrentSummoner {
+  puuid: string;
+  gameName: string;
+  tagLine: string;
+  summonerId: number;
+  displayName: string;
+}
+
+export interface LCUMatchHistoryResponse {
+  games: {
+    games: LCUGame[];
+  };
+}
+
+export interface LCUGame {
+  gameId: number;
+  gameCreation: number;
+  gameDuration: number;
+  queueId: number;
+  participants: LCUParticipant[];
+  participantIdentities: LCUParticipantIdentity[];
+}
+
+export interface LCUParticipant {
+  participantId: number;
+  championId: number;
+  teamId: number;
+  spell1Id: number;
+  spell2Id: number;
+  stats: {
+    win: boolean;
+    kills: number;
+    deaths: number;
+    assists: number;
+    totalMinionsKilled: number;
+    neutralMinionsKilled: number;
+    goldEarned: number;
+    totalDamageDealtToChampions: number;
+    visionScore: number;
+    champLevel: number;
+    totalDamageTaken: number;
+    item0: number;
+    item1: number;
+    item2: number;
+    item3: number;
+    item4: number;
+    item5: number;
+    item6: number;
+  };
+  timeline?: {
+    role: string;
+    lane: string;
+  };
+}
+
+export interface LCUParticipantIdentity {
+  participantId: number;
+  player: {
+    puuid: string;
+    gameName: string;
+    tagLine: string;
+    summonerId: number;
+    championId?: number;
+  };
+}

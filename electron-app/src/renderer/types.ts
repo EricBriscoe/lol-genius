@@ -75,12 +75,81 @@ export type AppUpdateEvent =
   | { status: "error"; message: string }
   | { status: "model_updated" };
 
+export interface PlayerIdentity {
+  puuid: string;
+  gameName: string;
+  tagLine: string;
+  summonerId: string;
+}
+
+export interface MatchHistoryResult {
+  matches: MatchRow[];
+  total: number;
+  source: "cache" | "lcu";
+  lcuOffline?: boolean;
+}
+
+export interface MatchRow {
+  match_id: string;
+  puuid: string;
+  game_creation: number;
+  game_duration: number | null;
+  queue_id: number | null;
+  champion_id: number | null;
+  champion_name: string | null;
+  team_position: string | null;
+  win: number | null;
+  kills: number | null;
+  deaths: number | null;
+  assists: number | null;
+  cs: number | null;
+  gold_earned: number | null;
+  total_damage: number | null;
+  vision_score: number | null;
+  champion_level: number | null;
+  total_damage_taken: number | null;
+  item0: number | null;
+  item1: number | null;
+  item2: number | null;
+  item3: number | null;
+  item4: number | null;
+  item5: number | null;
+  item6: number | null;
+  summoner_spell1: number | null;
+  summoner_spell2: number | null;
+  participants_json: string | null;
+}
+
+export interface RankedStatsRow {
+  puuid: string;
+  queue_type: string;
+  tier: string | null;
+  division: string | null;
+  lp: number | null;
+  wins: number | null;
+  losses: number | null;
+  updated_at: number;
+}
+
+export interface ChampionStatsAgg {
+  champion_id: number;
+  champion_name: string;
+  games: number;
+  wins: number;
+  avg_kills: number;
+  avg_deaths: number;
+  avg_assists: number;
+  avg_cs: number;
+}
+
 export interface LolGeniusAPI {
   onPredictionUpdate: (cb: (data: LiveGameUpdate) => void) => () => void;
   onConnectionStatus: (cb: (status: string) => void) => () => void;
   onAppUpdateStatus: (cb: (data: AppUpdateEvent) => void) => () => void;
   onChampSelectUpdate: (cb: (data: ChampSelectUpdate) => void) => () => void;
   onGamePhaseChange: (cb: (data: GamePhaseChange) => void) => () => void;
+  onPlayerIdentity: (cb: (data: PlayerIdentity) => void) => () => void;
+  onPlayerDataUpdate: (cb: (data: { newMatches: number }) => void) => () => void;
   startPolling: () => Promise<void>;
   stopPolling: () => Promise<void>;
   getModelInfo: () => Promise<ModelInfo>;
@@ -91,6 +160,11 @@ export interface LolGeniusAPI {
   getAppVersion: () => Promise<string>;
   setAlwaysOnTop: (enabled: boolean) => Promise<void>;
   getAlwaysOnTop: () => Promise<boolean>;
+  getPlayerIdentity: () => Promise<PlayerIdentity | null>;
+  getMatchHistory: (params: { offset: number; limit: number; championId?: number; queueId?: number }) => Promise<MatchHistoryResult>;
+  getChampionStats: () => Promise<ChampionStatsAgg[]>;
+  getRankedStats: () => Promise<RankedStatsRow[]>;
+  refreshPlayerData: () => Promise<void>;
 }
 
 declare global {

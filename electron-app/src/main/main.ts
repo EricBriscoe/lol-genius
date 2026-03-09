@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling } from "./live-client/poller";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
+import { initPlayerData, shutdownPlayerData } from "./player-data/index";
 import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer } from "./updater";
 import { safeSend } from "./ipc";
 import { loadChampionData } from "./model/ddragon";
@@ -151,6 +152,8 @@ app.whenReady().then(async () => {
   }, MODEL_UPDATE_INTERVAL);
 
   if (mainWindow) {
+    initPlayerData(mainWindow);
+
     if (!isPolling()) {
       startPolling(mainWindow, getModelDir("live"));
     }
@@ -164,6 +167,7 @@ app.on("window-all-closed", () => {
   stopAppUpdateTimer();
   stopPolling();
   stopLCUPolling();
+  shutdownPlayerData();
   app.quit();
 });
 

@@ -12,3 +12,21 @@ export function toBlueProb(raw: number | null | undefined): number {
 export function titleCase(s: string): string {
   return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+export function champIconUrl(championId: number): string {
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${championId}.png`;
+}
+
+export function itemIconUrl(itemId: number): string {
+  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/items/${itemId}.png`;
+}
+
+export function winRateColor(winRate: number): string {
+  if (winRate >= 55) return "var(--green)";
+  if (winRate <= 45) return "var(--red)";
+  return "var(--text-secondary)";
+}
+
+export function hideOnImgError(e: React.SyntheticEvent<HTMLImageElement>): void {
+  (e.target as HTMLImageElement).style.display = "none";
+}

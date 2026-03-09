@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("lolGenius", {
   onChampSelectUpdate: onChannel("champ-select-update"),
   onGamePhaseChange: onChannel("game-phase-change"),
   onDevLog: onChannel("dev-log"),
+  onPlayerIdentity: onChannel("player-identity"),
+  onPlayerDataUpdate: onChannel("player-data-update"),
   startPolling: () => ipcRenderer.invoke("start-polling"),
   stopPolling: () => ipcRenderer.invoke("stop-polling"),
   getModelInfo: () => ipcRenderer.invoke("get-model-info"),
@@ -24,4 +26,10 @@ contextBridge.exposeInMainWorld("lolGenius", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   setAlwaysOnTop: (enabled: boolean) => ipcRenderer.invoke("set-always-on-top", enabled),
   getAlwaysOnTop: () => ipcRenderer.invoke("get-always-on-top"),
+  getPlayerIdentity: () => ipcRenderer.invoke("get-player-identity"),
+  getMatchHistory: (params: { offset: number; limit: number; championId?: number; queueId?: number }) =>
+    ipcRenderer.invoke("get-match-history", params),
+  getChampionStats: () => ipcRenderer.invoke("get-champion-stats"),
+  getRankedStats: () => ipcRenderer.invoke("get-ranked-stats"),
+  refreshPlayerData: () => ipcRenderer.invoke("refresh-player-data"),
 });
