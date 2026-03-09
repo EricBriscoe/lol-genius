@@ -76,14 +76,18 @@ export async function predict(features: Record<string, number>, modelType = "liv
   const inputName = model.session.inputNames[0];
   const results = await model.session.run({ [inputName]: tensor });
 
-  const outputName = model.session.outputNames[0];
-  const output = results[outputName];
+  const probOutputName = model.session.outputNames.find(
+    (n) => n === "probabilities" || n === "output_probability"
+  );
+  const output = results[
+    probOutputName ?? model.session.outputNames[model.session.outputNames.length - 1]
+  ];
 
   let prob: number;
-  if (output.dims.length === 2 && output.dims[1] === 2) {
-    prob = (output.data as Float32Array)[1];
+  if (output.dims.length === 2 && Number(output.dims[1]) === 2) {
+    prob = Number(output.data[1]);
   } else {
-    prob = (output.data as Float32Array)[0];
+    prob = Number(output.data[0]);
   }
 
   if (model.calibrator) {
