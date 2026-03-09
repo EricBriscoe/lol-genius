@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Wifi, WifiOff, AlertTriangle, RefreshCw, Bug, Swords, Gamepad2, Pin } from "lucide-react";
+import { Monitor, MonitorOff, AlertTriangle, RefreshCw, Bug, Swords, Gamepad2, Pin } from "lucide-react";
 import Card from "./components/Card";
 import WinProbBar from "./components/WinProbBar";
 import StatGrid from "./components/StatGrid";
@@ -37,6 +37,7 @@ export default function App() {
   const phase = isInChampSelect ? "champ_select" : isInGame ? "in_game" : "idle";
 
   return (
+    <>
     <div style={{ maxWidth: 880, margin: "0 auto", padding: "24px 20px", display: "flex", flexDirection: "column", gap: 20 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
@@ -139,99 +140,107 @@ export default function App() {
         </Card>
       )}
 
-      <UpdateBanner event={appUpdateStatus} />
-
       {devMode && <DevPanel logs={devLogs} onClear={clearDevLogs} />}
     </div>
+    <UpdateBanner event={appUpdateStatus} />
+  </>
   );
 }
 
 function UpdateBanner({ event }: { event: AppUpdateEvent | null }) {
   const [dismissed, setDismissed] = useState(false);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
     if (event?.status === "error") {
       setDismissed(false);
+      setVisible(true);
       const timer = setTimeout(() => setDismissed(true), 5000);
       return () => clearTimeout(timer);
     }
     if (event?.status === "downloading" || event?.status === "downloaded") {
       setDismissed(false);
+      setVisible(true);
     }
   }, [event]);
 
-  if (!event || dismissed) return null;
+  useEffect(() => {
+    if (!event || dismissed) setVisible(false);
+  }, [event, dismissed]);
 
-  if (event.status === "downloading") {
-    return (
-      <div style={{ background: "var(--bg-card)", border: "1px solid var(--accent)", borderRadius: 8, padding: "8px 16px", fontSize: 12, color: "var(--accent)", position: "relative", overflow: "hidden" }}>
-        <div style={{ position: "absolute", inset: 0, background: "var(--accent)", opacity: 0.1, width: `${event.percent}%`, transition: "width 0.3s" }} />
-        <span style={{ position: "relative" }}>Downloading update... {event.percent}%</span>
-      </div>
-    );
-  }
+  const show = !!event && !dismissed;
+  if (!show && !visible) return null;
 
-  if (event.status === "downloaded") {
-    return (
-      <div style={{ background: "var(--bg-card)", border: "1px solid var(--green)", borderRadius: 8, padding: "8px 16px", fontSize: 12, color: "var(--green)", display: "flex", justifyContent: "center", alignItems: "center", gap: 12 }}>
-        <span>Update ready — restart to apply</span>
-        <button
-          onClick={() => window.lolGenius.installAppUpdate()}
-          style={{ background: "var(--green)", color: "#000", border: "none", borderRadius: 4, padding: "4px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" }}
-        >
-          Restart Now
-        </button>
-      </div>
-    );
-  }
+  const { status } = event!;
+  const slideStyle: React.CSSProperties = {
+    ...toastStyle,
+    transform: show ? "translateY(0)" : "translateY(20px)",
+    opacity: show ? 1 : 0,
+    pointerEvents: show ? "auto" : "none",
+    ...(status === "downloaded" ? { display: "flex", alignItems: "center", gap: 6 } : {}),
+  };
 
-  if (event.status === "error") {
-    return (
-      <div style={{ background: "var(--bg-card)", borderRadius: 8, padding: "8px 16px", fontSize: 12, color: "var(--text-muted)", textAlign: "center" }}>
-        Update check failed
-      </div>
-    );
-  }
+  const color = status === "downloading" ? "var(--accent)" : status === "downloaded" ? "var(--green)" : "var(--text-muted)";
 
-  return null;
-}
-
-function GamePhaseIndicator({ phase, connectionStatus }: { phase: string; connectionStatus: string }) {
-  if (phase === "champ_select") {
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Swords size={14} style={{ color: "var(--gold)" }} />
-        <span style={{ fontSize: 11, color: "var(--gold)" }}>Champ Select</span>
-      </div>
-    );
-  }
-
-  if (phase === "in_game") {
-    return (
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        <Gamepad2 size={14} style={{ color: "var(--accent)" }} />
-        <span style={{ fontSize: 11, color: "var(--accent)" }}>In Game</span>
-      </div>
-    );
-  }
-
-  const isConnecting = connectionStatus === "connecting";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-      {connectionStatus === "lcu_connected" ? (
+    <div style={slideStyle}>
+      <span style={{ color }}>
+        {status === "downloading" && `↓ Updating… ${event!.percent}%`}
+        {status === "downloaded" && "Update ready"}
+        {status === "error" && "Update failed"}
+      </span>
+      {status === "downloaded" && (
         <>
-          <Wifi size={14} style={{ color: "var(--text-muted)" }} />
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Client Connected</span>
-        </>
-      ) : (
-        <>
-          <WifiOff size={14} style={{ color: "var(--text-muted)" }} />
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-            {isConnecting ? "Connecting..." : "No Game"}
-          </span>
+          <span style={{ color: "var(--text-muted)" }}>·</span>
+          <button onClick={() => window.lolGenius.installAppUpdate()} style={restartBtnStyle}>Restart</button>
         </>
       )}
     </div>
   );
 }
+
+function PhaseChip({ icon: Icon, color, label }: { icon: React.ElementType; color: string; label: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <Icon size={14} style={{ color }} />
+      <span style={{ fontSize: 11, color }}>{label}</span>
+    </div>
+  );
+}
+
+function GamePhaseIndicator({ phase, connectionStatus }: { phase: string; connectionStatus: string }) {
+  if (phase === "champ_select") return <PhaseChip icon={Swords} color="var(--gold)" label="Champ Select" />;
+  if (phase === "in_game") return <PhaseChip icon={Gamepad2} color="var(--accent)" label="In Game" />;
+
+  const label = connectionStatus === "lcu_connected" ? "Client Connected" : connectionStatus === "connecting" ? "Connecting..." : "No Game";
+  const Icon = connectionStatus === "lcu_connected" ? Monitor : MonitorOff;
+  return <PhaseChip icon={Icon} color="var(--text-muted)" label={label} />;
+}
+
+const toastStyle: React.CSSProperties = {
+  position: "fixed",
+  bottom: 16,
+  right: 16,
+  maxWidth: 240,
+  padding: "6px 12px",
+  borderRadius: 20,
+  fontSize: 11,
+  fontWeight: 500,
+  zIndex: 9999,
+  backdropFilter: "blur(12px)",
+  WebkitBackdropFilter: "blur(12px)",
+  background: "rgba(30,30,30,0.85)",
+  transition: "transform 0.3s ease, opacity 0.3s ease",
+};
+
+const restartBtnStyle: React.CSSProperties = {
+  background: "none",
+  border: "none",
+  padding: 0,
+  color: "var(--green)",
+  fontSize: 11,
+  fontWeight: 600,
+  cursor: "pointer",
+  textDecoration: "underline",
+};
 
