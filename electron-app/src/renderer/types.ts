@@ -10,6 +10,7 @@ export interface LiveGameUpdate {
   elder_diff: number;
   game_reset?: boolean;
   status?: string;
+  error?: string;
   top_factors?: PredictFactor[];
   pregame_ready?: boolean;
 }
