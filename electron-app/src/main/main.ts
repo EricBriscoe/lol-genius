@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, existsSync } from "fs";
 import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling } from "./live-client/poller";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
-import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, stopAppUpdateTimer } from "./updater";
+import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer } from "./updater";
 import { safeSend } from "./ipc";
 import { loadChampionData } from "./model/ddragon";
 import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
@@ -73,7 +73,7 @@ async function loadAndUpdateModel(modelType: "live" | "pregame"): Promise<boolea
 
   const updated = await checkForModelUpdate(modelType);
   if (updated) {
-    try { await loadModel(getModelDir(modelType), modelType); }
+    try { await loadModel(getModelDir(modelType), modelType, true); }
     catch (e) { logger.error(`${modelType} model reload failed:`, e); }
   }
   return updated;
@@ -199,6 +199,7 @@ ipcMain.handle("get-model-info", () => ({
 }));
 
 ipcMain.handle("check-for-updates", async () => {
+  checkForAppUpdates();
   const a = await loadAndUpdateModel("live");
   const b = await loadAndUpdateModel("pregame");
   return a || b;
