@@ -69,7 +69,7 @@ export type AppUpdateEvent =
   | { status: "available" }
   | { status: "not_available" }
   | { status: "downloading"; percent: number }
-  | { status: "downloaded" }
+  | { status: "restarting" }
   | { status: "error"; message: string }
   | { status: "model_updated" };
 
@@ -83,8 +83,6 @@ export interface LolGeniusAPI {
   stopPolling: () => Promise<void>;
   getModelInfo: () => Promise<ModelInfo>;
   checkForUpdates: () => Promise<boolean>;
-  checkAppUpdates: () => Promise<void>;
-  installAppUpdate: () => Promise<void>;
   setDevMode: (enabled: boolean) => Promise<void>;
   getDevMode: () => Promise<boolean>;
   onDevLog: (cb: (entry: DevLogEntry) => void) => () => void;

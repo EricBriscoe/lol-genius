@@ -6,11 +6,40 @@ import { createWriteStream, mkdirSync, existsSync, readFileSync, writeFileSync, 
 import { join } from "path";
 import log from "./log";
 import { safeSend } from "./ipc";
+import { getGamePhase } from "./lcu-client/poller";
+import { isPolling } from "./live-client/poller";
 
 const logger = log.scope("updater");
 
 const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
+const RESTART_POLL_INTERVAL = 30_000;
 let updateTimer: ReturnType<typeof setInterval> | null = null;
+let restartTimer: ReturnType<typeof setInterval> | null = null;
+
+function isUserBusy(): boolean {
+  const phase = getGamePhase();
+  return phase === "champ_select" || phase === "game_start" || isPolling();
+}
+
+function scheduleRestart(win: BrowserWindow): void {
+  if (restartTimer) return;
+
+  const tryRestart = () => {
+    if (isUserBusy()) {
+      logger.info("Deferring auto-restart — user is in game");
+      return;
+    }
+    if (restartTimer) { clearInterval(restartTimer); restartTimer = null; }
+    logger.info("Auto-restarting to install update");
+    safeSend(win, "app-update-status", { status: "restarting" });
+    setTimeout(() => autoUpdater.quitAndInstall(true, true), 2000);
+  };
+
+  tryRestart();
+  if (!restartTimer && isUserBusy()) {
+    restartTimer = setInterval(tryRestart, RESTART_POLL_INTERVAL);
+  }
+}
 
 export function setupAppUpdater(win: BrowserWindow): void {
   autoUpdater.autoDownload = true;
@@ -33,7 +62,7 @@ export function setupAppUpdater(win: BrowserWindow): void {
   });
 
   autoUpdater.on("update-downloaded", () => {
-    safeSend(win, "app-update-status", { status: "downloaded" });
+    scheduleRestart(win);
   });
 
   autoUpdater.on("error", (err) => {
@@ -54,15 +83,9 @@ export function checkForAppUpdates(): void {
   }
 }
 
-export function installAppUpdate(): void {
-  autoUpdater.quitAndInstall();
-}
-
 export function stopAppUpdateTimer(): void {
-  if (updateTimer) {
-    clearInterval(updateTimer);
-    updateTimer = null;
-  }
+  if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
+  if (restartTimer) { clearInterval(restartTimer); restartTimer = null; }
 }
 
 const MODEL_FILES = [
