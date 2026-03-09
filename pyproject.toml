@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lol-genius"
-version = "0.2.1"
+version = "0.2.2"
 description = "League of Legends pre-game match outcome predictor with SHAP interpretability"
 readme = "README.md"
 license = "MIT"
