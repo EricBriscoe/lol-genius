@@ -41,7 +41,6 @@ TIMELINE_FEATURE_NAMES = [
 # Gold excluded: Riot's Live Client Data API does not expose per-team gold totals.
 # Train/inference features must match exactly, so gold is omitted from the live model.
 _GOLD_COLS = {"blue_gold", "red_gold", "gold_diff"}
-_PREGAME_ONLY_COLS = {"pregame_blue_win_prob"}
 
 _PREGAME_SUMMARY_COLS = [
     "avg_rank_diff",
@@ -58,6 +57,8 @@ _PREGAME_SUMMARY_COLS = [
     "scaling_score_diff",
     "max_scaling_score_diff",
     "stat_growth_diff",
+    "scaling_tier_diff",
+    "infinite_scaler_count_diff",
 ]
 
 _SCALING_INTERACTION_COLS = [
@@ -85,6 +86,22 @@ _TEMPORAL_COLS = [
     "objective_density",
 ]
 
+_GOLD_ESTIMATION_COLS = [
+    "blue_estimated_gold",
+    "red_estimated_gold",
+    "estimated_gold_diff",
+]
+
+_LEVEL_COLS = [
+    "avg_level_diff",
+    "max_level_diff",
+]
+
+_CHAMPION_SCALING_COLS = [
+    "scaling_tier_x_time",
+    "infinite_scaler_x_time",
+]
+
 LIVE_FEATURE_NAMES = (
     [f for f in TIMELINE_FEATURE_NAMES if f not in _GOLD_COLS]
     + ["pregame_blue_win_prob"]
@@ -92,11 +109,17 @@ LIVE_FEATURE_NAMES = (
     + _SCALING_INTERACTION_COLS
     + _MOMENTUM_COLS
     + _TEMPORAL_COLS
+    + _GOLD_ESTIMATION_COLS
+    + _LEVEL_COLS
+    + _CHAMPION_SCALING_COLS
 )
 
 assert not any(col in LIVE_FEATURE_NAMES for col in _GOLD_COLS), (
     "Gold columns must not appear in live features"
 )
+
+_LATE_GAME_SECONDS = 1800.0
+_EARLY_GAME_WINDOW_SECONDS = 1500.0
 
 # GOLD II 0 LP on the rank_to_numeric scale (TIER_MAP["GOLD"]=12 + DIV_MAP["II"]=2 + 0 LP)
 _NEUTRAL_RANK = 14.0
@@ -129,9 +152,15 @@ def compute_pregame_diff_stats(
     red_scaling_scores: list[float] | None = None,
     blue_stat_growth: list[float] | None = None,
     red_stat_growth: list[float] | None = None,
+    blue_scaling_tiers: list[int] | None = None,
+    red_scaling_tiers: list[int] | None = None,
+    blue_infinite_scalers: int = 0,
+    red_infinite_scalers: int = 0,
 ) -> dict:
     b_ss = blue_scaling_scores or []
     r_ss = red_scaling_scores or []
+    b_st = blue_scaling_tiers or []
+    r_st = red_scaling_tiers or []
     return {
         "avg_rank_diff": float(
             np.mean(blue_ranks or [_NEUTRAL_RANK])
@@ -166,11 +195,21 @@ def compute_pregame_diff_stats(
         "stat_growth_diff": float(
             np.mean(blue_stat_growth or [0.0]) - np.mean(red_stat_growth or [0.0])
         ),
+        "scaling_tier_diff": float(
+            np.mean(b_st or [3.0]) - np.mean(r_st or [3.0])
+        ),
+        "infinite_scaler_count_diff": float(blue_infinite_scalers - red_infinite_scalers),
     }
 
 
 def _extract_team_vectors(
-    group, ddragon, champ_wrs=None, scaling_scores=None, stat_growth_fn=None
+    group,
+    ddragon,
+    champ_wrs=None,
+    scaling_scores=None,
+    stat_growth_fn=None,
+    scaling_tier_fn=None,
+    infinite_scaler_fn=None,
 ):
     from lol_genius.features.player import rank_to_numeric
 
@@ -253,6 +292,23 @@ def _extract_team_vectors(
                 out.append(stat_growth_fn(int(cid)))
         return out
 
+    def _scaling_tier_list(team):
+        out = []
+        for _, row in team.iterrows():
+            cid = row.get("champion_id")
+            if cid and scaling_tier_fn:
+                out.append(scaling_tier_fn(int(cid)))
+        return out
+
+    def _infinite_scaler_count(team):
+        if not infinite_scaler_fn:
+            return 0
+        return sum(
+            1
+            for _, row in team.iterrows()
+            if row.get("champion_id") and infinite_scaler_fn(int(row["champion_id"]))
+        )
+
     return (
         _ranks(blue),
         _ranks(red),
@@ -278,6 +334,41 @@ def _extract_team_vectors(
         _scaling_scores_list(red),
         _stat_growth_list(blue),
         _stat_growth_list(red),
+        _scaling_tier_list(blue),
+        _scaling_tier_list(red),
+        _infinite_scaler_count(blue),
+        _infinite_scaler_count(red),
+    )
+
+
+def compute_pregame_diff_from_group(
+    group, ddragon, champ_wrs=None, scaling_scores=None,
+) -> dict:
+    stat_growth_fn = ddragon.stat_growth_score if ddragon else None
+    scaling_tier_fn = ddragon.get_scaling_tier if ddragon else None
+    infinite_scaler_fn = ddragon.is_infinite_scaler if ddragon else None
+    (
+        b_ranks, r_ranks, b_wrs, r_wrs, b_mast, r_mast,
+        b_melee, r_melee, b_ad, r_ad, b_tg, r_tg,
+        b_hs, r_hs, b_vet, r_vet, b_m7, r_m7,
+        b_cwr, r_cwr, b_ss, r_ss, b_sg, r_sg,
+        b_sctier, r_sctier, b_inf, r_inf,
+    ) = _extract_team_vectors(
+        group, ddragon, champ_wrs, scaling_scores, stat_growth_fn,
+        scaling_tier_fn, infinite_scaler_fn,
+    )
+    return compute_pregame_diff_stats(
+        b_ranks, r_ranks, b_wrs, r_wrs, b_mast, r_mast,
+        b_melee, r_melee, b_ad, r_ad,
+        blue_total_games=b_tg, red_total_games=r_tg,
+        blue_hot_streaks=b_hs, red_hot_streaks=r_hs,
+        blue_veterans=b_vet, red_veterans=r_vet,
+        blue_mastery7=b_m7, red_mastery7=r_m7,
+        blue_champ_wrs=b_cwr, red_champ_wrs=r_cwr,
+        blue_scaling_scores=b_ss, red_scaling_scores=r_ss,
+        blue_stat_growth=b_sg, red_stat_growth=r_sg,
+        blue_scaling_tiers=b_sctier, red_scaling_tiers=r_sctier,
+        blue_infinite_scalers=b_inf, red_infinite_scalers=r_inf,
     )
 
 
@@ -293,69 +384,14 @@ def _compute_pregame_summaries(
     if df.empty:
         return pd.DataFrame()
 
-    stat_growth_fn = ddragon.stat_growth_score if ddragon else None
-
     results = []
     for match_id, group in df.groupby("match_id"):
-        (
-            b_ranks,
-            r_ranks,
-            b_wrs,
-            r_wrs,
-            b_mast,
-            r_mast,
-            b_melee,
-            r_melee,
-            b_ad,
-            r_ad,
-            b_tg,
-            r_tg,
-            b_hs,
-            r_hs,
-            b_vet,
-            r_vet,
-            b_m7,
-            r_m7,
-            b_cwr,
-            r_cwr,
-            b_ss,
-            r_ss,
-            b_sg,
-            r_sg,
-        ) = _extract_team_vectors(
-            group, ddragon, champ_wrs, scaling_scores, stat_growth_fn
-        )
-        results.append(
-            {
-                "match_id": match_id,
-                **compute_pregame_diff_stats(
-                    b_ranks,
-                    r_ranks,
-                    b_wrs,
-                    r_wrs,
-                    b_mast,
-                    r_mast,
-                    b_melee,
-                    r_melee,
-                    b_ad,
-                    r_ad,
-                    blue_total_games=b_tg,
-                    red_total_games=r_tg,
-                    blue_hot_streaks=b_hs,
-                    red_hot_streaks=r_hs,
-                    blue_veterans=b_vet,
-                    red_veterans=r_vet,
-                    blue_mastery7=b_m7,
-                    red_mastery7=r_m7,
-                    blue_champ_wrs=b_cwr,
-                    red_champ_wrs=r_cwr,
-                    blue_scaling_scores=b_ss,
-                    red_scaling_scores=r_ss,
-                    blue_stat_growth=b_sg,
-                    red_stat_growth=r_sg,
-                ),
-            }
-        )
+        results.append({
+            "match_id": match_id,
+            **compute_pregame_diff_from_group(
+                group, ddragon, champ_wrs, scaling_scores,
+            ),
+        })
 
     return pd.DataFrame(results)
 
@@ -413,10 +449,25 @@ def build_timeline_feature_matrix(
                 df[col] = 0.0
         df[_PREGAME_SUMMARY_COLS] = df[_PREGAME_SUMMARY_COLS].fillna(0.0)
 
+        df["blue_estimated_gold"] = df["blue_gold"]
+        df["red_estimated_gold"] = df["red_gold"]
+        df["estimated_gold_diff"] = df["blue_gold"] - df["red_gold"]
+
+        df["avg_level_diff"] = df["blue_avg_level"] - df["red_avg_level"]
+        df["max_level_diff"] = df["blue_max_level"] - df["red_max_level"]
+
         ssd = df["scaling_score_diff"]
         gts = df["game_time_seconds"]
-        df["scaling_advantage_realized"] = ssd * (gts / 1800.0)
-        df["early_game_window_closing"] = ssd * (1.0 - gts / 1500.0).clip(lower=0.0)
+        time_norm = gts / _LATE_GAME_SECONDS
+        df["scaling_advantage_realized"] = ssd * time_norm
+        df["early_game_window_closing"] = ssd * (
+            1.0 - gts / _EARLY_GAME_WINDOW_SECONDS
+        ).clip(lower=0.0)
+
+        df["scaling_tier_x_time"] = df["scaling_tier_diff"] * time_norm
+        df["infinite_scaler_x_time"] = (
+            df["infinite_scaler_count_diff"] * time_norm
+        )
 
         df["__mid"] = match_ids.values
         df = df.sort_values(["__mid", "game_time_seconds"])

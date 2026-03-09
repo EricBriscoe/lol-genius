@@ -38,24 +38,23 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
         if snap_frame is None:
             break
 
-        blue_gold = 0
-        red_gold = 0
+        blue_gold = red_gold = 0
+        blue_cs = red_cs = 0
+        blue_levels: list[int] = []
+        red_levels: list[int] = []
         for pid_str, pframe in snap_frame.get("participantFrames", {}).items():
             pid = int(pid_str)
             gold = pframe.get("totalGold", 0)
+            cs = pframe.get("minionsKilled", 0) + pframe.get("neutralMinionsKilled", 0)
+            level = pframe.get("level", 1)
             if pid <= 5:
                 blue_gold += gold
+                blue_cs += cs
+                blue_levels.append(level)
             else:
                 red_gold += gold
-
-        blue_cs = red_cs = 0
-        for pid_str, pframe in snap_frame.get("participantFrames", {}).items():
-            pid = int(pid_str)
-            cs = pframe.get("minionsKilled", 0) + pframe.get("neutralMinionsKilled", 0)
-            if pid <= 5:
-                blue_cs += cs
-            else:
                 red_cs += cs
+                red_levels.append(level)
 
         blue_kills = red_kills = 0
         blue_towers = red_towers = 0
@@ -150,6 +149,10 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
                 "red_gold": red_gold,
                 "blue_cs": blue_cs,
                 "red_cs": red_cs,
+                "blue_avg_level": sum(blue_levels) / len(blue_levels) if blue_levels else 1.0,
+                "red_avg_level": sum(red_levels) / len(red_levels) if red_levels else 1.0,
+                "blue_max_level": max(blue_levels) if blue_levels else 1,
+                "red_max_level": max(red_levels) if red_levels else 1,
                 "blue_kills": blue_kills,
                 "red_kills": red_kills,
                 "blue_towers": blue_towers,

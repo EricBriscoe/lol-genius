@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from lol_genius.features.timeline import LIVE_FEATURE_NAMES, SNAPSHOT_SECONDS
+from lol_genius.api.ddragon import INFINITE_SCALERS, SCALING_TIERS
+from lol_genius.features.timeline import (
+    LIVE_FEATURE_NAMES,
+    SNAPSHOT_SECONDS,
+    compute_pregame_diff_stats,
+)
 from lol_genius.predict.live_client import (
     _snap_to_snapshot,
     build_live_features,
@@ -17,13 +22,21 @@ def _make_live_client_data(
     blue_cs: int = 120,
     red_cs: int = 100,
     events: list | None = None,
+    blue_items: list | None = None,
+    red_items: list | None = None,
+    blue_level: int = 6,
+    red_level: int = 5,
 ) -> dict:
+    b_items = [{"itemID": 1001, "price": 300}] if blue_items is None else blue_items
+    r_items = [{"itemID": 1001, "price": 300}] if red_items is None else red_items
     players = [
         {
             "summonerName": f"Blue{i}",
             "riotId": f"Blue{i}#NA1",
             "team": "ORDER",
             "scores": {"kills": blue_kills // 5, "creepScore": blue_cs // 5},
+            "items": b_items,
+            "level": blue_level,
         }
         for i in range(5)
     ] + [
@@ -32,6 +45,8 @@ def _make_live_client_data(
             "riotId": f"Red{i}#NA1",
             "team": "CHAOS",
             "scores": {"kills": red_kills // 5, "creepScore": red_cs // 5},
+            "items": r_items,
+            "level": red_level,
         }
         for i in range(5)
     ]
@@ -71,6 +86,13 @@ def _make_game_state(**overrides) -> dict:
         "first_blood_blue": 1,
         "first_tower_blue": 1,
         "first_dragon_blue": 1,
+        "blue_estimated_gold": 5000,
+        "red_estimated_gold": 4500,
+        "estimated_gold_diff": 500,
+        "blue_avg_level": 6.0,
+        "red_avg_level": 5.0,
+        "blue_max_level": 7,
+        "red_max_level": 6,
     }
     base.update(overrides)
     return base
@@ -238,3 +260,86 @@ class TestSnapToSnapshot:
 
     def test_near_next(self):
         assert _snap_to_snapshot(890) == 900
+
+
+class TestItemGoldEstimation:
+    def test_parse_extracts_item_gold(self):
+        data = _make_live_client_data(
+            blue_items=[{"itemID": 1, "price": 500}, {"itemID": 2, "price": 300}],
+            red_items=[{"itemID": 3, "price": 200}],
+        )
+        result = parse_live_client_data(data)
+        assert result["blue_estimated_gold"] == 5 * (500 + 300)
+        assert result["red_estimated_gold"] == 5 * 200
+        assert result["estimated_gold_diff"] == 5 * 800 - 5 * 200
+
+    def test_empty_items(self):
+        data = _make_live_client_data(blue_items=[], red_items=[])
+        result = parse_live_client_data(data)
+        assert result["blue_estimated_gold"] == 0
+        assert result["red_estimated_gold"] == 0
+        assert result["estimated_gold_diff"] == 0
+
+class TestLevelFeatures:
+    def test_parse_extracts_levels(self):
+        data = _make_live_client_data(blue_level=8, red_level=6)
+        result = parse_live_client_data(data)
+        assert result["blue_avg_level"] == 8.0
+        assert result["red_avg_level"] == 6.0
+        assert result["blue_max_level"] == 8
+        assert result["red_max_level"] == 6
+
+    def test_varied_levels(self):
+        data = _make_live_client_data()
+        data["allPlayers"][0]["level"] = 10
+        for p in data["allPlayers"][1:5]:
+            p["level"] = 6
+        result = parse_live_client_data(data)
+        assert result["blue_avg_level"] == pytest.approx((10 + 6 * 4) / 5)
+        assert result["blue_max_level"] == 10
+
+    def test_level_diff_features(self):
+        state = _make_game_state(
+            blue_avg_level=9.0, red_avg_level=7.0,
+            blue_max_level=11, red_max_level=9,
+        )
+        features = build_live_features(state)
+        assert features["avg_level_diff"] == pytest.approx(2.0)
+        assert features["max_level_diff"] == pytest.approx(2.0)
+
+
+class TestChampionScalingTiers:
+    def test_scaling_tier_defaults(self):
+        assert SCALING_TIERS.get("Kassadin") == 5
+        assert SCALING_TIERS.get("Pantheon") == 1
+        assert SCALING_TIERS.get("UnknownChamp") is None
+
+    def test_infinite_scaler_known(self):
+        assert "Nasus" in INFINITE_SCALERS
+        assert "Veigar" in INFINITE_SCALERS
+        assert "Jinx" not in INFINITE_SCALERS
+
+    def test_time_interaction_features(self):
+        state = _make_game_state(game_time=1800.0)
+        summary = {"scaling_tier_diff": 2.0, "infinite_scaler_count_diff": 1.0}
+        features = build_live_features(state, pregame_summary=summary)
+        assert features["scaling_tier_x_time"] == pytest.approx(2.0)
+        assert features["infinite_scaler_x_time"] == pytest.approx(1.0)
+
+    def test_time_interaction_early(self):
+        state = _make_game_state(game_time=900.0)
+        summary = {"scaling_tier_diff": 2.0, "infinite_scaler_count_diff": 1.0}
+        features = build_live_features(state, pregame_summary=summary)
+        assert features["scaling_tier_x_time"] == pytest.approx(2.0 * (900.0 / 1800.0))
+        assert features["infinite_scaler_x_time"] == pytest.approx(1.0 * (900.0 / 1800.0))
+
+    def test_pregame_diff_stats(self):
+        result = compute_pregame_diff_stats(
+            [14.0], [14.0], [0.5], [0.5], [0.0], [0.0], 0, 0, 0, 0,
+            blue_scaling_tiers=[5, 5, 3, 3, 1],
+            red_scaling_tiers=[3, 3, 3, 3, 3],
+            blue_infinite_scalers=2,
+            red_infinite_scalers=0,
+        )
+        assert result["scaling_tier_diff"] == pytest.approx((5+5+3+3+1)/5 - 3.0)
+        assert result["infinite_scaler_count_diff"] == pytest.approx(2.0)

@@ -36,18 +36,27 @@ def parse_live_client_data(data: dict) -> dict:
 
     blue_kills = red_kills = 0
     blue_cs = red_cs = 0
+    blue_gold = red_gold = 0
+    blue_levels: list[int] = []
+    red_levels: list[int] = []
 
     for player in all_players:
         team = player.get("team", "")
         scores = player.get("scores", {})
         kills = scores.get("kills", 0)
         cs = scores.get("creepScore", scores.get("cs", 0))
+        level = player.get("level", 1)
+        item_gold = sum(item.get("price", 0) for item in player.get("items", []))
         if team == "ORDER":
             blue_kills += kills
             blue_cs += cs
+            blue_gold += item_gold
+            blue_levels.append(level)
         else:
             red_kills += kills
             red_cs += cs
+            red_gold += item_gold
+            red_levels.append(level)
 
     blue_dragons = red_dragons = 0
     blue_barons = red_barons = 0
@@ -129,6 +138,13 @@ def parse_live_client_data(data: dict) -> dict:
         "blue_cs": blue_cs,
         "red_cs": red_cs,
         "cs_diff": blue_cs - red_cs,
+        "blue_estimated_gold": blue_gold,
+        "red_estimated_gold": red_gold,
+        "estimated_gold_diff": blue_gold - red_gold,
+        "blue_avg_level": sum(blue_levels) / len(blue_levels) if blue_levels else 1.0,
+        "red_avg_level": sum(red_levels) / len(red_levels) if red_levels else 1.0,
+        "blue_max_level": max(blue_levels) if blue_levels else 1,
+        "red_max_level": max(red_levels) if red_levels else 1,
         "blue_dragons": blue_dragons,
         "red_dragons": red_dragons,
         "dragon_diff": blue_dragons - red_dragons,
@@ -172,7 +188,11 @@ def build_live_features(
     kill_diff_accel: float = 0.0,
     recent_kill_share_diff: float = 0.0,
 ) -> dict:
-    from lol_genius.features.timeline import LIVE_FEATURE_NAMES
+    from lol_genius.features.timeline import (
+        _EARLY_GAME_WINDOW_SECONDS,
+        _LATE_GAME_SECONDS,
+        LIVE_FEATURE_NAMES,
+    )
 
     summary = pregame_summary or {}
     raw_game_time = game_state.get("game_time", 0)
@@ -244,9 +264,10 @@ def build_live_features(
         "scaling_score_diff": scaling_score_diff,
         "max_scaling_score_diff": summary.get("max_scaling_score_diff", 0.0),
         "stat_growth_diff": summary.get("stat_growth_diff", 0.0),
-        "scaling_advantage_realized": scaling_score_diff * (raw_game_time / 1800.0),
+        "scaling_advantage_realized": scaling_score_diff
+        * (raw_game_time / _LATE_GAME_SECONDS),
         "early_game_window_closing": scaling_score_diff
-        * max(0.0, 1.0 - raw_game_time / 1500.0),
+        * max(0.0, 1.0 - raw_game_time / _EARLY_GAME_WINDOW_SECONDS),
         "kill_diff_delta": kill_diff - prev.get("kill_diff", kill_diff),
         "cs_diff_delta": cs_diff - prev.get("cs_diff", cs_diff),
         "tower_diff_delta": tower_diff - prev.get("tower_diff", tower_diff),
@@ -261,6 +282,17 @@ def build_live_features(
         "game_phase_mid": 1.0 if 900 < raw_game_time <= 1500 else 0.0,
         "game_phase_late": 1.0 if raw_game_time > 1500 else 0.0,
         "objective_density": total_objectives / raw_game_minutes,
+        "blue_estimated_gold": game_state.get("blue_estimated_gold", 0),
+        "red_estimated_gold": game_state.get("red_estimated_gold", 0),
+        "estimated_gold_diff": game_state.get("estimated_gold_diff", 0),
+        "avg_level_diff": game_state.get("blue_avg_level", 1.0)
+        - game_state.get("red_avg_level", 1.0),
+        "max_level_diff": game_state.get("blue_max_level", 1)
+        - game_state.get("red_max_level", 1),
+        "scaling_tier_x_time": summary.get("scaling_tier_diff", 0.0)
+        * (raw_game_time / _LATE_GAME_SECONDS),
+        "infinite_scaler_x_time": summary.get("infinite_scaler_count_diff", 0.0)
+        * (raw_game_time / _LATE_GAME_SECONDS),
     }
     return {col: mapping.get(col, _NEUTRAL_DEFAULTS.get(col, 0)) for col in LIVE_FEATURE_NAMES}
 
@@ -354,8 +386,7 @@ class LiveGamePoller:
             from lol_genius.api.proxy_client import ProxyClient
             from lol_genius.db.queries import MatchDB
             from lol_genius.features.timeline import (
-                _extract_team_vectors,
-                compute_pregame_diff_stats,
+                compute_pregame_diff_from_group,
             )
 
             ddragon = DataDragon(self._ddragon_cache)
@@ -436,64 +467,8 @@ class LiveGamePoller:
                     )
 
                 group = pd.DataFrame(rows)
-                vectors = _extract_team_vectors(
-                    group,
-                    ddragon,
-                    champ_wrs,
-                    scaling_scores,
-                    ddragon.stat_growth_score,
-                )
-                (
-                    b_ranks,
-                    r_ranks,
-                    b_wrs,
-                    r_wrs,
-                    b_mast,
-                    r_mast,
-                    b_melee,
-                    r_melee,
-                    b_ad,
-                    r_ad,
-                    b_tg,
-                    r_tg,
-                    b_hs,
-                    r_hs,
-                    b_vet,
-                    r_vet,
-                    b_m7,
-                    r_m7,
-                    b_cwr,
-                    r_cwr,
-                    b_ss,
-                    r_ss,
-                    b_sg,
-                    r_sg,
-                ) = vectors
-                summary = compute_pregame_diff_stats(
-                    b_ranks,
-                    r_ranks,
-                    b_wrs,
-                    r_wrs,
-                    b_mast,
-                    r_mast,
-                    b_melee,
-                    r_melee,
-                    b_ad,
-                    r_ad,
-                    blue_total_games=b_tg,
-                    red_total_games=r_tg,
-                    blue_hot_streaks=b_hs,
-                    red_hot_streaks=r_hs,
-                    blue_veterans=b_vet,
-                    red_veterans=r_vet,
-                    blue_mastery7=b_m7,
-                    red_mastery7=r_m7,
-                    blue_champ_wrs=b_cwr,
-                    red_champ_wrs=r_cwr,
-                    blue_scaling_scores=b_ss,
-                    red_scaling_scores=r_ss,
-                    blue_stat_growth=b_sg,
-                    red_stat_growth=r_sg,
+                summary = compute_pregame_diff_from_group(
+                    group, ddragon, champ_wrs, scaling_scores,
                 )
                 with self._lock:
                     self._pregame_summary = summary
