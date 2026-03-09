@@ -640,6 +640,467 @@ body {
 .dev-panel__timestamp { color: var(--text-muted); }
 .dev-panel__scope { color: #8b949e; }
 
+/* ===== Tab Bar ===== */
+.tab-bar {
+  display: flex;
+  gap: 2px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.tab-bar__tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s, background 0.2s;
+}
+
+.tab-bar__tab:hover {
+  color: var(--text-secondary);
+  background: var(--accent-dim);
+}
+
+.tab-bar__tab--active {
+  color: var(--accent);
+  background: var(--bg-card);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ===== Player Info ===== */
+.player-info {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.player-info__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.player-info__identity {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.player-info__name {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.player-info__tag {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.player-info__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.player-info__offline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--gold);
+}
+
+.player-info__matches {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.player-info__empty {
+  text-align: center;
+  padding: 40px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.player-info__loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.player-info__load-more {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.player-info__load-more:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ===== Rank Card ===== */
+.rank-card {
+  display: flex;
+  gap: 12px;
+}
+
+.rank-card__queue {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: card-enter 0.3s ease-out;
+}
+
+.rank-card__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.rank-card__tier {
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.rank-card__lp {
+  font-size: 13px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+}
+
+.rank-card__record {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.rank-card__wins { color: var(--green); }
+.rank-card__losses { color: var(--red); }
+.rank-card__winrate { font-weight: 600; }
+
+/* ===== Champion Stats ===== */
+.champ-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.champ-stats__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.champ-stats__clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: var(--font-body);
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.champ-stats__clear:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.champ-stats__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.champ-stats__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.champ-stats__row:hover {
+  background: var(--accent-dim);
+}
+
+.champ-stats__row--active {
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+}
+
+.champ-stats__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.champ-stats__info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.champ-stats__name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.champ-stats__games {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.champ-stats__winrate {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  width: 40px;
+  text-align: right;
+}
+
+.champ-stats__kda {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  width: 80px;
+  text-align: right;
+}
+
+/* ===== Match Card ===== */
+.match-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  border-left: 3px solid var(--border);
+  animation: card-enter 0.2s ease-out;
+}
+
+.match-card--win { border-left-color: var(--green); }
+.match-card--loss { border-left-color: var(--red); }
+
+.match-card__main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.match-card__main:hover {
+  background: var(--accent-dim);
+}
+
+.match-card__result {
+  width: 20px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
+.match-card__result-text {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.match-card__result-text--win { color: var(--green); }
+.match-card__result-text--loss { color: var(--red); }
+
+.match-card__champ {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.match-card__champ-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+}
+
+.match-card__info {
+  min-width: 80px;
+}
+
+.match-card__kda {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.match-card__kda-sep { color: var(--text-muted); margin: 0 1px; }
+.match-card__deaths { color: var(--red); }
+
+.match-card__cs {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.match-card__items {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.match-card__item-slot {
+  width: 24px;
+  height: 24px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.match-card__item-slot img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.match-card__meta {
+  flex: 1;
+  text-align: right;
+  min-width: 0;
+}
+
+.match-card__queue {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.match-card__time {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.match-card__expand {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.match-card__details {
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.match-card__team-table {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.match-card__team-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.match-card__team-header--blue { color: var(--accent); }
+.match-card__team-header--red { color: var(--red); }
+
+.match-card__participant-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.match-card__participant-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.match-card__participant-name {
+  flex: 1;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.match-card__participant-kda {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  width: 60px;
+  text-align: right;
+}
+
+.match-card__participant-cs {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  width: 50px;
+  text-align: right;
+}
+
+.match-card__participant-dmg {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  width: 60px;
+  text-align: right;
+}
+
+/* ===== Spin Animation ===== */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin { animation: spin 1s linear infinite; }
+
 /* ===== Toast ===== */
 .toast {
   position: fixed;

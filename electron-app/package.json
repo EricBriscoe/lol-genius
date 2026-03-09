@@ -20,9 +20,11 @@
     "start": "electron-vite preview",
     "package": "electron-builder",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "rebuild": "electron-rebuild -f -w better-sqlite3"
   },
   "dependencies": {
+    "better-sqlite3": "^11.7",
     "electron-log": "^5.4",
     "electron-updater": "^6.8",
     "lucide-react": "^0.577",
@@ -32,6 +34,8 @@
     "recharts": "^3.8"
   },
   "devDependencies": {
+    "@electron/rebuild": "^3.7",
+    "@types/better-sqlite3": "^7.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^5.1",
@@ -88,7 +92,8 @@
       }
     ],
     "asarUnpack": [
-      "**/node_modules/onnxruntime-node/**"
+      "**/node_modules/onnxruntime-node/**",
+      "**/node_modules/better-sqlite3/**"
     ]
   }
 }

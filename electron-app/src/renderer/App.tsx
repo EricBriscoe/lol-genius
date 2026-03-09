@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Monitor, MonitorOff, AlertTriangle, RefreshCw, Bug, Swords, Gamepad2, Pin } from "lucide-react";
+import { Monitor, MonitorOff, AlertTriangle, RefreshCw, Bug, Swords, Gamepad2, Pin, User } from "lucide-react";
 import Card from "./components/Card";
 import WinProbBar from "./components/WinProbBar";
 import StatGrid from "./components/StatGrid";
@@ -7,20 +7,30 @@ import KeyFactors from "./components/KeyFactors";
 import ProbChart from "./components/ProbChart";
 import DevPanel from "./components/DevPanel";
 import ChampSelect from "./components/ChampSelect";
+import PlayerInfo from "./components/PlayerInfo";
 import { useLiveGame } from "./hooks/useLiveGame";
 import { useChampSelect } from "./hooks/useChampSelect";
 import type { AppUpdateEvent } from "./types";
 import { toBlueProb } from "./utils";
 
+type TabId = "game" | "player_info";
+
 export default function App() {
   const { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs, appUpdateStatus } = useLiveGame();
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [alwaysOnTop, setAlwaysOnTop] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabId>(() =>
+    (localStorage.getItem("activeTab") as TabId) || "game"
+  );
 
   useEffect(() => {
     window.lolGenius.getAppVersion().then(setAppVersion);
     window.lolGenius.getAlwaysOnTop().then(setAlwaysOnTop);
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem("activeTab", activeTab);
+  }, [activeTab]);
 
   const toggleAlwaysOnTop = async () => {
     const next = !alwaysOnTop;
@@ -30,10 +40,14 @@ export default function App() {
   const { champSelectData, isInChampSelect } = useChampSelect();
 
   const blueProb = toBlueProb(current?.blue_win_probability);
-
   const isInGame = connectionStatus === "ok" || connectionStatus === "connected";
-
   const phase = isInChampSelect ? "champ_select" : isInGame ? "in_game" : "idle";
+
+  useEffect(() => {
+    if (phase === "champ_select" || phase === "in_game") {
+      setActiveTab("game");
+    }
+  }, [phase]);
 
   return (
     <>
@@ -74,70 +88,93 @@ export default function App() {
         </div>
       </div>
 
-      {phase === "champ_select" && champSelectData && (
-        <ChampSelect data={champSelectData} />
-      )}
+      <div className="tab-bar">
+        <button
+          className={`tab-bar__tab ${activeTab === "game" ? "tab-bar__tab--active" : ""}`}
+          onClick={() => setActiveTab("game")}
+        >
+          <Gamepad2 size={14} />
+          Game
+        </button>
+        <button
+          className={`tab-bar__tab ${activeTab === "player_info" ? "tab-bar__tab--active" : ""}`}
+          onClick={() => setActiveTab("player_info")}
+        >
+          <User size={14} />
+          Player Info
+        </button>
+      </div>
 
-      {phase === "in_game" && !current && (
-        <Card>
-          <div className="waiting-state">
-            <div className="waiting-state__title">Game detected</div>
-            <div className="waiting-state__subtitle">Waiting for first prediction...</div>
-          </div>
-        </Card>
-      )}
-
-      {phase === "in_game" && current && current.blue_win_probability != null && (
+      {activeTab === "game" && (
         <>
-          <Card>
-            <h3 className="section-title">Win Probability</h3>
-            <WinProbBar blueProb={blueProb} />
-          </Card>
+          {phase === "champ_select" && champSelectData && (
+            <ChampSelect data={champSelectData} />
+          )}
 
-          <StatGrid data={current} />
+          {phase === "in_game" && !current && (
+            <Card>
+              <div className="waiting-state">
+                <div className="waiting-state__title">Game detected</div>
+                <div className="waiting-state__subtitle">Waiting for first prediction...</div>
+              </div>
+            </Card>
+          )}
+
+          {phase === "in_game" && current && current.blue_win_probability != null && (
+            <>
+              <Card>
+                <h3 className="section-title">Win Probability</h3>
+                <WinProbBar blueProb={blueProb} />
+              </Card>
+
+              <StatGrid data={current} />
+            </>
+          )}
+
+          {phase === "in_game" && current?.top_factors && current.top_factors.length > 0 && (
+            <Card>
+              <h3 className="section-title">Key Factors</h3>
+              <KeyFactors factors={current.top_factors} />
+            </Card>
+          )}
+
+          {phase === "in_game" && history.length > 1 && (
+            <Card>
+              <h3 className="section-title">Win Probability History</h3>
+              <ProbChart data={history} />
+            </Card>
+          )}
+
+          {connectionStatus === "model_missing" && (
+            <Card variant="error">
+              <div className="alert-message alert-message--error">
+                <AlertTriangle size={16} />
+                No model found. Train a live model and export it, or check for model updates.
+              </div>
+            </Card>
+          )}
+
+          {phase === "idle" && connectionStatus !== "model_missing" && (
+            <Card variant="warning">
+              <div className="alert-message alert-message--warning">
+                <AlertTriangle size={16} />
+                No game detected — open League client or start a match to see predictions
+              </div>
+            </Card>
+          )}
+
+          {!current && phase === "idle" && connectionStatus === "connecting" && (
+            <Card>
+              <div className="waiting-state">
+                <div className="waiting-state__title">Waiting for game...</div>
+                <div className="waiting-state__subtitle">Monitoring League client and live game</div>
+              </div>
+            </Card>
+          )}
         </>
       )}
 
-      {phase === "in_game" && current?.top_factors && current.top_factors.length > 0 && (
-        <Card>
-          <h3 className="section-title">Key Factors</h3>
-          <KeyFactors factors={current.top_factors} />
-        </Card>
-      )}
-
-      {phase === "in_game" && history.length > 1 && (
-        <Card>
-          <h3 className="section-title">Win Probability History</h3>
-          <ProbChart data={history} />
-        </Card>
-      )}
-
-      {connectionStatus === "model_missing" && (
-        <Card variant="error">
-          <div className="alert-message alert-message--error">
-            <AlertTriangle size={16} />
-            No model found. Train a live model and export it, or check for model updates.
-          </div>
-        </Card>
-      )}
-
-      {phase === "idle" && connectionStatus !== "model_missing" && (
-        <Card variant="warning">
-          <div className="alert-message alert-message--warning">
-            <AlertTriangle size={16} />
-            No game detected — open League client or start a match to see predictions
-          </div>
-        </Card>
-      )}
-
-      {!current && phase === "idle" && connectionStatus === "connecting" && (
-        <Card>
-          <div className="waiting-state">
-            <div className="waiting-state__title">Waiting for game...</div>
-            <div className="waiting-state__subtitle">Monitoring League client and live game</div>
-          </div>
-        </Card>
-      )}
+      {activeTab === "player_info" && <PlayerInfo />}
 
       {devMode && <DevPanel logs={devLogs} onClear={clearDevLogs} />}
     </div>

@@ -8,6 +8,7 @@ import { computeTopFactors } from "../model/shap-factors";
 import { getModelDir } from "../updater";
 import { safeSend } from "../ipc";
 import { setPregameData } from "../live-client/poller";
+import { onLCUConnected, onLCUDisconnected } from "../player-data/index";
 import * as ddragon from "../model/ddragon";
 import log from "../log";
 
@@ -54,6 +55,7 @@ function onDisconnected(): void {
   cachedRankedStats = null;
   setState("disconnected");
   send("connection-status", "lcu_disconnected");
+  onLCUDisconnected();
   startLockfilePolling();
 }
 
@@ -62,6 +64,7 @@ function onConnected(creds: LCUCredentials): void {
   client = createLCUClient(creds);
   setState("connected");
   send("connection-status", "lcu_connected");
+  onLCUConnected(client);
   startGameflowPolling();
 }
 

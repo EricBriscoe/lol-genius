@@ -6,7 +6,7 @@ export default defineConfig({
     build: {
       outDir: "dist/main",
       rollupOptions: {
-        external: ["onnxruntime-node"],
+        external: ["onnxruntime-node", "better-sqlite3"],
       },
     },
   },
