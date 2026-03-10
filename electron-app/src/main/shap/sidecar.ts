@@ -3,12 +3,14 @@ import { existsSync } from "fs";
 import { join } from "path";
 import { app } from "electron";
 import log from "../log";
+import type { FactorAnalysis } from "../../renderer/types";
 
 const logger = log.scope("shap");
 
 export interface ShapResult {
   baseValue: number;
   shapValues: Record<string, number>;
+  factorAnalysis?: FactorAnalysis;
 }
 
 let sidecarPath: string | null = null;
@@ -35,6 +37,7 @@ function findSidecar(): string | null {
 export async function computeShap(
   modelDir: string,
   features: Record<string, number>,
+  modelType = "live",
 ): Promise<ShapResult | null> {
   const binary = findSidecar();
   if (!binary) return null;
@@ -47,7 +50,7 @@ export async function computeShap(
   return new Promise((resolve) => {
     const child = execFile(
       binary,
-      [modelPath],
+      [modelPath, modelType],
       { timeout: 30_000, maxBuffer: 1024 * 1024 },
       (error, stdout) => {
         if (error) {
@@ -58,7 +61,14 @@ export async function computeShap(
         try {
           const parsed = JSON.parse(stdout);
           if ("base_value" in parsed) {
-            resolve({ baseValue: parsed.base_value, shapValues: parsed.shap_values });
+            const result: ShapResult = {
+              baseValue: parsed.base_value,
+              shapValues: parsed.shap_values,
+            };
+            if (parsed.factor_analysis) {
+              result.factorAnalysis = parsed.factor_analysis;
+            }
+            resolve(result);
           } else {
             resolve({ baseValue: 0, shapValues: parsed });
           }

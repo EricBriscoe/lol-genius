@@ -218,30 +218,10 @@ def extract_timeline_snapshots(
 def _build_position_map(
     db, match_id: str, timeline_data: dict
 ) -> dict[int, tuple[str, str]] | None:
-    tl_participants = timeline_data.get("info", {}).get("participants", [])
-    if not tl_participants:
-        return None
-    puuid_to_pid = {p["puuid"]: p["participantId"] for p in tl_participants if "puuid" in p}
-    if not puuid_to_pid:
-        return None
-
     db_rows = db.get_participants_for_match(match_id)
     if not db_rows:
         return None
-
-    pid_map: dict[int, tuple[str, str]] = {}
-    for row in db_rows:
-        puuid = row.get("puuid")
-        pos_raw = row.get("team_position", "")
-        pos = _POSITION_ABBREV.get(pos_raw)
-        if not puuid or pos is None:
-            continue
-        pid = puuid_to_pid.get(puuid)
-        if pid is None:
-            continue
-        side = "blue" if pid <= 5 else "red"
-        pid_map[pid] = (side, pos)
-    return pid_map if pid_map else None
+    return _build_position_map_from_rows(db_rows, timeline_data)
 
 
 def _process_timeline(db, match_id: str, timeline: dict) -> bool:
@@ -276,15 +256,134 @@ def fetch_match_timelines(api, db, limit: int | None = None) -> None:
 
 
 def backfill_timelines_from_raw(db) -> None:
-    rows = db.get_all_timeline_raw_json()
-    log.info(f"Backfilling timelines from {len(rows)} stored raw JSONs")
+    from psycopg2.extras import execute_values
+
+    BATCH = 500
+    match_ids = db.get_timeline_raw_json_ids()
+    log.info(f"Backfilling timelines from {len(match_ids)} stored raw JSONs")
+
+    participants = db.get_participants_for_matches(match_ids)
+    puuid_lookup: dict[str, list[dict]] = {}
+    for row in participants:
+        puuid_lookup.setdefault(row["match_id"], []).append(row)
+
+    cols = [
+        "match_id",
+        "snapshot_seconds",
+        "blue_gold",
+        "red_gold",
+        "blue_cs",
+        "red_cs",
+        "blue_kills",
+        "red_kills",
+        "blue_towers",
+        "red_towers",
+        "blue_dragons",
+        "red_dragons",
+        "blue_barons",
+        "red_barons",
+        "blue_heralds",
+        "red_heralds",
+        "blue_inhibitors",
+        "red_inhibitors",
+        "blue_elder",
+        "red_elder",
+        "first_blood_blue",
+        "first_tower_blue",
+        "first_dragon_blue",
+        "blue_avg_level",
+        "red_avg_level",
+        "blue_max_level",
+        "red_max_level",
+        "blue_top_cs",
+        "blue_top_level",
+        "blue_top_kills",
+        "blue_jg_cs",
+        "blue_jg_level",
+        "blue_jg_kills",
+        "blue_mid_cs",
+        "blue_mid_level",
+        "blue_mid_kills",
+        "blue_bot_cs",
+        "blue_bot_level",
+        "blue_bot_kills",
+        "blue_sup_cs",
+        "blue_sup_level",
+        "blue_sup_kills",
+        "red_top_cs",
+        "red_top_level",
+        "red_top_kills",
+        "red_jg_cs",
+        "red_jg_level",
+        "red_jg_kills",
+        "red_mid_cs",
+        "red_mid_level",
+        "red_mid_kills",
+        "red_bot_cs",
+        "red_bot_level",
+        "red_bot_kills",
+        "red_sup_cs",
+        "red_sup_level",
+        "red_sup_kills",
+    ]
+    col_list = ", ".join(cols)
+    insert_sql = (
+        f"INSERT INTO match_timelines ({col_list}) VALUES %s "
+        "ON CONFLICT (match_id, snapshot_seconds) DO NOTHING"
+    )
 
     success = 0
-    for match_id, timeline in rows:
-        try:
-            if _process_timeline(db, match_id, timeline):
-                success += 1
-        except Exception as e:
-            log.warning(f"Failed to backfill timeline for {match_id}: {e}")
+    total = len(match_ids)
+    for batch_start in range(0, total, BATCH):
+        batch_ids = match_ids[batch_start : batch_start + BATCH]
+        raw_jsons = db.get_timeline_raw_json_batch(batch_ids)
 
-    log.info(f"Backfill complete: {success}/{len(rows)} succeeded")
+        all_rows: list[tuple] = []
+        batch_ok = 0
+        for match_id, timeline in raw_jsons:
+            try:
+                position_map = _build_position_map_from_rows(
+                    puuid_lookup.get(match_id, []), timeline
+                )
+                snapshots = extract_timeline_snapshots(timeline, position_map)
+                if not snapshots:
+                    continue
+                for s in snapshots:
+                    all_rows.append(tuple(s.get(c) if c != "match_id" else match_id for c in cols))
+                batch_ok += 1
+            except Exception as e:
+                log.warning(f"Failed to process timeline for {match_id}: {e}")
+
+        if all_rows:
+            cur = db.conn.cursor()
+            execute_values(cur, insert_sql, all_rows, page_size=1000)
+            db.conn.commit()
+            cur.close()
+
+        success += batch_ok
+        processed = min(batch_start + BATCH, total)
+        log.info(f"Backfill progress: {success}/{processed} succeeded")
+
+    log.info(f"Backfill complete: {success}/{total} succeeded")
+
+
+def _build_position_map_from_rows(
+    db_rows: list[dict], timeline_data: dict
+) -> dict[int, tuple[str, str]] | None:
+    tl_participants = timeline_data.get("info", {}).get("participants", [])
+    if not tl_participants:
+        return None
+    puuid_to_pid = {p["puuid"]: p["participantId"] for p in tl_participants if "puuid" in p}
+    if not puuid_to_pid or not db_rows:
+        return None
+    pid_map: dict[int, tuple[str, str]] = {}
+    for row in db_rows:
+        puuid = row.get("puuid")
+        pos = _POSITION_ABBREV.get(row.get("team_position", ""))
+        if not puuid or pos is None:
+            continue
+        pid = puuid_to_pid.get(puuid)
+        if pid is None:
+            continue
+        pid_map[pid] = ("blue" if pid <= 5 else "red", pos)
+    return pid_map if pid_map else None

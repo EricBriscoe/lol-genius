@@ -1,98 +1,37 @@
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 
 import numpy as np
 
-SNAPSHOT_SECONDS = [300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 3000]
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "shared"
 
-TIMELINE_FEATURE_NAMES = [
-    "game_time_seconds",
-    "blue_gold",
-    "red_gold",
-    "gold_diff",
-    "blue_kills",
-    "red_kills",
-    "kill_diff",
-    "blue_towers",
-    "red_towers",
-    "tower_diff",
-    "blue_dragons",
-    "red_dragons",
-    "dragon_diff",
-    "blue_barons",
-    "red_barons",
-    "blue_heralds",
-    "red_heralds",
-    "blue_inhibitors",
-    "red_inhibitors",
-    "blue_elder",
-    "red_elder",
-    "blue_cs",
-    "red_cs",
-    "cs_diff",
-    "inhibitor_diff",
-    "elder_diff",
-    "first_blood_blue",
-    "first_tower_blue",
-    "first_dragon_blue",
-]
+with open(_SHARED_DIR / "live-feature-names.json") as _f:
+    _FEAT_JSON = json.load(_f)
 
-# Gold excluded: Riot's Live Client Data API does not expose per-team gold totals.
-# Train/inference features must match exactly, so gold is omitted from the live model.
-_GOLD_COLS = {"blue_gold", "red_gold", "gold_diff"}
+SNAPSHOT_SECONDS = _FEAT_JSON["snapshot_seconds"]
 
-_PREGAME_SUMMARY_COLS = [
-    "avg_rank_diff",
-    "rank_spread_diff",
-    "avg_winrate_diff",
-    "avg_mastery_diff",
-    "melee_count_diff",
-    "ad_ratio_diff",
-    "total_games_diff",
-    "hot_streak_count_diff",
-    "veteran_count_diff",
-    "mastery_level7_count_diff",
-    "avg_champ_wr_diff",
-    "scaling_score_diff",
-    "stat_growth_diff",
-    "infinite_scaler_count_diff",
-]
+TIMELINE_FEATURE_NAMES = _FEAT_JSON["timeline_feature_names"]
 
-_MOMENTUM_COLS = [
-    "kill_diff_delta",
-    "cs_diff_delta",
-    "tower_diff_delta",
-]
+_GOLD_COLS = set(_FEAT_JSON["gold_cols"])
 
-_TEMPORAL_COLS = [
-    "kill_lead_erosion",
-    "tower_lead_erosion",
-    "kill_rate_diff",
-    "cs_rate_diff",
-    "dragon_rate_diff",
-    "kill_diff_accel",
-    "recent_kill_share_diff",
-    "objective_density",
-]
+_PREGAME_SUMMARY_COLS = _FEAT_JSON["pregame_summary_cols"]
 
-_LEVEL_COLS = [
-    "avg_level_diff",
-    "max_level_diff",
-]
+_MOMENTUM_COLS = _FEAT_JSON["momentum_cols"]
 
-_DRAGON_SOUL_COLS = [
-    "blue_has_soul",
-    "red_has_soul",
-    "blue_soul_point",
-    "red_soul_point",
-]
+_TEMPORAL_COLS = _FEAT_JSON["temporal_cols"]
 
-_POSITIONS = ["top", "jg", "mid", "bot", "sup"]
+_LEVEL_COLS = _FEAT_JSON["level_cols"]
 
-_PER_ROLE_COLS = [
-    f"{pos}_{stat}_diff" for pos in _POSITIONS for stat in ["cs", "level", "kill"]
-]
+_DRAGON_SOUL_COLS = _FEAT_JSON["dragon_soul_cols"]
+
+_POSITIONS = _FEAT_JSON["positions"]
+
+_PER_ROLE_STATS = _FEAT_JSON["per_role_stats"]
+
+_PER_ROLE_COLS = [f"{pos}_{stat}_diff" for pos in _POSITIONS for stat in _PER_ROLE_STATS]
 
 LIVE_FEATURE_NAMES = (
     [f for f in TIMELINE_FEATURE_NAMES if f not in _GOLD_COLS]

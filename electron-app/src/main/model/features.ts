@@ -1,4 +1,5 @@
 import { SNAPSHOT_SECONDS, LIVE_FEATURE_NAMES } from "./constants";
+import featureSpec from "@shared/live-feature-names.json";
 
 interface AllGameData {
   allPlayers?: Player[];
@@ -281,7 +282,7 @@ export function buildLiveFeatures(
     red_soul_point: gameState.red_dragons >= 3 ? 1.0 : 0.0,
   };
 
-  for (const pos of ["top", "jg", "mid", "bot", "sup"]) {
+  for (const pos of featureSpec.positions) {
     const gs = gameState as Record<string, number>;
     mapping[`${pos}_cs_diff`] = (gs[`blue_${pos}_cs`] ?? 0) - (gs[`red_${pos}_cs`] ?? 0);
     mapping[`${pos}_level_diff`] = (gs[`blue_${pos}_level`] ?? 1) - (gs[`red_${pos}_level`] ?? 1);
