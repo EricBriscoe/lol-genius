@@ -17,8 +17,8 @@ export function champIconUrl(championId: number): string {
   return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${championId}.png`;
 }
 
-export function itemIconUrl(itemId: number): string {
-  return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/items/${itemId}.png`;
+export function itemIconUrl(itemId: number, version: string): string {
+  return `https://ddragon.leagueoflegends.com/cdn/${version}/img/item/${itemId}.png`;
 }
 
 export function winRateColor(winRate: number): string {

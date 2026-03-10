@@ -1,6 +1,6 @@
 {
   "name": "lol-genius",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "League of Legends live win probability predictor",
   "main": "dist/main/main.js",
   "author": "Eric Briscoe",

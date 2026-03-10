@@ -161,6 +161,7 @@ export interface LolGeniusAPI {
   getAppVersion: () => Promise<string>;
   setAlwaysOnTop: (enabled: boolean) => Promise<void>;
   getAlwaysOnTop: () => Promise<boolean>;
+  getDdragonVersion: () => Promise<string>;
   getPlayerIdentity: () => Promise<PlayerIdentity | null>;
   getMatchHistory: (params: { offset: number; limit: number; championId?: number; queueId?: number }) => Promise<MatchHistoryResult>;
   getChampionStats: () => Promise<ChampionStatsAgg[]>;

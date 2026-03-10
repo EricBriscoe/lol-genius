@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { RefreshCw, WifiOff, Loader2 } from "lucide-react";
 import { usePlayerInfo } from "../hooks/usePlayerInfo";
 import Card from "./Card";
@@ -19,6 +20,12 @@ export default function PlayerInfo() {
     championFilter,
     refresh,
   } = usePlayerInfo();
+
+  const [ddragonVersion, setDdragonVersion] = useState("");
+
+  useEffect(() => {
+    window.lolGenius.getDdragonVersion().then(setDdragonVersion);
+  }, []);
 
   if (!identity) {
     return (
@@ -69,7 +76,7 @@ export default function PlayerInfo() {
           </div>
         )}
         {matches.map((m) => (
-          <MatchCard key={m.match_id} match={m} />
+          <MatchCard key={m.match_id} match={m} ddragonVersion={ddragonVersion} />
         ))}
         {loading && (
           <div className="player-info__loading">

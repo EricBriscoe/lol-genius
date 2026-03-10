@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld("lolGenius", {
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
   setAlwaysOnTop: (enabled: boolean) => ipcRenderer.invoke("set-always-on-top", enabled),
   getAlwaysOnTop: () => ipcRenderer.invoke("get-always-on-top"),
+  getDdragonVersion: () => ipcRenderer.invoke("get-ddragon-version"),
   forceRestart: () => ipcRenderer.invoke("force-restart"),
   getPlayerIdentity: () => ipcRenderer.invoke("get-player-identity"),
   getMatchHistory: (params: { offset: number; limit: number; championId?: number; queueId?: number }) =>

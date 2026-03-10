@@ -48,7 +48,7 @@ function formatDuration(seconds: number | null): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function MatchCard({ match }: { match: MatchRow }) {
+export default function MatchCard({ match, ddragonVersion }: { match: MatchRow; ddragonVersion: string }) {
   const [expanded, setExpanded] = useState(false);
   const isWin = match.win === 1;
   const items = [match.item0, match.item1, match.item2, match.item3, match.item4, match.item5, match.item6];
@@ -101,7 +101,7 @@ export default function MatchCard({ match }: { match: MatchRow }) {
           {items.map((id, i) => (
             <div key={i} className="match-card__item-slot">
               {id != null && id > 0 && (
-                <img src={itemIconUrl(id)} alt="" onError={hideOnImgError} />
+                <img src={itemIconUrl(id, ddragonVersion)} alt="" onError={hideOnImgError} />
               )}
             </div>
           ))}

@@ -7,7 +7,7 @@ import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
 import { initPlayerData, shutdownPlayerData } from "./player-data/index";
 import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer, forceRestart } from "./updater";
 import { safeSend } from "./ipc";
-import { loadChampionData } from "./model/ddragon";
+import { loadChampionData, getChampionVersion } from "./model/ddragon";
 import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
 import { clearTimer } from "./timers";
 
@@ -141,7 +141,9 @@ app.whenReady().then(async () => {
     }
   }
 
-  const resourcesPath = process.resourcesPath ?? app.getAppPath();
+  const resourcesPath = app.isPackaged
+    ? process.resourcesPath
+    : join(app.getAppPath(), "..", "data");
   try {
     loadChampionData(resourcesPath);
   } catch (e) {
@@ -226,6 +228,7 @@ ipcMain.handle("set-dev-mode", (_, enabled: boolean) => {
 
 ipcMain.handle("get-dev-mode", () => isDevMode());
 ipcMain.handle("get-app-version", () => app.getVersion());
+ipcMain.handle("get-ddragon-version", () => getChampionVersion());
 ipcMain.handle("force-restart", () => forceRestart());
 ipcMain.handle("set-always-on-top", (_, enabled: boolean) => mainWindow?.setAlwaysOnTop(enabled));
 ipcMain.handle("get-always-on-top", () => mainWindow?.isAlwaysOnTop() ?? false);
