@@ -181,7 +181,7 @@ export function getChampionStats(puuid: string): ChampionStatsAgg[] {
       ROUND(AVG(assists), 1) as avg_assists,
       ROUND(AVG(cs), 0) as avg_cs
     FROM matches
-    WHERE puuid = ? AND champion_id IS NOT NULL
+    WHERE puuid = ? AND champion_id IS NOT NULL AND queue_id = 420
     GROUP BY champion_id
     ORDER BY games DESC
   `).all(puuid) as ChampionStatsAgg[];
