@@ -26,7 +26,7 @@ export default function DevPanel({
     <div className="dev-panel">
       <div className="dev-panel__header">
         <span className="dev-panel__title">Debug Log</span>
-        <button onClick={onClear} className="dev-panel__clear-btn">Clear</button>
+        <button onClick={onClear} className="btn-clear dev-panel__clear-btn">Clear</button>
       </div>
       <div ref={scrollRef} className="dev-panel__log-area">
         {logs.length === 0 && (

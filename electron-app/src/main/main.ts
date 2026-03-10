@@ -5,10 +5,11 @@ import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling } from "./live-client/poller";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
 import { initPlayerData, shutdownPlayerData } from "./player-data/index";
-import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer } from "./updater";
+import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer, forceRestart } from "./updater";
 import { safeSend } from "./ipc";
 import { loadChampionData } from "./model/ddragon";
 import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
+import { clearTimer } from "./timers";
 
 const logger = log.scope("main");
 
@@ -18,7 +19,7 @@ let modelUpdateTimer: ReturnType<typeof setInterval> | null = null;
 const MODEL_UPDATE_INTERVAL = 30 * 60 * 1000;
 
 function stopModelUpdateTimer(): void {
-  if (modelUpdateTimer) { clearInterval(modelUpdateTimer); modelUpdateTimer = null; }
+  modelUpdateTimer = clearTimer(modelUpdateTimer);
 }
 
 process.on("uncaughtException", (error) => {
@@ -63,6 +64,12 @@ function saveWindowState(win: BrowserWindow): void {
   } catch (e) {
     logger.warn("Failed to save window state:", e);
   }
+}
+
+async function updateAllModels(): Promise<boolean> {
+  const live = await loadAndUpdateModel("live");
+  const pregame = await loadAndUpdateModel("pregame");
+  return live || pregame;
 }
 
 async function loadAndUpdateModel(modelType: "live" | "pregame"): Promise<boolean> {
@@ -140,13 +147,10 @@ app.whenReady().then(async () => {
     safeSend(mainWindow, "connection-status", "ddragon_error");
   }
 
-  await loadAndUpdateModel("live");
-  await loadAndUpdateModel("pregame");
+  await updateAllModels();
 
   modelUpdateTimer = setInterval(async () => {
-    const liveUpdated = await loadAndUpdateModel("live");
-    const pregameUpdated = await loadAndUpdateModel("pregame");
-    if (liveUpdated || pregameUpdated) {
+    if (await updateAllModels()) {
       safeSend(mainWindow, "app-update-status", { status: "model_updated" });
     }
   }, MODEL_UPDATE_INTERVAL);
@@ -204,9 +208,7 @@ ipcMain.handle("get-model-info", () => ({
 
 ipcMain.handle("check-for-updates", async () => {
   checkForAppUpdates();
-  const a = await loadAndUpdateModel("live");
-  const b = await loadAndUpdateModel("pregame");
-  return a || b;
+  return updateAllModels();
 });
 
 ipcMain.handle("set-dev-mode", (_, enabled: boolean) => {
@@ -222,5 +224,6 @@ ipcMain.handle("set-dev-mode", (_, enabled: boolean) => {
 
 ipcMain.handle("get-dev-mode", () => isDevMode());
 ipcMain.handle("get-app-version", () => app.getVersion());
+ipcMain.handle("force-restart", () => forceRestart());
 ipcMain.handle("set-always-on-top", (_, enabled: boolean) => mainWindow?.setAlwaysOnTop(enabled));
 ipcMain.handle("get-always-on-top", () => mainWindow?.isAlwaysOnTop() ?? false);

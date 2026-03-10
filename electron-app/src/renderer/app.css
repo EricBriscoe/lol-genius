@@ -160,6 +160,18 @@ body {
   background: var(--accent-dim);
 }
 
+.btn-clear {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 10px;
+  font-family: var(--font-body);
+  padding: 2px 8px;
+  transition: color 0.2s, border-color 0.2s;
+}
+
 /* ===== Section Title ===== */
 .section-title {
   font-size: 13px;
@@ -597,18 +609,6 @@ body {
   letter-spacing: 0.5px;
 }
 
-.dev-panel__clear-btn {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 10px;
-  padding: 2px 8px;
-  font-family: var(--font-body);
-  transition: color 0.2s, border-color 0.2s;
-}
-
 .dev-panel__clear-btn:hover {
   color: var(--text-secondary);
   border-color: var(--border-light);
@@ -822,18 +822,6 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.champ-stats__clear {
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-muted);
-  font-size: 10px;
-  font-family: var(--font-body);
-  padding: 2px 8px;
-  cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
 }
 
 .champ-stats__clear:hover {
@@ -1116,5 +1104,31 @@ body {
   -webkit-backdrop-filter: blur(12px);
   background: rgba(20, 25, 40, 0.9);
   border: 1px solid var(--border);
+  transform: translateY(20px);
+  opacity: 0;
   transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.toast--visible { transform: translateY(0); opacity: 1; }
+.toast--downloading { color: var(--accent); }
+.toast--restarting,
+.toast--update_ready { color: var(--green); }
+
+.toast__btn {
+  margin-left: 8px;
+  padding: 2px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.toast__btn:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
 }

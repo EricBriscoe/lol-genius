@@ -89,20 +89,8 @@ export default function App() {
       </div>
 
       <div className="tab-bar">
-        <button
-          className={`tab-bar__tab ${activeTab === "game" ? "tab-bar__tab--active" : ""}`}
-          onClick={() => setActiveTab("game")}
-        >
-          <Gamepad2 size={14} />
-          Game
-        </button>
-        <button
-          className={`tab-bar__tab ${activeTab === "player_info" ? "tab-bar__tab--active" : ""}`}
-          onClick={() => setActiveTab("player_info")}
-        >
-          <User size={14} />
-          Player Info
-        </button>
+        <TabButton id="game" label="Game" icon={Gamepad2} activeTab={activeTab} onSelect={setActiveTab} />
+        <TabButton id="player_info" label="Player Info" icon={User} activeTab={activeTab} onSelect={setActiveTab} />
       </div>
 
       {activeTab === "game" && (
@@ -187,7 +175,7 @@ function UpdateBanner({ event }: { event: AppUpdateEvent | null }) {
   const [visible, setVisible] = useState(false);
 
   const status = event?.status;
-  const show = status === "downloading" || status === "restarting";
+  const show = status === "downloading" || status === "restarting" || status === "update_ready";
 
   useEffect(() => {
     if (show) setVisible(true);
@@ -196,15 +184,35 @@ function UpdateBanner({ event }: { event: AppUpdateEvent | null }) {
 
   if (!show && !visible) return null;
 
-  const color = status === "downloading" ? "var(--accent)" : "var(--green)";
+  const cls = `toast${show ? " toast--visible" : ""} toast--${status}`;
 
   return (
-    <div className="toast" style={{ transform: show ? "translateY(0)" : "translateY(20px)", opacity: show ? 1 : 0 }}>
-      <span style={{ color }}>
-        {status === "downloading" && `Updating… ${(event as { percent: number }).percent}%`}
-        {status === "restarting" && "Restarting to update…"}
-      </span>
+    <div className={cls}>
+      {status === "downloading" && `Updating… ${(event as { percent: number }).percent}%`}
+      {status === "restarting" && "Restarting to update…"}
+      {status === "update_ready" && (
+        <>
+          Update ready
+          <button className="toast__btn" onClick={() => window.lolGenius.forceRestart()}>
+            Restart now
+          </button>
+        </>
+      )}
     </div>
+  );
+}
+
+function TabButton({ id, label, icon: Icon, activeTab, onSelect }: {
+  id: TabId; label: string; icon: React.ElementType; activeTab: TabId; onSelect: (id: TabId) => void;
+}) {
+  return (
+    <button
+      className={`tab-bar__tab ${activeTab === id ? "tab-bar__tab--active" : ""}`}
+      onClick={() => onSelect(id)}
+    >
+      <Icon size={14} />
+      {label}
+    </button>
   );
 }
 

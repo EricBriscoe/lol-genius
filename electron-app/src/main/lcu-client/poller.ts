@@ -11,6 +11,7 @@ import { setPregameData } from "../live-client/poller";
 import { onLCUConnected, onLCUDisconnected } from "../player-data/index";
 import * as ddragon from "../model/ddragon";
 import log from "../log";
+import { clearTimer } from "../timers";
 
 const logger = log.scope("lcu-poller");
 
@@ -44,9 +45,9 @@ function setState(next: LCUState): void {
 }
 
 function stopAllTimers(): void {
-  if (lockfilePollTimer) { clearInterval(lockfilePollTimer); lockfilePollTimer = null; }
-  if (gameflowTimer) { clearInterval(gameflowTimer); gameflowTimer = null; }
-  if (champSelectTimer) { clearInterval(champSelectTimer); champSelectTimer = null; }
+  lockfilePollTimer = clearTimer(lockfilePollTimer);
+  gameflowTimer = clearTimer(gameflowTimer);
+  champSelectTimer = clearTimer(champSelectTimer);
 }
 
 function onDisconnected(): void {
@@ -138,7 +139,7 @@ function startGameflowPolling(): void {
 }
 
 function stopChampSelectPolling(): void {
-  if (champSelectTimer) { clearInterval(champSelectTimer); champSelectTimer = null; }
+  champSelectTimer = clearTimer(champSelectTimer);
 }
 
 function startChampSelectPolling(): void {

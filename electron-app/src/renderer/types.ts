@@ -72,6 +72,7 @@ export type AppUpdateEvent =
   | { status: "not_available" }
   | { status: "downloading"; percent: number }
   | { status: "restarting" }
+  | { status: "update_ready" }
   | { status: "error"; message: string }
   | { status: "model_updated" };
 
@@ -165,6 +166,7 @@ export interface LolGeniusAPI {
   getChampionStats: () => Promise<ChampionStatsAgg[]>;
   getRankedStats: () => Promise<RankedStatsRow[]>;
   refreshPlayerData: () => Promise<void>;
+  forceRestart: () => Promise<void>;
 }
 
 declare global {

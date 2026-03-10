@@ -15,7 +15,7 @@ export default function ChampionStatsGrid({ stats, onChampionClick, activeChampi
       <div className="champ-stats__header">
         <h3 className="section-title">Champions</h3>
         {activeChampion != null && (
-          <button className="champ-stats__clear" onClick={() => onChampionClick(undefined)}>
+          <button className="btn-clear champ-stats__clear" onClick={() => onChampionClick(undefined)}>
             Clear filter
           </button>
         )}

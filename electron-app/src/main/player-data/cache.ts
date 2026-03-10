@@ -6,6 +6,7 @@ import { getChampionName } from "../model/ddragon";
 import * as playerDb from "./db";
 import type { MatchRow, RankedStatsRow, MatchHistoryParams, PlayerIdentity } from "./types";
 import log from "../log";
+import { clearTimer } from "../timers";
 
 const logger = log.scope("player-cache");
 
@@ -248,10 +249,7 @@ export function startBackgroundSync(): void {
 }
 
 export function stopBackgroundSync(): void {
-  if (syncTimer) {
-    clearInterval(syncTimer);
-    syncTimer = null;
-  }
+  syncTimer = clearTimer(syncTimer);
 }
 
 export async function handleRefreshPlayerData(): Promise<void> {

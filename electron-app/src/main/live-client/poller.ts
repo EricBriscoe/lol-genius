@@ -5,6 +5,7 @@ import { predict } from "../model/inference";
 import { computeTopFactors } from "../model/shap-factors";
 import { safeSend } from "../ipc";
 import log from "../log";
+import { clearTimer } from "../timers";
 
 const logger = log.scope("poller");
 
@@ -147,10 +148,7 @@ export function startPolling(win: BrowserWindow, modelDir: string): void {
 }
 
 export function stopPolling(): void {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
+  timer = clearTimer(timer);
 }
 
 export function isPolling(): boolean {

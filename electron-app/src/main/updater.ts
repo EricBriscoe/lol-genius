@@ -7,7 +7,7 @@ import { join } from "path";
 import log from "./log";
 import { safeSend } from "./ipc";
 import { getGamePhase } from "./lcu-client/poller";
-import { isPolling } from "./live-client/poller";
+import { clearTimer } from "./timers";
 
 const logger = log.scope("updater");
 
@@ -19,7 +19,7 @@ const modelUpdateInProgress = new Set<string>();
 
 function isUserBusy(): boolean {
   const phase = getGamePhase();
-  return phase === "champ_select" || phase === "game_start" || isPolling();
+  return phase === "champ_select" || phase === "game_start";
 }
 
 function scheduleRestart(win: BrowserWindow): void {
@@ -28,9 +28,10 @@ function scheduleRestart(win: BrowserWindow): void {
   const tryRestart = () => {
     if (isUserBusy()) {
       logger.info("Deferring auto-restart because the user is in game");
+      safeSend(win, "app-update-status", { status: "update_ready" });
       return;
     }
-    if (restartTimer) { clearInterval(restartTimer); restartTimer = null; }
+    restartTimer = clearTimer(restartTimer);
     logger.info("Auto-restarting to install update");
     safeSend(win, "app-update-status", { status: "restarting" });
     setTimeout(() => {
@@ -93,9 +94,14 @@ export async function checkForAppUpdates(): Promise<void> {
   }
 }
 
+export function forceRestart(): void {
+  logger.info("Force restart requested by user");
+  autoUpdater.quitAndInstall(true, true);
+}
+
 export function stopAppUpdateTimer(): void {
-  if (updateTimer) { clearInterval(updateTimer); updateTimer = null; }
-  if (restartTimer) { clearInterval(restartTimer); restartTimer = null; }
+  updateTimer = clearTimer(updateTimer);
+  restartTimer = clearTimer(restartTimer);
 }
 
 const MODEL_FILES = [
@@ -313,6 +319,10 @@ function verifyChecksums(dir: string): boolean {
   return true;
 }
 
+function silentUnlink(path: string): void {
+  try { unlinkSync(path); } catch {}
+}
+
 function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void> {
   return new Promise((resolve, reject) => {
     if (maxRedirects <= 0) {
@@ -335,7 +345,7 @@ function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void
       const file = createWriteStream(tmpDest);
       res.on("error", (e) => {
         file.destroy();
-        try { unlinkSync(tmpDest); } catch {}
+        silentUnlink(tmpDest);
         reject(e);
       });
       res.pipe(file);
@@ -349,17 +359,17 @@ function downloadFile(url: string, dest: string, maxRedirects = 5): Promise<void
         }
       });
       file.on("error", (e) => {
-        try { unlinkSync(tmpDest); } catch {}
+        silentUnlink(tmpDest);
         reject(e);
       });
     });
     req.on("error", (e) => {
-      try { unlinkSync(tmpDest); } catch {}
+      silentUnlink(tmpDest);
       reject(e);
     });
     req.on("timeout", () => {
       req.destroy();
-      try { unlinkSync(tmpDest); } catch {}
+      silentUnlink(tmpDest);
       reject(new Error(`Download timed out: ${url}`));
     });
   });
