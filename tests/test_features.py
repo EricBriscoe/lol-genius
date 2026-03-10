@@ -69,9 +69,7 @@ def test_extract_player_features_full_data():
     champ_stats = {"games": 10, "wins": 7, "winrate": 0.7}
     role_dist = {"MIDDLE": 15, "TOP": 3, "JUNGLE": 2}
 
-    features = extract_player_features(
-        participant, rank, mastery, recent, champ_stats, role_dist
-    )
+    features = extract_player_features(participant, rank, mastery, recent, champ_stats, role_dist)
 
     assert set(features.keys()) == set(PLAYER_FEATURE_NAMES)
     assert features["rank_numeric"] == rank_to_numeric("EMERALD", "II", 75)
@@ -102,9 +100,7 @@ def test_extract_player_features_autofill():
 
 
 def test_extract_player_features_no_data():
-    features = extract_player_features(
-        {"team_position": ""}, None, None, None, None, None
-    )
+    features = extract_player_features({"team_position": ""}, None, None, None, None, None)
     assert set(features.keys()) == set(PLAYER_FEATURE_NAMES)
     assert features["rank_numeric"] == 12.0
     assert features["recent_winrate"] == 0.5
@@ -171,9 +167,7 @@ def test_kda_variance_skewness():
         "avg_multikill_rate": 1.0,
         "kda_per_game": [2.0, 4.0, 6.0, 2.0, 6.0],
     }
-    features = extract_player_features(
-        {"team_position": "MIDDLE"}, None, None, recent, None, None
-    )
+    features = extract_player_features({"team_position": "MIDDLE"}, None, None, recent, None, None)
     assert features["kda_variance"] > 0
     assert isinstance(features["kda_skewness"], float)
 
@@ -199,9 +193,7 @@ def test_kda_variance_insufficient_games():
         "avg_multikill_rate": 1.0,
         "kda_per_game": [3.0, 4.0],
     }
-    features = extract_player_features(
-        {"team_position": "MIDDLE"}, None, None, recent, None, None
-    )
+    features = extract_player_features({"team_position": "MIDDLE"}, None, None, recent, None, None)
     assert features["kda_variance"] == 0.0
     assert features["kda_skewness"] == 0.0
 

@@ -230,18 +230,14 @@ class TestLoadApiKeys:
     def test_csv_with_spaces(self):
         from lol_genius.proxy.app import _load_api_keys
 
-        with patch.dict(
-            os.environ, {"RIOT_API_KEYS": " key1 , key2 , key3 "}, clear=True
-        ):
+        with patch.dict(os.environ, {"RIOT_API_KEYS": " key1 , key2 , key3 "}, clear=True):
             keys = _load_api_keys()
         assert keys == ["key1", "key2", "key3"]
 
     def test_numbered_format(self):
         from lol_genius.proxy.app import _load_api_keys
 
-        with patch.dict(
-            os.environ, {"RIOT_API_KEY_1": "k1", "RIOT_API_KEY_2": "k2"}, clear=True
-        ):
+        with patch.dict(os.environ, {"RIOT_API_KEY_1": "k1", "RIOT_API_KEY_2": "k2"}, clear=True):
             keys = _load_api_keys()
         assert keys == ["k1", "k2"]
 

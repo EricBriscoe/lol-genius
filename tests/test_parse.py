@@ -168,9 +168,7 @@ def test_parse_match_happy_path():
     assert blue_bans[0]["pick_turn"] == 1
 
     assert len(objectives) == 4
-    blue_baron = [
-        o for o in objectives if o["team_id"] == 100 and o["objective"] == "baron"
-    ][0]
+    blue_baron = [o for o in objectives if o["team_id"] == 100 and o["objective"] == "baron"][0]
     assert blue_baron["first"] == 1
     assert blue_baron["kills"] == 2
 

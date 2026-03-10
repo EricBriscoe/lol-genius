@@ -69,9 +69,7 @@ def _make_participant(match_id, i, puuid=None, team_id=None, win=None):
     }
 
 
-def _make_match(
-    match_id="NA1_123", blue_win=1, game_creation=1700000000000, game_duration=1800
-):
+def _make_match(match_id="NA1_123", blue_win=1, game_creation=1700000000000, game_duration=1800):
     return {
         "match_id": match_id,
         "game_version": "14.10.1",
@@ -358,10 +356,7 @@ def test_concurrent_fetch_enrichment():
     players = [(f"p_{i}", f"s_{i}") for i in range(4)]
 
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [
-            pool.submit(fetch_enrichment, api, puuid, sid, needs)
-            for puuid, sid in players
-        ]
+        futures = [pool.submit(fetch_enrichment, api, puuid, sid, needs) for puuid, sid in players]
         results = [f.result() for f in futures]
 
     assert len(results) == 4
@@ -392,10 +387,7 @@ def test_concurrent_enrichment_with_real_db(test_dsn):
     players = [(f"conc_p_{i}", f"conc_s_{i}") for i in range(4)]
 
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [
-            pool.submit(fetch_enrichment, api, puuid, sid, needs)
-            for puuid, sid in players
-        ]
+        futures = [pool.submit(fetch_enrichment, api, puuid, sid, needs) for puuid, sid in players]
         results = [f.result() for f in futures]
 
     db = MatchDB(test_dsn)
