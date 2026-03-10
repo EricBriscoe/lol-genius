@@ -63,4 +63,5 @@ jobs:
           gh release create "${{ inputs.tag }}" \
             --title "${{ inputs.tag }}" \
             --notes "Model export: ${{ inputs.model_type }}" \
+            --prerelease \
             "${ASSETS[@]}"

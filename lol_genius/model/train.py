@@ -249,6 +249,13 @@ def train_model(
 
     (model_path / "run_id.txt").write_text(run_id)
 
+    try:
+        from lol_genius.model.export import export_onnx
+
+        export_onnx(model_dir, model_type)
+    except Exception:
+        log.warning("ONNX auto-export failed (onnxmltools may not be installed)", exc_info=True)
+
     log.info(f"Model saved to {model_path / 'model.json'}")
     log.info(
         f"Best iteration: {model.best_iteration}, Best score: {model.best_score:.4f}"
