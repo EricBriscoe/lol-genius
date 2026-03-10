@@ -92,6 +92,13 @@ function parseLCUGames(games: LCUGame[], puuid: string): MatchRow[] {
   });
 }
 
+function resolveMatchChampionNames(match: MatchRow): MatchRow {
+  return {
+    ...match,
+    champion_name: match.champion_id ? getChampionName(match.champion_id) : match.champion_name,
+  };
+}
+
 export function setLCUClient(client: LCUClient | null): void {
   lcuClient = client;
 }
@@ -130,7 +137,7 @@ export async function handleGetMatchHistory(params: MatchHistoryParams): Promise
 }> {
   if (!currentPuuid) return { matches: [], total: 0, source: "cache", lcuOffline: true };
 
-  const cached = playerDb.getMatchHistory(currentPuuid, params);
+  const cached = playerDb.getMatchHistory(currentPuuid, params).map(resolveMatchChampionNames);
   const totalCached = playerDb.getMatchCount(currentPuuid);
 
   if (cached.length >= params.limit || params.offset + params.limit <= totalCached) {
@@ -155,7 +162,7 @@ export async function handleGetMatchHistory(params: MatchHistoryParams): Promise
     logger.warn("LCU match fetch failed:", e);
   }
 
-  const fresh = playerDb.getMatchHistory(currentPuuid, params);
+  const fresh = playerDb.getMatchHistory(currentPuuid, params).map(resolveMatchChampionNames);
   return { matches: fresh, total: playerDb.getMatchCount(currentPuuid), source: "lcu" };
 }
 
@@ -199,7 +206,11 @@ export async function handleGetRankedStats(): Promise<RankedStatsRow[]> {
 
 export function handleGetChampionStats() {
   if (!currentPuuid) return [];
-  return playerDb.getChampionStats(currentPuuid);
+  const stats = playerDb.getChampionStats(currentPuuid);
+  return stats.map((s) => ({
+    ...s,
+    champion_name: getChampionName(s.champion_id),
+  }));
 }
 
 export function startBackgroundSync(): void {

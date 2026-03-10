@@ -250,27 +250,60 @@ describe("buildPregameFeatures", () => {
 
 describe("getPregameSummaryFromFeatures", () => {
   it("computes diffs from feature map", () => {
-    const features = {
+    const features: Record<string, number> = {
       blue_melee_count: 3,
       red_melee_count: 2,
       blue_ad_ratio: 0.6,
       red_ad_ratio: 0.4,
       blue_avg_rank: 16,
       red_avg_rank: 12,
+      blue_rank_spread: 2.0,
+      red_rank_spread: 1.0,
       blue_avg_team_winrate: 0.55,
       red_avg_team_winrate: 0.5,
+      blue_avg_mastery: 50000,
+      red_avg_mastery: 30000,
+      blue_hot_streak_count: 2,
+      red_hot_streak_count: 1,
+      blue_top_ranked_games: 100, blue_jg_ranked_games: 200, blue_mid_ranked_games: 150,
+      blue_bot_ranked_games: 120, blue_sup_ranked_games: 80,
+      red_top_ranked_games: 90, red_jg_ranked_games: 110, red_mid_ranked_games: 130,
+      red_bot_ranked_games: 100, red_sup_ranked_games: 70,
+      blue_top_veteran: 1, blue_jg_veteran: 0, blue_mid_veteran: 1,
+      blue_bot_veteran: 0, blue_sup_veteran: 0,
+      red_top_veteran: 0, red_jg_veteran: 0, red_mid_veteran: 0,
+      red_bot_veteran: 0, red_sup_veteran: 1,
+      blue_top_mastery_level: 7, blue_jg_mastery_level: 5, blue_mid_mastery_level: 7,
+      blue_bot_mastery_level: 6, blue_sup_mastery_level: 7,
+      red_top_mastery_level: 7, red_jg_mastery_level: 4, red_mid_mastery_level: 6,
+      red_bot_mastery_level: 7, red_sup_mastery_level: 5,
+      blue_top_champ_winrate: 0.6, blue_jg_champ_winrate: 0.55, blue_mid_champ_winrate: 0.5,
+      blue_bot_champ_winrate: 0.52, blue_sup_champ_winrate: 0.48,
+      red_top_champ_winrate: 0.45, red_jg_champ_winrate: 0.5, red_mid_champ_winrate: 0.55,
+      red_bot_champ_winrate: 0.47, red_sup_champ_winrate: 0.53,
     };
     const summary = getPregameSummaryFromFeatures(features);
     expect(summary.melee_count_diff).toBe(1);
     expect(summary.ad_ratio_diff).toBeCloseTo(0.2);
     expect(summary.avg_rank_diff).toBe(4);
+    expect(summary.rank_spread_diff).toBe(1.0);
     expect(summary.avg_winrate_diff).toBeCloseTo(0.05);
+    expect(summary.avg_mastery_diff).toBe(20000);
+    expect(summary.hot_streak_count_diff).toBe(1);
+    expect(summary.veteran_count_diff).toBe(1);
+    expect(summary.mastery_level7_count_diff).toBe(1);
+    expect(summary.avg_champ_wr_diff).toBeCloseTo(0.03);
+    expect(summary.total_games_diff).toBe(30);
   });
 
   it("returns zeros for empty features", () => {
     const summary = getPregameSummaryFromFeatures({});
     expect(summary.melee_count_diff).toBe(0);
     expect(summary.scaling_score_diff).toBe(0);
+    expect(summary.rank_spread_diff).toBe(0);
+    expect(summary.avg_mastery_diff).toBe(0);
+    expect(summary.veteran_count_diff).toBe(0);
+    expect(summary.mastery_level7_count_diff).toBe(0);
   });
 });
 
