@@ -28,11 +28,9 @@ export interface FactorAnalysis {
 
 export interface ModelInfo {
   version: string | null;
-  featureCount: number;
   modelDir: string;
   polling: boolean;
   pregameVersion?: string | null;
-  pregameFeatureCount?: number;
 }
 
 export interface DevLogEntry {

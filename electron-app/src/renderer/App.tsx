@@ -53,7 +53,7 @@ export default function App() {
         <div className="app-header__controls">
           {modelInfo && (
             <span className="app-header__model-info">
-              Model: {modelInfo.version ?? "bundled"} ({modelInfo.featureCount} features)
+              Model {modelInfo.version?.match(/v(\d+)/)?.[0] ?? "bundled"}
             </span>
           )}
           <button

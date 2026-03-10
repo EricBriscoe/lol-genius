@@ -1,7 +1,7 @@
 import { app, BrowserWindow, ipcMain, screen } from "electron";
 import { join } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
-import { loadModel, getFeatureNames } from "./model/inference";
+import { loadModel } from "./model/inference";
 import { startPolling, stopPolling, isPolling } from "./live-client/poller";
 import { fetchLiveGameData } from "./live-client/api";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
@@ -203,11 +203,9 @@ ipcMain.handle("stop-polling", () => {
 
 ipcMain.handle("get-model-info", () => ({
   version: getModelVersion("live"),
-  featureCount: getFeatureNames("live").length,
   modelDir: getModelDir("live"),
   polling: isPolling(),
   pregameVersion: getModelVersion("pregame"),
-  pregameFeatureCount: getFeatureNames("pregame").length,
 }));
 
 ipcMain.handle("check-for-updates", async () => {
