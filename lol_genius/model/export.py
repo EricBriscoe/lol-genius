@@ -42,9 +42,7 @@ def export_onnx(model_dir: str, model_type: str = "pregame") -> Path:
     return out_path
 
 
-def _export_feature_importance(
-    model, feature_names: list[str], output_dir: Path
-) -> Path:
+def _export_feature_importance(model, feature_names: list[str], output_dir: Path) -> Path:
     import pandas as pd
     import shap
 
@@ -55,19 +53,17 @@ def _export_feature_importance(
             X_sample = X_test.head(500)
         else:
             import numpy as np
-            X_sample = pd.DataFrame(
-                np.zeros((1, len(feature_names))), columns=feature_names
-            )
+
+            X_sample = pd.DataFrame(np.zeros((1, len(feature_names))), columns=feature_names)
 
         explainer = shap.TreeExplainer(model)
         shap_values = explainer.shap_values(X_sample)
-        mean_abs = pd.Series(
-            data=abs(shap_values).mean(axis=0), index=feature_names
-        ).sort_values(ascending=False)
+        mean_abs = pd.Series(data=abs(shap_values).mean(axis=0), index=feature_names).sort_values(
+            ascending=False
+        )
 
         importance = [
-            {"feature": name, "importance": round(float(val), 6)}
-            for name, val in mean_abs.items()
+            {"feature": name, "importance": round(float(val), 6)} for name, val in mean_abs.items()
         ]
     except Exception:
         log.warning("SHAP computation failed, using gain-based importance", exc_info=True)

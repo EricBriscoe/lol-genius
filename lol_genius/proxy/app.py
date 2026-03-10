@@ -47,9 +47,7 @@ def _load_api_keys() -> list[str]:
     if single:
         return [single]
 
-    raise RuntimeError(
-        "No API keys found. Set RIOT_API_KEYS, RIOT_API_KEY_N, or RIOT_API_KEY."
-    )
+    raise RuntimeError("No API keys found. Set RIOT_API_KEYS, RIOT_API_KEY_N, or RIOT_API_KEY.")
 
 
 @asynccontextmanager
@@ -79,9 +77,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="lol-genius riot-proxy", lifespan=lifespan)
 
 
-async def _cached_get(
-    request: Request, namespace: str, cache_key: str, url: str
-) -> JSONResponse:
+async def _cached_get(request: Request, namespace: str, cache_key: str, url: str) -> JSONResponse:
     cache: ProxyCache = request.app.state.cache
     pool: KeyPool = request.app.state.pool
 
@@ -101,9 +97,7 @@ async def _cached_get(
     priority = request.headers.get("X-Priority", "normal")
 
     try:
-        result, used_key_index = await asyncio.to_thread(
-            pool.get, url, key_index, priority
-        )
+        result, used_key_index = await asyncio.to_thread(pool.get, url, key_index, priority)
     except APIKeyExpiredError:
         return JSONResponse({"error": "All API keys expired"}, status_code=503)
     except BadRequestError as e:
@@ -113,9 +107,7 @@ async def _cached_get(
         log.exception("Upstream error")
         return JSONResponse({"error": "upstream_error"}, status_code=502)
 
-    cache.set(
-        namespace, cache_key, (result, used_key_index), CACHE_TTLS.get(namespace, 3600)
-    )
+    cache.set(namespace, cache_key, (result, used_key_index), CACHE_TTLS.get(namespace, 3600))
     return JSONResponse({"data": result, "cached": False, "key_index": used_key_index})
 
 
@@ -163,9 +155,7 @@ async def reload_keys(request: Request):
     cache: ProxyCache = request.app.state.cache
     flushed = cache.clear()
 
-    log.info(
-        f"Keys reloaded: {old_count} -> {len(new_keys)}, cache flushed ({flushed} entries)"
-    )
+    log.info(f"Keys reloaded: {old_count} -> {len(new_keys)}, cache flushed ({flushed} entries)")
     return {"old_keys": old_count, "new_keys": len(new_keys), "cache_flushed": flushed}
 
 
@@ -192,9 +182,7 @@ async def league_entries(
         f"{request.app.state.region_url}/lol/league/v4/entries/RANKED_SOLO_5x5"
         f"/{tier}/{division}?page={page}"
     )
-    return await _cached_get(
-        request, "league_entries", f"{tier}:{division}:{page}", url
-    )
+    return await _cached_get(request, "league_entries", f"{tier}:{division}:{page}", url)
 
 
 @app.get("/riot/v1/league/by-puuid/{puuid}")

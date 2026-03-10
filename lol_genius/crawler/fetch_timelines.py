@@ -82,9 +82,7 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
                         red_kills += 1
                     if not first_blood_set:
                         first_blood_set = True
-                        first_blood_blue = (
-                            1 if _participant_team(killer_id) == 100 else 0
-                        )
+                        first_blood_blue = 1 if _participant_team(killer_id) == 100 else 0
 
             elif etype == "BUILDING_KILL":
                 killer_id = event.get("killerId", 0)

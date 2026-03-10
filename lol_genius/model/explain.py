@@ -39,9 +39,7 @@ def explain_model(
     log.info(f"SHAP summary plot saved to {model_path / 'shap_summary.png'}")
 
     fig = plt.figure(figsize=(12, 8))
-    shap.summary_plot(
-        shap_values, X_sample, plot_type="bar", show=False, max_display=30
-    )
+    shap.summary_plot(shap_values, X_sample, plot_type="bar", show=False, max_display=30)
     plt.tight_layout()
     fig.savefig(model_path / "shap_importance.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -61,14 +59,10 @@ def explain_model(
         shap.dependence_plot(feat, shap_values, X_sample, show=False)
         plt.tight_layout()
         safe_name = feat.replace("/", "_")
-        fig.savefig(
-            model_path / f"shap_dep_{safe_name}.png", dpi=150, bbox_inches="tight"
-        )
+        fig.savefig(model_path / f"shap_dep_{safe_name}.png", dpi=150, bbox_inches="tight")
         plt.close(fig)
 
-    log.info(
-        f"Top 5 features by SHAP importance: {[f['name'] for f in top_features_list[:5]]}"
-    )
+    log.info(f"Top 5 features by SHAP importance: {[f['name'] for f in top_features_list[:5]]}")
 
     if database_url and run_id:
         import json

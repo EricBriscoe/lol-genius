@@ -39,9 +39,7 @@ def _setup_logging(verbose: bool) -> None:
 
 
 @click.group()
-@click.option(
-    "--config", "config_path", default="config.yaml", help="Path to config file"
-)
+@click.option("--config", "config_path", default="config.yaml", help="Path to config file")
 @click.option("-v", "--verbose", is_flag=True, help="Enable debug logging")
 @click.pass_context
 def cli(ctx, config_path, verbose):
@@ -73,9 +71,7 @@ def _make_api(config):
 
 
 @cli.command("init-db")
-@click.option(
-    "--wait", is_flag=True, help="Wait for database to become available first"
-)
+@click.option("--wait", is_flag=True, help="Wait for database to become available first")
 @click.pass_context
 @cli_error_handler
 def init_db(ctx, wait):
@@ -186,18 +182,14 @@ def crawl(ctx):
             action = _decide_action(db)
 
             if action == "enrich":
-                drain_unenriched(
-                    api, config.database_url, config, stopper, batch_size=200
-                )
+                drain_unenriched(api, config.database_url, config, stopper, batch_size=200)
             elif action == "fetch_timelines":
                 from lol_genius.crawler.fetch_timelines import fetch_match_timelines
 
                 fetch_match_timelines(api, db, limit=50)
             else:
                 current = db.get_match_count()
-                batch_config = replace(
-                    config, match_count=current + 200, continuous=False
-                )
+                batch_config = replace(config, match_count=current + 200, continuous=False)
                 crawl_matches(api, config.database_url, batch_config, ddragon)
 
             if not _stop.is_set():
@@ -284,9 +276,7 @@ def backfill_timelines(ctx):
 
 @cli.command()
 @click.option("--tune/--no-tune", default=False, help="Run hyperparameter tuning")
-@click.option(
-    "--live/--no-live", default=False, help="Train on timeline features (live model)"
-)
+@click.option("--live/--no-live", default=False, help="Train on timeline features (live model)")
 @click.option("--notes", default=None, help="Notes for this training run")
 @click.pass_context
 @cli_error_handler
@@ -332,24 +322,14 @@ def train(ctx, tune, live, notes):
 
         X = pd.read_parquet(feat_path)
         y = pd.read_parquet(target_path).squeeze()
-        patches = (
-            pd.read_parquet(patches_path).squeeze() if patches_path.exists() else None
-        )
+        patches = pd.read_parquet(patches_path).squeeze() if patches_path.exists() else None
         timestamps = (
-            pd.read_parquet(timestamps_path).squeeze()
-            if timestamps_path.exists()
-            else None
+            pd.read_parquet(timestamps_path).squeeze() if timestamps_path.exists() else None
         )
-        match_ids = (
-            pd.read_parquet(match_ids_path).squeeze()
-            if match_ids_path.exists()
-            else None
-        )
+        match_ids = pd.read_parquet(match_ids_path).squeeze() if match_ids_path.exists() else None
         game_creations = None
 
-    click.echo(
-        f"Training {model_type} model on {len(X)} samples with {X.shape[1]} features"
-    )
+    click.echo(f"Training {model_type} model on {len(X)} samples with {X.shape[1]} features")
     click.echo(f"Target distribution: {y.mean():.2%} blue wins")
 
     from lol_genius.model.train import train_model, tune_hyperparameters
@@ -417,6 +397,7 @@ def _run_evaluation(config, model_type: str, *, model=None, run_id: str | None =
 
     if model is None:
         from lol_genius.model.train import load_model
+
         model, _ = load_model(config.model_dir, model_type)
 
     if run_id is None:
@@ -437,9 +418,7 @@ def _run_evaluation(config, model_type: str, *, model=None, run_id: str | None =
 
 
 @cli.command()
-@click.option(
-    "--live/--no-live", default=False, help="Evaluate live model instead of pregame"
-)
+@click.option("--live/--no-live", default=False, help="Evaluate live model instead of pregame")
 @click.pass_context
 @cli_error_handler
 def evaluate(ctx, live):
@@ -470,9 +449,7 @@ def explain(ctx):
     run_id_path = model_dir / "run_id.txt"
     run_id = run_id_path.read_text().strip() if run_id_path.exists() else None
 
-    explain_model(
-        model, X, config.model_dir, database_url=config.database_url, run_id=run_id
-    )
+    explain_model(model, X, config.model_dir, database_url=config.database_url, run_id=run_id)
     click.echo(f"SHAP plots saved to {model_dir}")
 
 
@@ -564,10 +541,9 @@ def runs(ctx, limit, detail, note):
             click.echo(f"  Run: {run['run_id']}")
             click.echo(f"{'=' * 60}")
             click.echo(f"  Created:        {run['created_at']}")
-            train, test = run['train_count'], run['test_count']
+            train, test = run["train_count"], run["test_count"]
             click.echo(
-                f"  Matches:        {run['total_matches']:,}"
-                f" (train={train:,}, test={test:,})"
+                f"  Matches:        {run['total_matches']:,} (train={train:,}, test={test:,})"
             )
             click.echo(f"  Features:       {run['feature_count']}")
             click.echo(f"  Patches:        {run['patch_min']} - {run['patch_max']}")
@@ -583,9 +559,7 @@ def runs(ctx, limit, detail, note):
                 click.echo(f"    Accuracy:  {run['accuracy']:.4f}")
                 click.echo(f"    AUC-ROC:   {run['auc_roc']:.4f}")
                 click.echo(f"    Log Loss:  {run['log_loss']:.4f}")
-                click.echo(
-                    f"    CM: TN={run['tn']} FP={run['fp']} FN={run['fn']} TP={run['tp']}"
-                )
+                click.echo(f"    CM: TN={run['tn']} FP={run['fp']} FN={run['fn']} TP={run['tp']}")
             if run.get("top_features"):
                 feats = json.loads(run["top_features"])
                 click.echo("\n  Top SHAP Features:")
@@ -618,29 +592,23 @@ def runs(ctx, limit, detail, note):
             acc = f"{r['accuracy']:.4f}" if r.get("accuracy") is not None else "   -   "
             auc = f"{r['auc_roc']:.4f}" if r.get("auc_roc") is not None else "   -   "
             ll = f"{r['log_loss']:.4f}" if r.get("log_loss") is not None else "   -   "
-            it = (
-                str(r["best_iteration"])
-                if r.get("best_iteration") is not None
-                else "  -  "
-            )
+            it = str(r["best_iteration"]) if r.get("best_iteration") is not None else "  -  "
             tm = (
                 f"{r['training_seconds']:.0f}s"
                 if r.get("training_seconds") is not None
                 else "   -   "
             )
             nt = (r.get("notes") or "")[:20]
-            rid = r['run_id']
-            mtch = r['total_matches']
-            fc = r['feature_count']
+            rid = r["run_id"]
+            mtch = r["total_matches"]
+            fc = r["feature_count"]
             click.echo(
                 f"  {rid:<18s} {mtch:>8,} {fc:>6}"
                 f" {acc:>7s} {auc:>7s} {ll:>7s}"
                 f" {it:>5s} {tm:>7s}  {nt}"
             )
         click.echo(f"{'=' * 100}")
-        click.echo(
-            f"  {len(all_runs)} runs shown. Use --detail RUN_ID for full info.\n"
-        )
+        click.echo(f"  {len(all_runs)} runs shown. Use --detail RUN_ID for full info.\n")
     finally:
         db.close()
 
@@ -666,22 +634,16 @@ def status(ctx):
         click.echo(f"{'=' * 50}")
         click.echo(f"  Matches collected:  {match_count:,}")
         click.echo(f"  Target:             {config.match_count:,}")
-        click.echo(
-            f"  Progress:           {match_count / max(config.match_count, 1):.1%}"
-        )
+        click.echo(f"  Progress:           {match_count / max(config.match_count, 1):.1%}")
 
         click.echo("\n  Crawl Queue:")
         for status_name, count in sorted(queue_stats.items()):
             click.echo(f"    {status_name:12s} {count:,}")
 
         click.echo("\n  Enrichment:")
-        click.echo(
-            f"    Enriched:  {enrichment['enriched']:,} / {enrichment['total']:,}"
-        )
+        click.echo(f"    Enriched:  {enrichment['enriched']:,} / {enrichment['total']:,}")
         if enrichment["total"] > 0:
-            click.echo(
-                f"    Progress:  {enrichment['enriched'] / enrichment['total']:.1%}"
-            )
+            click.echo(f"    Progress:  {enrichment['enriched'] / enrichment['total']:.1%}")
 
         tier_stats = db.get_queue_stats_by_tier()
         if tier_stats:

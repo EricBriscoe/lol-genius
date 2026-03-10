@@ -46,9 +46,7 @@ class CrawlAction:
 STALE_ENRICHMENT_THRESHOLD = 0.10
 
 
-def assess_data_quality(
-    db: MatchDB, ddragon: DataDragon, maintenance: bool = False
-) -> DataMetrics:
+def assess_data_quality(db: MatchDB, ddragon: DataDragon, maintenance: bool = False) -> DataMetrics:
     enrichment = db.get_enrichment_stats()
     total = enrichment["total"]
     enriched = enrichment["enriched"]
@@ -109,16 +107,13 @@ def plan_next_action(
 ) -> CrawlAction:
     if maintenance:
         if metrics.seconds_since_ddragon_check >= config.ddragon_check_interval:
-            return CrawlAction(
-                action="refresh_ddragon", reason="periodic DDragon version check"
-            )
+            return CrawlAction(action="refresh_ddragon", reason="periodic DDragon version check")
 
     if metrics.enrichment_ratio < ENRICHMENT_THRESHOLD:
         return CrawlAction(
             action="enrich",
             reason=(
-                f"enrichment at {metrics.enrichment_ratio:.1%},"
-                f" need >{ENRICHMENT_THRESHOLD:.0%}"
+                f"enrichment at {metrics.enrichment_ratio:.1%}, need >{ENRICHMENT_THRESHOLD:.0%}"
             ),
         )
 
@@ -131,10 +126,7 @@ def plan_next_action(
             ),
         )
 
-    if (
-        metrics.total_matches > 0
-        and metrics.current_patch_ratio < CURRENT_PATCH_THRESHOLD
-    ):
+    if metrics.total_matches > 0 and metrics.current_patch_ratio < CURRENT_PATCH_THRESHOLD:
         use_filter = metrics.current_patch_matches >= MIN_PATCH_MATCHES_FOR_FILTER
         return CrawlAction(
             action="crawl",
@@ -173,8 +165,7 @@ def plan_next_action(
 
 def log_assessment(metrics: DataMetrics, action: CrawlAction) -> None:
     tier_str = ", ".join(
-        f"{t}: {c}"
-        for t, c in sorted(metrics.tier_counts.items(), key=lambda x: -x[1])
+        f"{t}: {c}" for t, c in sorted(metrics.tier_counts.items(), key=lambda x: -x[1])
     )
     m = metrics
     lines = [

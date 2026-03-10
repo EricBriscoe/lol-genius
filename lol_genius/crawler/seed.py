@@ -64,9 +64,7 @@ def seed_accounts(api, db: MatchDB, config: Config) -> int:
     tiers = config.target_tiers
     per_tier_target = config.seed_pages * ENTRIES_PER_PAGE * len(divisions)
 
-    pbar = tqdm(
-        total=per_tier_target * len(tiers), desc="Seeding accounts", unit="acct"
-    )
+    pbar = tqdm(total=per_tier_target * len(tiers), desc="Seeding accounts", unit="acct")
 
     for tier in tiers:
         puuids = _fetch_tier_puuids(api, tier, divisions, per_tier_target)
@@ -78,7 +76,9 @@ def seed_accounts(api, db: MatchDB, config: Config) -> int:
     pbar.close()
     log.info(
         "Seeded %d accounts across %d tiers (%d target per tier)",
-        total_added, len(tiers), per_tier_target,
+        total_added,
+        len(tiers),
+        per_tier_target,
     )
     return total_added
 

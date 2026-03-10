@@ -97,13 +97,9 @@ def extract_interaction_features(
         r_cf = red_champ_feats[i] if i < len(red_champ_feats) else {}
 
         blue_ap += int(b_cf.get("is_ap_champ", 0))
-        blue_ad += int(
-            not b_cf.get("is_ap_champ", 0) and not b_cf.get("is_mixed_champ", 0)
-        )
+        blue_ad += int(not b_cf.get("is_ap_champ", 0) and not b_cf.get("is_mixed_champ", 0))
         red_ap += int(r_cf.get("is_ap_champ", 0))
-        red_ad += int(
-            not r_cf.get("is_ap_champ", 0) and not r_cf.get("is_mixed_champ", 0)
-        )
+        red_ad += int(not r_cf.get("is_ap_champ", 0) and not r_cf.get("is_mixed_champ", 0))
 
         blue_armor_sum += b_cf.get("champ_armor_base", 33.0)
         red_armor_sum += r_cf.get("champ_armor_base", 33.0)
@@ -131,9 +127,7 @@ def extract_interaction_features(
     red_entropy = _shannon_entropy([red_ap, red_ad, max(0, 5 - red_ap - red_ad)])
     features["team_damage_diversity_diff"] = blue_entropy - red_entropy
 
-    features["team_armor_vs_ap"] = (blue_armor_sum / 5.0) * red_ap - (
-        red_armor_sum / 5.0
-    ) * blue_ap
+    features["team_armor_vs_ap"] = (blue_armor_sum / 5.0) * red_ap - (red_armor_sum / 5.0) * blue_ap
 
     features["frontline_diff"] = float(
         (blue_tags_count["Tank"] + blue_tags_count["Fighter"])

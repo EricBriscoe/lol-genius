@@ -163,16 +163,13 @@ def compute_pregame_diff_stats(
     r_st = red_scaling_tiers or []
     return {
         "avg_rank_diff": float(
-            np.mean(blue_ranks or [_NEUTRAL_RANK])
-            - np.mean(red_ranks or [_NEUTRAL_RANK])
+            np.mean(blue_ranks or [_NEUTRAL_RANK]) - np.mean(red_ranks or [_NEUTRAL_RANK])
         ),
         "rank_spread_diff": float(
             (np.std(blue_ranks) if len(blue_ranks) > 1 else 0.0)
             - (np.std(red_ranks) if len(red_ranks) > 1 else 0.0)
         ),
-        "avg_winrate_diff": float(
-            np.mean(blue_wrs or [0.5]) - np.mean(red_wrs or [0.5])
-        ),
+        "avg_winrate_diff": float(np.mean(blue_wrs or [0.5]) - np.mean(red_wrs or [0.5])),
         "avg_mastery_diff": float(
             (np.mean(blue_masteries) if blue_masteries else 0.0)
             - (np.mean(red_masteries) if red_masteries else 0.0)
@@ -195,9 +192,7 @@ def compute_pregame_diff_stats(
         "stat_growth_diff": float(
             np.mean(blue_stat_growth or [0.0]) - np.mean(red_stat_growth or [0.0])
         ),
-        "scaling_tier_diff": float(
-            np.mean(b_st or [3.0]) - np.mean(r_st or [3.0])
-        ),
+        "scaling_tier_diff": float(np.mean(b_st or [3.0]) - np.mean(r_st or [3.0])),
         "infinite_scaler_count_diff": float(blue_infinite_scalers - red_infinite_scalers),
     }
 
@@ -232,9 +227,7 @@ def _extract_team_vectors(
         return out
 
     def _masteries(team):
-        return [
-            math.log((row.get("mastery_points") or 0) + 1) for _, row in team.iterrows()
-        ]
+        return [math.log((row.get("mastery_points") or 0) + 1) for _, row in team.iterrows()]
 
     def _melee_count(team):
         return sum(
@@ -252,10 +245,7 @@ def _extract_team_vectors(
         )
 
     def _total_games(team):
-        return [
-            (row.get("wins") or 0) + (row.get("losses") or 0)
-            for _, row in team.iterrows()
-        ]
+        return [(row.get("wins") or 0) + (row.get("losses") or 0) for _, row in team.iterrows()]
 
     def _hot_streak_count(team):
         return sum(1 for _, row in team.iterrows() if (row.get("hot_streak") or 0) >= 1)
@@ -264,9 +254,7 @@ def _extract_team_vectors(
         return sum(1 for _, row in team.iterrows() if (row.get("veteran") or 0) >= 1)
 
     def _mastery7_count(team):
-        return sum(
-            1 for _, row in team.iterrows() if (row.get("mastery_level") or 0) >= 7
-        )
+        return sum(1 for _, row in team.iterrows() if (row.get("mastery_level") or 0) >= 7)
 
     def _champ_wrs_list(team):
         out = []
@@ -342,33 +330,81 @@ def _extract_team_vectors(
 
 
 def compute_pregame_diff_from_group(
-    group, ddragon, champ_wrs=None, scaling_scores=None,
+    group,
+    ddragon,
+    champ_wrs=None,
+    scaling_scores=None,
 ) -> dict:
     stat_growth_fn = ddragon.stat_growth_score if ddragon else None
     scaling_tier_fn = ddragon.get_scaling_tier if ddragon else None
     infinite_scaler_fn = ddragon.is_infinite_scaler if ddragon else None
     (
-        b_ranks, r_ranks, b_wrs, r_wrs, b_mast, r_mast,
-        b_melee, r_melee, b_ad, r_ad, b_tg, r_tg,
-        b_hs, r_hs, b_vet, r_vet, b_m7, r_m7,
-        b_cwr, r_cwr, b_ss, r_ss, b_sg, r_sg,
-        b_sctier, r_sctier, b_inf, r_inf,
+        b_ranks,
+        r_ranks,
+        b_wrs,
+        r_wrs,
+        b_mast,
+        r_mast,
+        b_melee,
+        r_melee,
+        b_ad,
+        r_ad,
+        b_tg,
+        r_tg,
+        b_hs,
+        r_hs,
+        b_vet,
+        r_vet,
+        b_m7,
+        r_m7,
+        b_cwr,
+        r_cwr,
+        b_ss,
+        r_ss,
+        b_sg,
+        r_sg,
+        b_sctier,
+        r_sctier,
+        b_inf,
+        r_inf,
     ) = _extract_team_vectors(
-        group, ddragon, champ_wrs, scaling_scores, stat_growth_fn,
-        scaling_tier_fn, infinite_scaler_fn,
+        group,
+        ddragon,
+        champ_wrs,
+        scaling_scores,
+        stat_growth_fn,
+        scaling_tier_fn,
+        infinite_scaler_fn,
     )
     return compute_pregame_diff_stats(
-        b_ranks, r_ranks, b_wrs, r_wrs, b_mast, r_mast,
-        b_melee, r_melee, b_ad, r_ad,
-        blue_total_games=b_tg, red_total_games=r_tg,
-        blue_hot_streaks=b_hs, red_hot_streaks=r_hs,
-        blue_veterans=b_vet, red_veterans=r_vet,
-        blue_mastery7=b_m7, red_mastery7=r_m7,
-        blue_champ_wrs=b_cwr, red_champ_wrs=r_cwr,
-        blue_scaling_scores=b_ss, red_scaling_scores=r_ss,
-        blue_stat_growth=b_sg, red_stat_growth=r_sg,
-        blue_scaling_tiers=b_sctier, red_scaling_tiers=r_sctier,
-        blue_infinite_scalers=b_inf, red_infinite_scalers=r_inf,
+        b_ranks,
+        r_ranks,
+        b_wrs,
+        r_wrs,
+        b_mast,
+        r_mast,
+        b_melee,
+        r_melee,
+        b_ad,
+        r_ad,
+        blue_total_games=b_tg,
+        red_total_games=r_tg,
+        blue_hot_streaks=b_hs,
+        red_hot_streaks=r_hs,
+        blue_veterans=b_vet,
+        red_veterans=r_vet,
+        blue_mastery7=b_m7,
+        red_mastery7=r_m7,
+        blue_champ_wrs=b_cwr,
+        red_champ_wrs=r_cwr,
+        blue_scaling_scores=b_ss,
+        red_scaling_scores=r_ss,
+        blue_stat_growth=b_sg,
+        red_stat_growth=r_sg,
+        blue_scaling_tiers=b_sctier,
+        red_scaling_tiers=r_sctier,
+        blue_infinite_scalers=b_inf,
+        red_infinite_scalers=r_inf,
     )
 
 
@@ -386,19 +422,22 @@ def _compute_pregame_summaries(
 
     results = []
     for match_id, group in df.groupby("match_id"):
-        results.append({
-            "match_id": match_id,
-            **compute_pregame_diff_from_group(
-                group, ddragon, champ_wrs, scaling_scores,
-            ),
-        })
+        results.append(
+            {
+                "match_id": match_id,
+                **compute_pregame_diff_from_group(
+                    group,
+                    ddragon,
+                    champ_wrs,
+                    scaling_scores,
+                ),
+            }
+        )
 
     return pd.DataFrame(results)
 
 
-def build_timeline_feature_matrix(
-    db, model_type: str = "pregame", ddragon=None
-) -> tuple:
+def build_timeline_feature_matrix(db, model_type: str = "pregame", ddragon=None) -> tuple:
     import pandas as pd
 
     rows = db.get_timeline_training_data()
@@ -424,15 +463,11 @@ def build_timeline_feature_matrix(
     df["elder_diff"] = df["blue_elder"] - df["red_elder"]
 
     if model_type == "live":
-        df["pregame_blue_win_prob"] = (
-            df["pregame_blue_win_prob"].fillna(0.5).astype(float)
-        )
+        df["pregame_blue_win_prob"] = df["pregame_blue_win_prob"].fillna(0.5).astype(float)
 
         scaling_scores = db.get_champion_scaling_scores()
         if ddragon is not None:
-            participant_rows = db.get_match_pregame_participants(
-                match_ids.unique().tolist()
-            )
+            participant_rows = db.get_match_pregame_participants(match_ids.unique().tolist())
             if participant_rows:
                 champ_wrs = db.get_champion_patch_winrates()
                 pregame_df = _compute_pregame_summaries(
@@ -460,14 +495,12 @@ def build_timeline_feature_matrix(
         gts = df["game_time_seconds"]
         time_norm = gts / _LATE_GAME_SECONDS
         df["scaling_advantage_realized"] = ssd * time_norm
-        df["early_game_window_closing"] = ssd * (
-            1.0 - gts / _EARLY_GAME_WINDOW_SECONDS
-        ).clip(lower=0.0)
+        df["early_game_window_closing"] = ssd * (1.0 - gts / _EARLY_GAME_WINDOW_SECONDS).clip(
+            lower=0.0
+        )
 
         df["scaling_tier_x_time"] = df["scaling_tier_diff"] * time_norm
-        df["infinite_scaler_x_time"] = (
-            df["infinite_scaler_count_diff"] * time_norm
-        )
+        df["infinite_scaler_x_time"] = df["infinite_scaler_count_diff"] * time_norm
 
         df["__mid"] = match_ids.values
         df = df.sort_values(["__mid", "game_time_seconds"])
@@ -486,9 +519,7 @@ def build_timeline_feature_matrix(
         df["cs_rate_diff"] = df["cs_diff"] / game_minutes
         df["dragon_rate_diff"] = df["dragon_diff"] / game_minutes
 
-        df["kill_diff_accel"] = (
-            df.groupby("__mid")["kill_diff_delta"].diff().fillna(0.0)
-        )
+        df["kill_diff_accel"] = df.groupby("__mid")["kill_diff_delta"].diff().fillna(0.0)
 
         blue_kills_delta = df.groupby("__mid")["blue_kills"].diff().fillna(0.0)
         red_kills_delta = df.groupby("__mid")["red_kills"].diff().fillna(0.0)
@@ -501,9 +532,12 @@ def build_timeline_feature_matrix(
         df["game_phase_mid"] = ((gts_phase > 900) & (gts_phase <= 1500)).astype(float)
         df["game_phase_late"] = (gts_phase > 1500).astype(float)
         total_objectives = (
-            df["blue_dragons"] + df["red_dragons"]
-            + df["blue_barons"] + df["red_barons"]
-            + df["blue_heralds"] + df["red_heralds"]
+            df["blue_dragons"]
+            + df["red_dragons"]
+            + df["blue_barons"]
+            + df["red_barons"]
+            + df["blue_heralds"]
+            + df["red_heralds"]
         )
         df["objective_density"] = total_objectives / game_minutes
 

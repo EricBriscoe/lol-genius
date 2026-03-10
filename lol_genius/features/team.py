@@ -13,9 +13,7 @@ def extract_team_features(
     features["avg_rank"] = sum(ranks) / max(len(ranks), 1)
     if len(ranks) > 1:
         mean = features["avg_rank"]
-        features["rank_spread"] = math.sqrt(
-            sum((r - mean) ** 2 for r in ranks) / len(ranks)
-        )
+        features["rank_spread"] = math.sqrt(sum((r - mean) ** 2 for r in ranks) / len(ranks))
     else:
         features["rank_spread"] = 0.0
 
@@ -31,9 +29,7 @@ def extract_team_features(
         if cf.get("is_ap_champ", 0) < 0.5 and cf.get("is_mixed_champ", 0) < 0.5
     )
     ap_count = sum(1 for cf in champion_features if cf.get("is_ap_champ", 0) > 0.5)
-    mixed_count = sum(
-        1 for cf in champion_features if cf.get("is_mixed_champ", 0) > 0.5
-    )
+    mixed_count = sum(1 for cf in champion_features if cf.get("is_mixed_champ", 0) > 0.5)
     total = max(len(champion_features), 1)
     features["ad_ratio"] = ad_count / total
     features["ap_ratio"] = ap_count / total
@@ -83,9 +79,7 @@ def extract_team_features(
     features["total_defense_score"] = sum(
         cf.get("champ_defense_score", 5) for cf in champion_features
     )
-    features["total_magic_score"] = sum(
-        cf.get("champ_magic_score", 5) for cf in champion_features
-    )
+    features["total_magic_score"] = sum(cf.get("champ_magic_score", 5) for cf in champion_features)
     features["avg_difficulty"] = (
         sum(cf.get("champ_difficulty", 5) for cf in champion_features) / n_champs
     )

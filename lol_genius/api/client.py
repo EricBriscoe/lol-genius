@@ -51,9 +51,7 @@ _METHOD_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"/lol/match/v5/matches/by-puuid/.+/ids"), "match-ids"),
     (re.compile(r"/lol/match/v5/matches/"), "match"),
     (
-        re.compile(
-            r"/lol/champion-mastery/v4/champion-masteries/by-puuid/.+/by-champion/"
-        ),
+        re.compile(r"/lol/champion-mastery/v4/champion-masteries/by-puuid/.+/by-champion/"),
         "mastery",
     ),
     (
@@ -79,9 +77,7 @@ def resolve_method(url: str) -> str | None:
 
 
 class RateLimiter:
-    def __init__(
-        self, default_buckets: list[tuple[int, int]] | None = None, scale: float = 1.0
-    ):
+    def __init__(self, default_buckets: list[tuple[int, int]] | None = None, scale: float = 1.0):
         raw = default_buckets or [(20, 1), (100, 120)]
         self.buckets: list[tuple[int, int]] = [
             (max(1, int(count * scale)), window) for count, window in raw
@@ -136,8 +132,7 @@ class RateLimiter:
                     if max_wait <= 0:
                         if (
                             priority == "low"
-                            and self._utilization_locked(now)
-                            > self._LOW_PRIORITY_THRESHOLD
+                            and self._utilization_locked(now) > self._LOW_PRIORITY_THRESHOLD
                         ):
                             pace_wait = self._min_interval * 3
                         else:
@@ -269,9 +264,7 @@ class RiotHTTPClient:
             "Generate a new key at https://developer.riotgames.com/"
         )
 
-    def get(
-        self, url: str, max_retries: int = 5, priority: str = "normal"
-    ) -> dict | list | None:
+    def get(self, url: str, max_retries: int = 5, priority: str = "normal") -> dict | list | None:
         method = resolve_method(url)
         method_limiter = self._get_method_limiter(method) if method else None
         limiters = [self.rate_limiter] + ([method_limiter] if method_limiter else [])
@@ -290,16 +283,10 @@ class RiotHTTPClient:
                 raise
 
             self.rate_limiter.update_limits(response.headers.get("x-app-rate-limit"))
-            self.rate_limiter.sync_counts(
-                response.headers.get("x-app-rate-limit-count")
-            )
+            self.rate_limiter.sync_counts(response.headers.get("x-app-rate-limit-count"))
             if method_limiter:
-                method_limiter.update_limits(
-                    response.headers.get("x-method-rate-limit")
-                )
-                method_limiter.sync_counts(
-                    response.headers.get("x-method-rate-limit-count")
-                )
+                method_limiter.update_limits(response.headers.get("x-method-rate-limit"))
+                method_limiter.sync_counts(response.headers.get("x-method-rate-limit-count"))
 
             if response.status_code == 200:
                 return response.json()
@@ -308,15 +295,11 @@ class RiotHTTPClient:
                 return None
 
             if response.status_code == 400:
-                raise BadRequestError(
-                    f"400 Bad Request for {url}: {_safe_body(response)}"
-                )
+                raise BadRequestError(f"400 Bad Request for {url}: {_safe_body(response)}")
 
             if response.status_code in (401, 403):
                 if not self._auth_backoff_enabled:
-                    raise APIKeyExpiredError(
-                        f"API key rejected ({response.status_code})"
-                    )
+                    raise APIKeyExpiredError(f"API key rejected ({response.status_code})")
                 self._auth_backoff(response.status_code)
                 continue
 

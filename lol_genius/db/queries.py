@@ -104,9 +104,7 @@ class MatchDB:
             self.conn.commit()
 
     def recover_stuck_processing(self) -> int:
-        count = self._exec(
-            "UPDATE crawl_queue SET status = 'pending' WHERE status = 'processing'"
-        )
+        count = self._exec("UPDATE crawl_queue SET status = 'pending' WHERE status = 'processing'")
         self._maybe_commit()
         return max(0, count)
 
@@ -315,8 +313,7 @@ class MatchDB:
         if not rows or not tier_weights:
             return [r["puuid"] for r in rows]
         return [
-            r["puuid"]
-            for r in sorted(rows, key=lambda r: tier_weights.get(r["seed_tier"], 999))
+            r["puuid"] for r in sorted(rows, key=lambda r: tier_weights.get(r["seed_tier"], 999))
         ]
 
     def mark_puuid_done(self, puuid: str) -> None:
@@ -351,9 +348,7 @@ class MatchDB:
         return row["cnt"]
 
     def get_queue_stats(self) -> dict:
-        rows = self._fetchall(
-            "SELECT status, COUNT(*) as cnt FROM crawl_queue GROUP BY status"
-        )
+        rows = self._fetchall("SELECT status, COUNT(*) as cnt FROM crawl_queue GROUP BY status")
         return {r["status"]: r["cnt"] for r in rows}
 
     def get_queue_stats_by_tier(self) -> dict[str, dict[str, int]]:
@@ -383,18 +378,14 @@ class MatchDB:
         return {"fetched": row["fetched"] or 0, "total": row["total"] or 0}
 
     def get_participants_for_match(self, match_id: str) -> list[dict]:
-        rows = self._fetchall(
-            "SELECT * FROM participants WHERE match_id = %s", (match_id,)
-        )
+        rows = self._fetchall("SELECT * FROM participants WHERE match_id = %s", (match_id,))
         return [dict(r) for r in rows]
 
     def get_match(self, match_id: str) -> dict | None:
         row = self._fetchone("SELECT * FROM matches WHERE match_id = %s", (match_id,))
         return dict(row) if row else None
 
-    def get_latest_rank(
-        self, puuid: str, queue_type: str = "RANKED_SOLO_5x5"
-    ) -> dict | None:
+    def get_latest_rank(self, puuid: str, queue_type: str = "RANKED_SOLO_5x5") -> dict | None:
         row = self._fetchone(
             """SELECT * FROM summoner_ranks
                WHERE puuid = %s AND queue_type = %s
@@ -404,9 +395,7 @@ class MatchDB:
         return dict(row) if row else None
 
     def has_mastery_data(self, puuid: str) -> bool:
-        row = self._fetchone(
-            "SELECT 1 FROM champion_mastery WHERE puuid = %s LIMIT 1", (puuid,)
-        )
+        row = self._fetchone("SELECT 1 FROM champion_mastery WHERE puuid = %s LIMIT 1", (puuid,))
         return row is not None
 
     def insert_champion_mastery_batch(self, records: list[dict]) -> None:
@@ -618,9 +607,7 @@ class MatchDB:
         return (row["oldest"], row["newest"])
 
     def get_queue_depth(self) -> int:
-        row = self._fetchone(
-            "SELECT COUNT(*) as cnt FROM crawl_queue WHERE status = 'pending'"
-        )
+        row = self._fetchone("SELECT COUNT(*) as cnt FROM crawl_queue WHERE status = 'pending'")
         return row["cnt"]
 
     def insert_model_run(self, run: dict) -> None:
@@ -657,11 +644,7 @@ class MatchDB:
 
         _jsonb_cols = {"time_window_metrics"}
         for k in _jsonb_cols:
-            if (
-                k in updates
-                and updates[k] is not None
-                and not isinstance(updates[k], str)
-            ):
+            if k in updates and updates[k] is not None and not isinstance(updates[k], str):
                 updates[k] = Json(updates[k])
         set_clause = ", ".join(f"{k} = %({k})s" for k in updates)
         updates["run_id"] = run_id
@@ -671,9 +654,7 @@ class MatchDB:
         )
         self._maybe_commit()
 
-    def get_model_runs(
-        self, limit: int = 20, model_type: str | None = None
-    ) -> list[dict]:
+    def get_model_runs(self, limit: int = 20, model_type: str | None = None) -> list[dict]:
         if model_type:
             rows = self._fetchall(
                 "SELECT * FROM model_runs WHERE model_type = %s ORDER BY created_at DESC LIMIT %s",
@@ -701,18 +682,16 @@ class MatchDB:
             (cutoff, cutoff),
         )["cnt"]
 
-        total_enriched = self._fetchone(
-            "SELECT COUNT(DISTINCT puuid) as cnt FROM summoner_ranks"
-        )["cnt"]
+        total_enriched = self._fetchone("SELECT COUNT(DISTINCT puuid) as cnt FROM summoner_ranks")[
+            "cnt"
+        ]
 
         return {
             "stale_ranks": stale_ranks,
             "total_enriched": total_enriched,
         }
 
-    def get_stale_enrichment_puuids(
-        self, hours: int = 72, limit: int = 50
-    ) -> list[dict]:
+    def get_stale_enrichment_puuids(self, hours: int = 72, limit: int = 50) -> list[dict]:
         cutoff = datetime.now(UTC) - timedelta(hours=hours)
         rows = self._fetchall(
             """SELECT DISTINCT sr.puuid, sr.summoner_id
@@ -768,9 +747,7 @@ class MatchDB:
         )
         self._maybe_commit()
 
-    def insert_mastery_raw_json(
-        self, puuid: str, champion_id: int, raw_json: str
-    ) -> None:
+    def insert_mastery_raw_json(self, puuid: str, champion_id: int, raw_json: str) -> None:
         self._execute(
             """INSERT INTO mastery_raw_json (puuid, champion_id, raw_json)
                VALUES (%s, %s, %s::jsonb)
@@ -791,15 +768,11 @@ class MatchDB:
         self._maybe_commit()
 
     def get_all_timeline_raw_json(self) -> list[tuple[str, dict]]:
-        rows = self._fetchall(
-            "SELECT match_id, raw_json FROM timeline_raw_json"
-        )
+        rows = self._fetchall("SELECT match_id, raw_json FROM timeline_raw_json")
         return [(r["match_id"], r["raw_json"]) for r in rows]
 
     def get_match_bans(self, match_id: str) -> list[dict]:
-        rows = self._fetchall(
-            "SELECT * FROM match_bans WHERE match_id = %s", (match_id,)
-        )
+        rows = self._fetchall("SELECT * FROM match_bans WHERE match_id = %s", (match_id,))
         return [dict(r) for r in rows]
 
     def get_player_recent_outcomes(
@@ -842,13 +815,10 @@ class MatchDB:
             params,
         )
         return {
-            r["champion_id"]: {"games": r["games"], "winrate": r["wins"] / r["games"]}
-            for r in rows
+            r["champion_id"]: {"games": r["games"], "winrate": r["wins"] / r["games"]} for r in rows
         }
 
-    def get_champion_stats(
-        self, patch: str | None = None, tier: str | None = None
-    ) -> list[dict]:
+    def get_champion_stats(self, patch: str | None = None, tier: str | None = None) -> list[dict]:
         conditions = ["m.queue_id = 420"]
         params: list = []
         if patch:
@@ -953,9 +923,7 @@ class MatchDB:
         )
         return {r["champion_id"]: r["bans"] for r in rows}
 
-    def get_tier_match_count(
-        self, patch: str | None = None, tier: str | None = None
-    ) -> int:
+    def get_tier_match_count(self, patch: str | None = None, tier: str | None = None) -> int:
         conditions = ["m.queue_id = 420"]
         params: list = []
         if patch:
@@ -1089,9 +1057,7 @@ class MatchDB:
         )
         return [dict(r) for r in rows]
 
-    def get_ranks_and_mastery_by_puuids(
-        self, puuids: list[str]
-    ) -> tuple[list[dict], list[dict]]:
+    def get_ranks_and_mastery_by_puuids(self, puuids: list[str]) -> tuple[list[dict], list[dict]]:
         if not puuids:
             return [], []
         ranks = self._fetchall(
@@ -1138,9 +1104,7 @@ class MatchDB:
         for r in rows:
             if r["total_games"] < min_games:
                 continue
-            late_wr = (r["late_wins"] + prior * prior_strength) / (
-                r["late_games"] + prior_strength
-            )
+            late_wr = (r["late_wins"] + prior * prior_strength) / (r["late_games"] + prior_strength)
             early_wr = (r["early_wins"] + prior * prior_strength) / (
                 r["early_games"] + prior_strength
             )

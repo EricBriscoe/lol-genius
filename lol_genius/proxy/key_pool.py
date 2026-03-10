@@ -81,9 +81,7 @@ class KeyPool:
                 except APIKeyExpiredError:
                     with self._lock:
                         self._mark_unhealthy(ks)
-                    log.warning(
-                        f"{ks.key_label} marked unhealthy, falling back to round-robin"
-                    )
+                    log.warning(f"{ks.key_label} marked unhealthy, falling back to round-robin")
 
         attempts = 0
         while attempts < len(self._keys):

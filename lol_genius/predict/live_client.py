@@ -247,9 +247,7 @@ def build_live_features(
         "first_blood_blue": game_state.get("first_blood_blue", 0),
         "first_tower_blue": game_state.get("first_tower_blue", 0),
         "first_dragon_blue": game_state.get("first_dragon_blue", 0),
-        "pregame_blue_win_prob": pregame_win_prob
-        if pregame_win_prob is not None
-        else 0.5,
+        "pregame_blue_win_prob": pregame_win_prob if pregame_win_prob is not None else 0.5,
         "avg_rank_diff": summary.get("avg_rank_diff", 0.0),
         "rank_spread_diff": summary.get("rank_spread_diff", 0.0),
         "avg_winrate_diff": summary.get("avg_winrate_diff", 0.0),
@@ -264,8 +262,7 @@ def build_live_features(
         "scaling_score_diff": scaling_score_diff,
         "max_scaling_score_diff": summary.get("max_scaling_score_diff", 0.0),
         "stat_growth_diff": summary.get("stat_growth_diff", 0.0),
-        "scaling_advantage_realized": scaling_score_diff
-        * (raw_game_time / _LATE_GAME_SECONDS),
+        "scaling_advantage_realized": scaling_score_diff * (raw_game_time / _LATE_GAME_SECONDS),
         "early_game_window_closing": scaling_score_diff
         * max(0.0, 1.0 - raw_game_time / _EARLY_GAME_WINDOW_SECONDS),
         "kill_diff_delta": kill_diff - prev.get("kill_diff", kill_diff),
@@ -287,8 +284,7 @@ def build_live_features(
         "estimated_gold_diff": game_state.get("estimated_gold_diff", 0),
         "avg_level_diff": game_state.get("blue_avg_level", 1.0)
         - game_state.get("red_avg_level", 1.0),
-        "max_level_diff": game_state.get("blue_max_level", 1)
-        - game_state.get("red_max_level", 1),
+        "max_level_diff": game_state.get("blue_max_level", 1) - game_state.get("red_max_level", 1),
         "scaling_tier_x_time": summary.get("scaling_tier_diff", 0.0)
         * (raw_game_time / _LATE_GAME_SECONDS),
         "infinite_scaler_x_time": summary.get("infinite_scaler_count_diff", 0.0)
@@ -371,9 +367,7 @@ class LiveGamePoller:
 
     def _enrich_pregame(self, all_players: list[dict]) -> None:
         if not (self._dsn and self._proxy_url and self._ddragon_cache):
-            log.warning(
-                "Pregame enrichment skipped: missing dsn, proxy_url, or ddragon_cache"
-            )
+            log.warning("Pregame enrichment skipped: missing dsn, proxy_url, or ddragon_cache")
             with self._lock:
                 self._pregame_summary = {}
                 self._enriching = False
@@ -408,9 +402,7 @@ class LiveGamePoller:
                             "key": riot_id,
                             "game_name": game_name,
                             "tag_line": tag_line,
-                            "champion_name": p.get(
-                                "championName", p.get("rawChampionName", "")
-                            ),
+                            "champion_name": p.get("championName", p.get("rawChampionName", "")),
                             "team": p.get("team", "ORDER"),
                         }
                     )
@@ -432,9 +424,7 @@ class LiveGamePoller:
                     list(puuid_map.values())
                 )
                 rank_by_puuid = {r["puuid"]: r for r in ranks_list}
-                mastery_by_key = {
-                    (m["puuid"], m["champion_id"]): m for m in masteries_list
-                }
+                mastery_by_key = {(m["puuid"], m["champion_id"]): m for m in masteries_list}
 
                 rows = []
                 for p in player_info:
@@ -457,18 +447,17 @@ class LiveGamePoller:
                             "losses": (rank_data or {}).get("losses", 0),
                             "hot_streak": (rank_data or {}).get("hot_streak", 0),
                             "veteran": (rank_data or {}).get("veteran", 0),
-                            "mastery_points": (mastery_data or {}).get(
-                                "mastery_points", 0
-                            ),
-                            "mastery_level": (mastery_data or {}).get(
-                                "mastery_level", 0
-                            ),
+                            "mastery_points": (mastery_data or {}).get("mastery_points", 0),
+                            "mastery_level": (mastery_data or {}).get("mastery_level", 0),
                         }
                     )
 
                 group = pd.DataFrame(rows)
                 summary = compute_pregame_diff_from_group(
-                    group, ddragon, champ_wrs, scaling_scores,
+                    group,
+                    ddragon,
+                    champ_wrs,
+                    scaling_scores,
                 )
                 with self._lock:
                     self._pregame_summary = summary
@@ -503,8 +492,7 @@ class LiveGamePoller:
                             {
                                 "status": "no_data",
                                 "error": (
-                                    "No response from Live Client API"
-                                    f" at {self.host}:{self.port}"
+                                    f"No response from Live Client API at {self.host}:{self.port}"
                                 ),
                                 "blue_win_probability": None,
                             },
@@ -543,30 +531,23 @@ class LiveGamePoller:
 
         game_id = data.get("gameData", {}).get("gameId")
         game_id_reset = (
-            game_id is not None
-            and self._game_id is not None
-            and game_id != self._game_id
+            game_id is not None and self._game_id is not None and game_id != self._game_id
         )
         if game_id is not None:
             self._game_id = game_id
 
         all_players = data.get("allPlayers", [])
         with self._lock:
-            should_enrich = (
-                self._pregame_summary is None and all_players and not self._enriching
-            )
+            should_enrich = self._pregame_summary is None and all_players and not self._enriching
             if should_enrich:
                 self._enriching = True
         if should_enrich:
-            threading.Thread(
-                target=self._enrich_pregame, args=(all_players,), daemon=True
-            ).start()
+            threading.Thread(target=self._enrich_pregame, args=(all_players,), daemon=True).start()
 
         game_state = parse_live_client_data(data)
         current_game_time = game_state.get("game_time", 0)
         time_reset = (
-            self._last_game_time is not None
-            and current_game_time < self._last_game_time - 30
+            self._last_game_time is not None and current_game_time < self._last_game_time - 30
         )
         game_reset = game_id_reset or time_reset
         self._last_game_time = current_game_time
@@ -588,17 +569,15 @@ class LiveGamePoller:
         red_kills = game_state.get("red_kills", 0)
 
         current_snapshot = _snap_to_snapshot(current_game_time)
-        snapshot_changed = (
-            self._last_snapshot is None or current_snapshot != self._last_snapshot
-        )
+        snapshot_changed = self._last_snapshot is None or current_snapshot != self._last_snapshot
 
         if snapshot_changed and self._prev_diffs is not None:
             kill_diff_delta = kill_diff - self._prev_diffs.get("kill_diff", kill_diff)
             blue_recent = blue_kills - self._prev_blue_kills
             red_recent = red_kills - self._prev_red_kills
-            recent_kill_share_diff = blue_recent / max(
-                blue_kills, 1
-            ) - red_recent / max(red_kills, 1)
+            recent_kill_share_diff = blue_recent / max(blue_kills, 1) - red_recent / max(
+                red_kills, 1
+            )
             self._prev_recent_kill_share_diff = recent_kill_share_diff
         elif self._prev_diffs is not None:
             kill_diff_delta = self._prev_kill_diff_delta
@@ -662,7 +641,9 @@ class LiveGamePoller:
             if len(missing) > len(feature_names) // 2:
                 log.error(
                     "More than half of features missing (%d/%d): %s",
-                    len(missing), len(feature_names), missing[:10],
+                    len(missing),
+                    len(feature_names),
+                    missing[:10],
                 )
             else:
                 log.warning("Missing %d features: %s", len(missing), missing[:5])

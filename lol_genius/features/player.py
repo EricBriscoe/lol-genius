@@ -82,39 +82,23 @@ def extract_player_features(
 
     if recent_stats:
         games = max(recent_stats.get("games_played", 1), 1)
-        features["recent_winrate"] = _bayesian_winrate(
-            recent_stats.get("wins", 0), games
-        )
+        features["recent_winrate"] = _bayesian_winrate(recent_stats.get("wins", 0), games)
         features["recent_games"] = float(games)
         features["avg_kda"] = (
             recent_stats.get("avg_kills", 0) + recent_stats.get("avg_assists", 0)
         ) / max(recent_stats.get("avg_deaths", 1), 1.0)
         features["avg_cs_per_min"] = float(recent_stats.get("avg_cs_per_min", 0) or 0)
         features["avg_vision"] = float(recent_stats.get("avg_vision", 0) or 0)
-        features["avg_damage_share"] = float(
-            recent_stats.get("avg_damage_share", 0) or 0
-        )
-        features["avg_wards_placed"] = float(
-            recent_stats.get("avg_wards_placed", 0) or 0
-        )
-        features["avg_wards_killed"] = float(
-            recent_stats.get("avg_wards_killed", 0) or 0
-        )
-        features["avg_damage_taken"] = float(
-            recent_stats.get("avg_damage_taken", 0) or 0
-        )
+        features["avg_damage_share"] = float(recent_stats.get("avg_damage_share", 0) or 0)
+        features["avg_wards_placed"] = float(recent_stats.get("avg_wards_placed", 0) or 0)
+        features["avg_wards_killed"] = float(recent_stats.get("avg_wards_killed", 0) or 0)
+        features["avg_damage_taken"] = float(recent_stats.get("avg_damage_taken", 0) or 0)
         features["avg_gold_spent"] = float(recent_stats.get("avg_gold_spent", 0) or 0)
         features["avg_cc_score"] = float(recent_stats.get("avg_cc_score", 0) or 0)
         features["avg_heal_total"] = float(recent_stats.get("avg_heal_total", 0) or 0)
-        features["avg_magic_dmg_share"] = float(
-            recent_stats.get("avg_magic_dmg_share", 0) or 0
-        )
-        features["avg_phys_dmg_share"] = float(
-            recent_stats.get("avg_phys_dmg_share", 0) or 0
-        )
-        features["avg_multikill_rate"] = float(
-            recent_stats.get("avg_multikill_rate", 0) or 0
-        )
+        features["avg_magic_dmg_share"] = float(recent_stats.get("avg_magic_dmg_share", 0) or 0)
+        features["avg_phys_dmg_share"] = float(recent_stats.get("avg_phys_dmg_share", 0) or 0)
+        features["avg_multikill_rate"] = float(recent_stats.get("avg_multikill_rate", 0) or 0)
 
         kda_list = recent_stats.get("kda_per_game", [])
         if len(kda_list) >= 3:
@@ -122,8 +106,7 @@ def extract_player_features(
             var = sum((k - mean_kda) ** 2 for k in kda_list) / len(kda_list)
             features["kda_variance"] = var
             features["kda_skewness"] = (
-                (sum((k - mean_kda) ** 3 for k in kda_list) / len(kda_list))
-                / (var**1.5)
+                (sum((k - mean_kda) ** 3 for k in kda_list) / len(kda_list)) / (var**1.5)
                 if var > 1e-8
                 else 0.0
             )
@@ -150,9 +133,7 @@ def extract_player_features(
         features["kda_skewness"] = 0.0
 
     if champ_stats and champ_stats.get("games", 0) > 0:
-        features["champ_winrate"] = _bayesian_winrate(
-            champ_stats["wins"], champ_stats["games"]
-        )
+        features["champ_winrate"] = _bayesian_winrate(champ_stats["wins"], champ_stats["games"])
         features["champ_games"] = float(champ_stats["games"])
     else:
         features["champ_winrate"] = 0.5
@@ -188,9 +169,7 @@ def extract_player_features(
         if total_role_games > 0:
             most_played = max(role_dist, key=role_dist.get)
             features["is_autofill"] = 0.0 if most_played == position else 1.0
-            features["role_experience_ratio"] = (
-                role_dist.get(position, 0) / total_role_games
-            )
+            features["role_experience_ratio"] = role_dist.get(position, 0) / total_role_games
         else:
             features["is_autofill"] = 0.0
             features["role_experience_ratio"] = 0.0
@@ -259,9 +238,7 @@ def compute_tilt_features(recent_outcomes: list[dict]) -> dict[str, float]:
     return {
         "loss_streak": float(streak),
         "avg_time_between_games_hrs": sum(gaps) / len(gaps) if gaps else 24.0,
-        "games_last_24h": float(
-            sum(1 for r in recent_outcomes if r["game_creation"] > cutoff)
-        ),
+        "games_last_24h": float(sum(1 for r in recent_outcomes if r["game_creation"] > cutoff)),
     }
 
 

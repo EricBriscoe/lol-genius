@@ -30,11 +30,13 @@ _live_game_poller = None
 
 
 def _push_sse(event_type: str, data: dict):
-    _sse_events.append({
-        "id": next(_sse_counter),
-        "event": event_type,
-        "data": data,
-    })
+    _sse_events.append(
+        {
+            "id": next(_sse_counter),
+            "event": event_type,
+            "data": data,
+        }
+    )
 
 
 def _set_stage(stage_dict: dict):
@@ -86,12 +88,8 @@ async def distributions(request: Request):
 
         match_age = None
         if age_range:
-            oldest = datetime.fromtimestamp(
-                age_range[0] / 1000, tz=UTC
-            ).isoformat()
-            newest = datetime.fromtimestamp(
-                age_range[1] / 1000, tz=UTC
-            ).isoformat()
+            oldest = datetime.fromtimestamp(age_range[0] / 1000, tz=UTC).isoformat()
+            newest = datetime.fromtimestamp(age_range[1] / 1000, tz=UTC).isoformat()
             match_age = {"oldest": oldest, "newest": newest}
 
         crawl_rate = [
@@ -280,9 +278,7 @@ def _run_training_pipeline(
             return
 
         match_count = (
-            match_ids.nunique()
-            if match_ids is not None and len(match_ids) > 0
-            else len(X)
+            match_ids.nunique() if match_ids is not None and len(match_ids) > 0 else len(X)
         )
 
         train_params = None
@@ -377,9 +373,7 @@ def _run_training_pipeline(
         else:
             X_shap = X
 
-        explain_model(
-            model, X_shap, str(type_dir), database_url=dsn, run_id=actual_run_id
-        )
+        explain_model(model, X_shap, str(type_dir), database_url=dsn, run_id=actual_run_id)
 
         _set_stage(
             {
@@ -498,9 +492,7 @@ async def champion_stats(
                 {
                     **s,
                     "winrate": round(s["wins"] / s["games"], 4) if s["games"] else 0,
-                    "pick_rate": round(s["games"] / total_matches, 4)
-                    if total_matches
-                    else 0,
+                    "pick_rate": round(s["games"] / total_matches, 4) if total_matches else 0,
                     "ban_rate": round(bans / total_matches, 4) if total_matches else 0,
                     "bans": bans,
                     "tags": info.get("tags", []),
@@ -521,9 +513,7 @@ async def champion_stats(
 
 
 @router.get("/predict/lookup")
-async def predict_lookup(
-    request: Request, game_name: str = Query(...), tag_line: str = Query(...)
-):
+async def predict_lookup(request: Request, game_name: str = Query(...), tag_line: str = Query(...)):
     proxy_url = request.app.state.proxy_url
 
     def _lookup():
@@ -607,9 +597,7 @@ async def live_game_start(request: Request):
     except (ValueError, TypeError):
         return JSONResponse({"error": "port must be an integer"}, status_code=400)
     if not (1024 <= port <= 65535):
-        return JSONResponse(
-            {"error": "port must be between 1024 and 65535"}, status_code=400
-        )
+        return JSONResponse({"error": "port must be between 1024 and 65535"}, status_code=400)
     pregame_win_prob = body.get("pregame_win_prob")
     if pregame_win_prob is not None:
         pregame_win_prob = float(pregame_win_prob)

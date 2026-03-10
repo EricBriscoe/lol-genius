@@ -168,9 +168,7 @@ def _enrich_match_participants(
         write_enrichment(db, result)
 
     if results and all(r.bad_request for r in results):
-        raise _BadRequestBatchError(
-            f"All {len(results)} enrichment requests returned 400"
-        )
+        raise _BadRequestBatchError(f"All {len(results)} enrichment requests returned 400")
 
     return all_ok
 
@@ -224,9 +222,7 @@ def drain_unenriched(
 
                 all_ok = True
                 try:
-                    all_ok = _enrich_match_participants(
-                        api, db, participants, match_start_time
-                    )
+                    all_ok = _enrich_match_participants(api, db, participants, match_start_time)
                     consecutive_bad_request = 0
                 except _BadRequestBatchError:
                     consecutive_bad_request += 1
@@ -249,25 +245,21 @@ def drain_unenriched(
                 if _DOCKER:
                     rolling.record()
                     now = time.monotonic()
-                    if (
-                        enriched_count - last_log_count >= 10
-                        or now - last_log_time >= 60
-                    ):
+                    if enriched_count - last_log_count >= 10 or now - last_log_time >= 60:
                         rate_hr = rolling.rate_per_hour()
                         remaining = unenriched_total - enriched_count
                         eta_str = (
-                            f"~{_format_duration(remaining / rate_hr)}"
-                            if rate_hr > 0
-                            else "?"
+                            f"~{_format_duration(remaining / rate_hr)}" if rate_hr > 0 else "?"
                         )
                         used, budget = api.rate_window_usage()
                         log.info(
-                            "Enriching %s | %d done"
-                            " | %.0f/hr | ETA %s"
-                            " | API %d/%d req/2min",
+                            "Enriching %s | %d done | %.0f/hr | ETA %s | API %d/%d req/2min",
                             f"{unenriched_total:,}",
                             enriched_count,
-                            rate_hr, eta_str, used, budget,
+                            rate_hr,
+                            eta_str,
+                            used,
+                            budget,
                         )
                         last_log_count = enriched_count
                         last_log_time = now
@@ -275,9 +267,7 @@ def drain_unenriched(
                     pbar.update(1)
 
             if batch_successes == 0:
-                log.warning(
-                    "Full batch yielded 0 successes; breaking to avoid an infinite loop"
-                )
+                log.warning("Full batch yielded 0 successes; breaking to avoid an infinite loop")
                 break
     finally:
         db.end_batch()
@@ -325,9 +315,7 @@ def _crawl_batch(
             if stopper.should_stop():
                 break
 
-            match_ids = api.get_match_ids(
-                puuid, count=20, queue=420, start_time=match_start_time
-            )
+            match_ids = api.get_match_ids(puuid, count=20, queue=420, start_time=match_start_time)
 
             for match_id in match_ids:
                 if db.match_exists(match_id):
@@ -365,9 +353,7 @@ def _crawl_batch(
                 rolling.record()
 
                 try:
-                    all_ok = _enrich_match_participants(
-                        api, db, participants, match_start_time
-                    )
+                    all_ok = _enrich_match_participants(api, db, participants, match_start_time)
                     consecutive_bad_request = 0
                 except _BadRequestBatchError:
                     consecutive_bad_request += 1
@@ -394,9 +380,14 @@ def _crawl_batch(
                             " | %d new matches (%s total)"
                             " | %.0f/hr | %s"
                             " | API %d/%d req/2min",
-                            puuids_processed, len(puuids),
-                            matches_added, f"{total_added:,}",
-                            rate_hr, eta, used, budget,
+                            puuids_processed,
+                            len(puuids),
+                            matches_added,
+                            f"{total_added:,}",
+                            rate_hr,
+                            eta,
+                            used,
+                            budget,
                         )
                         last_batch_log = now
 
@@ -466,10 +457,12 @@ def crawl_matches(
                 rate_hr = progress_rolling.rate_per_hour()
                 eta = _format_eta(current, rate_hr, target)
                 log.info(
-                    "Progress: %s / %s matches (%.1f%%)"
-                    " | %.0f/hr | %s",
-                    f"{current:,}", f"{target:,}",
-                    current / target * 100, rate_hr, eta,
+                    "Progress: %s / %s matches (%.1f%%) | %.0f/hr | %s",
+                    f"{current:,}",
+                    f"{target:,}",
+                    current / target * 100,
+                    rate_hr,
+                    eta,
                 )
                 last_log_count = current
                 last_log_time = now
@@ -536,9 +529,7 @@ def crawl_matches(
     total = db.get_match_count()
     db.close()
     if stopper.should_stop():
-        log.info(
-            f"Crawl paused. {total:,} matches collected. Run 'crawl' again to resume."
-        )
+        log.info(f"Crawl paused. {total:,} matches collected. Run 'crawl' again to resume.")
     elif config.continuous:
         log.info(f"Target reached ({total:,} matches). Entering maintenance mode.")
         _maintenance_loop(api, database_url, config, ddragon, stopper, match_start_time)
@@ -657,9 +648,7 @@ def _maintenance_loop(
     log.info("Maintenance mode stopped.")
 
 
-def _is_valid_match(
-    match_data: dict, config: Config, patch_override: str | None = None
-) -> bool:
+def _is_valid_match(match_data: dict, config: Config, patch_override: str | None = None) -> bool:
     info = match_data.get("info", {})
 
     if info.get("queueId") != 420:

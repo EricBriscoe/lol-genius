@@ -9,9 +9,7 @@ def get_connection(dsn: str):
     return psycopg2.connect(dsn, cursor_factory=psycopg2.extras.RealDictCursor)
 
 
-def create_pool(
-    dsn: str, minconn: int = 1, maxconn: int = 5
-) -> pg_pool.ThreadedConnectionPool:
+def create_pool(dsn: str, minconn: int = 1, maxconn: int = 5) -> pg_pool.ThreadedConnectionPool:
     return pg_pool.ThreadedConnectionPool(
         minconn, maxconn, dsn, cursor_factory=psycopg2.extras.RealDictCursor
     )

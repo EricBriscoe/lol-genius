@@ -92,9 +92,7 @@ class ProxyClient:
             self._puuid_keys.popitem(last=False)
 
     def get_summoner_by_puuid(self, puuid: str) -> dict | None:
-        data, _ = self._get(
-            f"/summoner/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid)
-        )
+        data, _ = self._get(f"/summoner/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid))
         return data
 
     def get_summoner_by_id(self, summoner_id: str) -> dict | None:
@@ -114,9 +112,7 @@ class ProxyClient:
         return self._get_list(f"/league/by-summoner/{summoner_id}")
 
     def get_league_by_puuid(self, puuid: str) -> list[dict]:
-        return self._get_list(
-            f"/league/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid)
-        )
+        return self._get_list(f"/league/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid))
 
     def get_match_ids(
         self,
@@ -163,9 +159,7 @@ class ProxyClient:
         )
 
     def get_active_game(self, puuid: str) -> dict | None:
-        data, _ = self._get(
-            f"/spectator/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid)
-        )
+        data, _ = self._get(f"/spectator/by-puuid/{puuid}", key_index=self._key_for_puuid(puuid))
         return data
 
     def rate_window_usage(self) -> tuple[int, int]:

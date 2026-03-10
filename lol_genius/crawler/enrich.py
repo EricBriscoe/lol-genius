@@ -38,9 +38,9 @@ class EnrichResult:
     league_raw_json: str | None = None
     mastery_records: list[dict] | None = None
     mastery_raw_entries: list[tuple[str, int, str]] | None = None
-    opportunistic_matches: list[
-        tuple[dict, list, list | None, list | None, str | None]
-    ] = field(default_factory=list)
+    opportunistic_matches: list[tuple[dict, list, list | None, list | None, str | None]] = field(
+        default_factory=list
+    )
     bad_request: bool = False
 
 
@@ -106,9 +106,7 @@ def fetch_enrichment(
                     "mastery_level": e.get("championLevel", 0),
                     "mastery_points": e.get("championPoints", 0),
                     "last_play_time": e.get("lastPlayTime"),
-                    "champion_points_until_next_level": e.get(
-                        "championPointsUntilNextLevel"
-                    ),
+                    "champion_points_until_next_level": e.get("championPointsUntilNextLevel"),
                 }
                 for e in entries
             ]
@@ -147,9 +145,7 @@ def write_enrichment(db: MatchDB, result: EnrichResult) -> None:
             try:
                 db.insert_mastery_raw_json(puuid, champion_id, raw)
             except Exception as e:
-                log.debug(
-                    f"Failed to insert mastery raw JSON for {puuid} champ {champion_id}: {e}"
-                )
+                log.debug(f"Failed to insert mastery raw JSON for {puuid} champ {champion_id}: {e}")
 
     for (
         match_row,
@@ -178,9 +174,7 @@ def _fetch_recent_stats_via_api(
         return None
 
     stat_rows: list[dict] = []
-    opportunistic_matches: list[
-        tuple[dict, list, list | None, list | None, str | None]
-    ] = []
+    opportunistic_matches: list[tuple[dict, list, list | None, list | None, str | None]] = []
 
     for mid in match_ids:
         match = api.get_match(mid)
@@ -195,9 +189,7 @@ def _fetch_recent_stats_via_api(
                 raw_json = json.dumps(match)
             except Exception as e:
                 log.debug(f"Failed to serialize match JSON for {mid}: {e}")
-            opportunistic_matches.append(
-                (match_row, part_rows, bans, objectives, raw_json)
-            )
+            opportunistic_matches.append((match_row, part_rows, bans, objectives, raw_json))
 
         row = normalize_api_match_row(puuid, match)
         if row:

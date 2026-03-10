@@ -173,9 +173,7 @@ def _build_match_features(
                     puuid, exclude_match_id=match_id, before_time_ms=game_creation
                 )
 
-                pf = extract_player_features(
-                    p, rank, mastery, recent, champ_stats, role_dist
-                )
+                pf = extract_player_features(p, rank, mastery, recent, champ_stats, role_dist)
                 cf = extract_champion_features(champion_id, ddragon)
 
                 champ_global = (global_champ_wr or {}).get(champion_id, {})
@@ -207,9 +205,7 @@ def _build_match_features(
     for k, v in red_team.items():
         features[f"red_{k}"] = v
 
-    draft = extract_draft_features(
-        blue_by_pos, red_by_pos, blue_player_feats, red_player_feats
-    )
+    draft = extract_draft_features(blue_by_pos, red_by_pos, blue_player_feats, red_player_feats)
     features.update(draft)
 
     interaction = extract_interaction_features(

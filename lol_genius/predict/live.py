@@ -169,15 +169,10 @@ def _enrich_participant(
     recent_outcomes = db.get_player_recent_outcomes(puuid)
 
     needs_api = (
-        not recent_stats
-        or champ_stats.get("games", 0) == 0
-        or not role_dist
-        or not recent_outcomes
+        not recent_stats or champ_stats.get("games", 0) == 0 or not role_dist or not recent_outcomes
     )
     if needs_api:
-        log.info(
-            f"Incomplete DB data for {puuid[:8]}…, fetching recent matches from API"
-        )
+        log.info(f"Incomplete DB data for {puuid[:8]}…, fetching recent matches from API")
         match_ids = proxy.get_match_ids(puuid, count=LIVE_MATCH_FETCH_COUNT, queue=420)
         if match_ids:
             with ThreadPoolExecutor(max_workers=len(match_ids)) as pool:
@@ -294,9 +289,7 @@ def _build_live_features(
     for k, v in red_team.items():
         features[f"red_{k}"] = v
 
-    draft = extract_draft_features(
-        blue_by_pos, red_by_pos, blue_player_feats, red_player_feats
-    )
+    draft = extract_draft_features(blue_by_pos, red_by_pos, blue_player_feats, red_player_feats)
     features.update(draft)
 
     interaction = extract_interaction_features(
@@ -366,9 +359,7 @@ def predict_live_game(
             finally:
                 thread_db.close()
         else:
-            p["_enrichment"] = _enrich_participant(
-                proxy, db, p["puuid"], p["champion_id"]
-            )
+            p["_enrichment"] = _enrich_participant(proxy, db, p["puuid"], p["champion_id"])
 
     with ThreadPoolExecutor(max_workers=10) as pool:
         list(pool.map(_enrich_player, blue + red))
@@ -404,9 +395,7 @@ def predict_live_game(
                 "game_name": game_name,
                 "tag_line": tag_line,
                 "champion_id": p["champion_id"],
-                "champion_name": champ["name"]
-                if champ
-                else f"Champion {p['champion_id']}",
+                "champion_name": champ["name"] if champ else f"Champion {p['champion_id']}",
                 "team_id": p["team_id"],
                 "position": p.get("team_position", "UNKNOWN"),
                 "rank": rank,
@@ -428,8 +417,7 @@ def predict_live_game(
     return {
         "blue_win_probability": result["blue_win_probability"],
         "top_factors": [
-            {"feature": name, "impact": float(impact)}
-            for name, impact in result["top_factors"]
+            {"feature": name, "impact": float(impact)} for name, impact in result["top_factors"]
         ],
         "participants": participants_info,
         "bans": ban_info,

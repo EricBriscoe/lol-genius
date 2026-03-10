@@ -48,9 +48,7 @@ def evaluate_model(
     log.info(f"  TN={cm[0][0]:5d}  FP={cm[0][1]:5d}")
     log.info(f"  FN={cm[1][0]:5d}  TP={cm[1][1]:5d}")
 
-    report = classification_report(
-        y_test, y_pred, target_names=['Red Win', 'Blue Win']
-    )
+    report = classification_report(y_test, y_pred, target_names=["Red Win", "Blue Win"])
     log.info(f"\nClassification Report:\n{report}")
 
     if model_dir:
@@ -99,9 +97,7 @@ def _compute_time_window_metrics(
         if len(group) < 30:
             continue
         minutes = int(snapshot_seconds // 60)
-        accuracy = float(
-            ((group["y_proba"] >= 0.5).astype(int) == group["y_true"]).mean()
-        )
+        accuracy = float(((group["y_proba"] >= 0.5).astype(int) == group["y_true"]).mean())
         auc = None
         if group["y_true"].nunique() > 1:
             try:
@@ -146,9 +142,7 @@ def _plot_calibration(y_test: pd.Series, y_proba: np.ndarray, model_dir: str) ->
 
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.plot(prob_pred, prob_true, marker="o", label="Model")
-        ax.plot(
-            [0, 1], [0, 1], linestyle="--", color="gray", label="Perfectly calibrated"
-        )
+        ax.plot([0, 1], [0, 1], linestyle="--", color="gray", label="Perfectly calibrated")
         ax.set_xlabel("Mean predicted probability")
         ax.set_ylabel("Fraction of positives")
         ax.set_title("Calibration Curve")

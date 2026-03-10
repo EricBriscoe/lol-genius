@@ -37,9 +37,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="lol-genius dashboard", lifespan=lifespan)
 
-_cors_raw = os.environ.get(
-    "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000"
-)
+_cors_raw = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")
 _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
 
 app.add_middleware(

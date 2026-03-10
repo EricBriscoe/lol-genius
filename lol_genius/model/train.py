@@ -65,20 +65,14 @@ _TEST_SPLIT_RATIO = 0.2
 _RANDOM_SEED = 42
 
 
-def _compute_patch_weights(
-    patches: pd.Series, decay_factor: float = 0.5
-) -> np.ndarray:
-    unique = sorted(
-        patches.unique(), key=lambda p: [int(x) for x in p.split(".")] if p else [0]
-    )
+def _compute_patch_weights(patches: pd.Series, decay_factor: float = 0.5) -> np.ndarray:
+    unique = sorted(patches.unique(), key=lambda p: [int(x) for x in p.split(".")] if p else [0])
     if not unique:
         return np.ones(len(patches))
 
     patch_to_idx = {p: i for i, p in enumerate(unique)}
     latest_idx = len(unique) - 1
-    weights = np.array(
-        [decay_factor ** (latest_idx - patch_to_idx.get(p, 0)) for p in patches]
-    )
+    weights = np.array([decay_factor ** (latest_idx - patch_to_idx.get(p, 0)) for p in patches])
 
     dist = {}
     for p in unique:
@@ -86,9 +80,7 @@ def _compute_patch_weights(
         dist[p] = (
             int(mask.sum()),
             float(
-                weights[mask].iloc[0]
-                if hasattr(weights[mask], "iloc")
-                else weights[mask.values][0]
+                weights[mask].iloc[0] if hasattr(weights[mask], "iloc") else weights[mask.values][0]
             ),
         )
     log.info("Patch weight distribution:")
@@ -157,9 +149,7 @@ def train_model(
     if model_type != "live":
         X = select_features(X, y)
     else:
-        log.info(
-            "Skipping feature selection for live model (hand-curated sparse features)"
-        )
+        log.info("Skipping feature selection for live model (hand-curated sparse features)")
 
     sample_weights = None
     if patches is not None and len(patches) > 0 and patches.nunique() > 1:
@@ -169,9 +159,7 @@ def train_model(
         import pandas as _pd
 
         unique_matches = (
-            _pd.DataFrame(
-                {"match_id": match_ids.values, "game_creation": game_creations.values}
-            )
+            _pd.DataFrame({"match_id": match_ids.values, "game_creation": game_creations.values})
             .drop_duplicates("match_id")
             .sort_values("game_creation")
         )
@@ -222,9 +210,7 @@ def train_model(
         train_match_count = len(X_train)
         test_match_count = len(X_test)
 
-    dtrain = xgb.DMatrix(
-        X_train, label=y_train, feature_names=list(X.columns), weight=w_train
-    )
+    dtrain = xgb.DMatrix(X_train, label=y_train, feature_names=list(X.columns), weight=w_train)
     dtest = xgb.DMatrix(X_test, label=y_test, feature_names=list(X.columns))
 
     t0 = time.monotonic()
@@ -257,20 +243,14 @@ def train_model(
         log.warning("ONNX auto-export failed (onnxmltools may not be installed)", exc_info=True)
 
     log.info(f"Model saved to {model_path / 'model.json'}")
-    log.info(
-        f"Best iteration: {model.best_iteration}, Best score: {model.best_score:.4f}"
-    )
+    log.info(f"Best iteration: {model.best_iteration}, Best score: {model.best_score:.4f}")
     log.info(f"Run ID: {run_id}")
 
     if database_url:
         from lol_genius.db.queries import MatchDB
 
-        patch_min = (
-            str(patches.min()) if patches is not None and len(patches) > 0 else None
-        )
-        patch_max = (
-            str(patches.max()) if patches is not None and len(patches) > 0 else None
-        )
+        patch_min = str(patches.min()) if patches is not None and len(patches) > 0 else None
+        patch_max = str(patches.max()) if patches is not None and len(patches) > 0 else None
         db = MatchDB(database_url)
         try:
             db.insert_model_run(
@@ -406,9 +386,7 @@ def tune_hyperparameters(
 _model_cache: dict[tuple[str, str], tuple[xgb.Booster, list[str]]] = {}
 
 
-def load_model(
-    model_dir: str, model_type: str = "pregame"
-) -> tuple[xgb.Booster, list[str]]:
+def load_model(model_dir: str, model_type: str = "pregame") -> tuple[xgb.Booster, list[str]]:
     cache_key = (model_dir, model_type)
     if cache_key not in _model_cache:
         model_path = Path(model_dir) / model_type
@@ -437,9 +415,7 @@ def load_calibrator(model_dir: str, model_type: str = "pregame") -> dict | None:
         return None
 
 
-def invalidate_model_cache(
-    model_dir: str | None = None, model_type: str | None = None
-) -> None:
+def invalidate_model_cache(model_dir: str | None = None, model_type: str | None = None) -> None:
     if model_dir and model_type:
         _model_cache.pop((model_dir, model_type), None)
     elif model_dir:

@@ -88,13 +88,9 @@ def load_config(config_path: str = "config.yaml") -> Config:
 
     database_url = os.environ.get("DATABASE_URL", raw.get("database_url", ""))
     if database_url and not database_url.startswith("postgresql://"):
-        raise ValueError(
-            f"database_url must start with postgresql://, got: {database_url[:30]}..."
-        )
+        raise ValueError(f"database_url must start with postgresql://, got: {database_url[:30]}...")
     if region not in ROUTING_MAP:
-        raise ValueError(
-            f"Unknown region '{region}'. Valid: {', '.join(sorted(ROUTING_MAP))}"
-        )
+        raise ValueError(f"Unknown region '{region}'. Valid: {', '.join(sorted(ROUTING_MAP))}")
 
     known_tiers = {
         "IRON",
@@ -112,14 +108,10 @@ def load_config(config_path: str = "config.yaml") -> Config:
     divisions = raw.get("target_divisions", ["I", "II", "III", "IV"])
     for t in tiers:
         if t not in known_tiers:
-            raise ValueError(
-                f"Unknown tier '{t}'. Valid: {', '.join(sorted(known_tiers))}"
-            )
+            raise ValueError(f"Unknown tier '{t}'. Valid: {', '.join(sorted(known_tiers))}")
     for d in divisions:
         if d not in valid_divisions:
-            raise ValueError(
-                f"Unknown division '{d}'. Valid: {', '.join(sorted(valid_divisions))}"
-            )
+            raise ValueError(f"Unknown division '{d}'. Valid: {', '.join(sorted(valid_divisions))}")
 
     return Config(
         riot_api_key=api_key,
@@ -138,9 +130,7 @@ def load_config(config_path: str = "config.yaml") -> Config:
         crawl_lookback_days=int(raw.get("crawl_lookback_days", 90)),
         match_count=int(raw.get("match_count", 50000)),
         seed_pages=int(raw.get("seed_pages", 5)),
-        rate_scale=float(
-            os.getenv("LOL_GENIUS_RATE_SCALE", str(raw.get("rate_scale", 1.0)))
-        ),
+        rate_scale=float(os.getenv("LOL_GENIUS_RATE_SCALE", str(raw.get("rate_scale", 1.0)))),
         continuous=raw.get("continuous", True),
         stale_enrichment_hours=int(raw.get("stale_enrichment_hours", 72)),
         ddragon_check_interval=int(raw.get("ddragon_check_interval", 3600)),

@@ -64,9 +64,7 @@ def parse_match(
                 "perks_flex": stat_perks.get("flex", 0),
                 "perks_defense": stat_perks.get("defense", 0),
                 "magic_damage_to_champions": p.get("magicDamageDealtToChampions", 0),
-                "physical_damage_to_champions": p.get(
-                    "physicalDamageDealtToChampions", 0
-                ),
+                "physical_damage_to_champions": p.get("physicalDamageDealtToChampions", 0),
                 "true_damage_to_champions": p.get("trueDamageDealtToChampions", 0),
                 "total_damage_taken": p.get("totalDamageTaken", 0),
                 "damage_self_mitigated": p.get("damageSelfMitigated", 0),

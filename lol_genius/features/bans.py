@@ -14,9 +14,7 @@ def extract_ban_features(
     features["blue_bans_count"] = float(len(blue_bans))
     features["red_bans_count"] = float(len(red_bans))
 
-    blue_banned_ids = {
-        b["champion_id"] for b in blue_bans if b.get("champion_id", 0) > 0
-    }
+    blue_banned_ids = {b["champion_id"] for b in blue_bans if b.get("champion_id", 0) > 0}
     red_banned_ids = {b["champion_id"] for b in red_bans if b.get("champion_id", 0) > 0}
 
     blue_target_count = 0

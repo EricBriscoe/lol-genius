@@ -15,20 +15,64 @@ AP_TAGS = {"Mage", "Support"}
 AD_TAGS = {"Fighter", "Assassin", "Marksman"}
 
 INFINITE_SCALERS: set[str] = {
-    "Nasus", "Veigar", "Senna", "Sion", "Chogath", "Kindred", "Thresh",
-    "Swain", "Smolder", "Belveth", "Syndra", "Draven", "AurelionSol",
-    "Shyvana", "Dog", "Silco",
+    "Nasus",
+    "Veigar",
+    "Senna",
+    "Sion",
+    "Chogath",
+    "Kindred",
+    "Thresh",
+    "Swain",
+    "Smolder",
+    "Belveth",
+    "Syndra",
+    "Draven",
+    "AurelionSol",
+    "Shyvana",
+    "Dog",
+    "Silco",
 }
 
 SCALING_TIERS: dict[str, int] = {
-    "Pantheon": 1, "Draven": 1, "Renekton": 1, "LeeSin": 1, "Elise": 1,
-    "Jayce": 1, "Nidalee": 1, "Olaf": 1, "Darius": 1, "Caitlyn": 2,
-    "Lucian": 2, "Syndra": 2, "Rumble": 2, "Talon": 2, "Zed": 2,
-    "KhaZix": 2, "RekSai": 2, "Hecarim": 2, "Leblanc": 2,
-    "Jinx": 4, "Vayne": 4, "Kogmaw": 4, "Azir": 4, "Ryze": 4,
-    "Fiora": 4, "Camille": 4, "Viktor": 4, "Orianna": 4, "Aphelios": 4,
-    "Kassadin": 5, "Kayle": 5, "Nasus": 5, "Veigar": 5, "Senna": 5,
-    "Sion": 5, "Smolder": 5, "AurelionSol": 5, "Kindred": 5, "Belveth": 5,
+    "Pantheon": 1,
+    "Draven": 1,
+    "Renekton": 1,
+    "LeeSin": 1,
+    "Elise": 1,
+    "Jayce": 1,
+    "Nidalee": 1,
+    "Olaf": 1,
+    "Darius": 1,
+    "Caitlyn": 2,
+    "Lucian": 2,
+    "Syndra": 2,
+    "Rumble": 2,
+    "Talon": 2,
+    "Zed": 2,
+    "KhaZix": 2,
+    "RekSai": 2,
+    "Hecarim": 2,
+    "Leblanc": 2,
+    "Jinx": 4,
+    "Vayne": 4,
+    "Kogmaw": 4,
+    "Azir": 4,
+    "Ryze": 4,
+    "Fiora": 4,
+    "Camille": 4,
+    "Viktor": 4,
+    "Orianna": 4,
+    "Aphelios": 4,
+    "Kassadin": 5,
+    "Kayle": 5,
+    "Nasus": 5,
+    "Veigar": 5,
+    "Senna": 5,
+    "Sion": 5,
+    "Smolder": 5,
+    "AurelionSol": 5,
+    "Kindred": 5,
+    "Belveth": 5,
 }
 
 
@@ -71,9 +115,7 @@ class DataDragon:
             return self._champions
 
         log.info(f"Downloading champion data for patch {version}")
-        resp = httpx.get(
-            f"{BASE_URL}/cdn/{version}/data/en_US/champion.json", timeout=30
-        )
+        resp = httpx.get(f"{BASE_URL}/cdn/{version}/data/en_US/champion.json", timeout=30)
         resp.raise_for_status()
         raw = resp.json()["data"]
 

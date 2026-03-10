@@ -32,9 +32,7 @@ class RiotAPI:
         return self.client.get(url, priority=self.priority)
 
     def get_summoner_by_puuid(self, puuid: str) -> dict | None:
-        return self._get(
-            f"{self.region_url}/lol/summoner/v4/summoners/by-puuid/{puuid}"
-        )
+        return self._get(f"{self.region_url}/lol/summoner/v4/summoners/by-puuid/{puuid}")
 
     def get_summoner_by_id(self, summoner_id: str) -> dict | None:
         return self._get(f"{self.region_url}/lol/summoner/v4/summoners/{summoner_id}")
@@ -51,9 +49,7 @@ class RiotAPI:
         return _coerce_list(result, "get_league_entries")
 
     def get_league_by_summoner(self, summoner_id: str) -> list[dict]:
-        result = self._get(
-            f"{self.region_url}/lol/league/v4/entries/by-summoner/{summoner_id}"
-        )
+        result = self._get(f"{self.region_url}/lol/league/v4/entries/by-summoner/{summoner_id}")
         return _coerce_list(result, "get_league_by_summoner")
 
     def get_league_by_puuid(self, puuid: str) -> list[dict]:
@@ -71,9 +67,7 @@ class RiotAPI:
         params = f"start={start}&count={count}&queue={queue}"
         if start_time is not None:
             params += f"&startTime={start_time}"
-        result = self._get(
-            f"{self.routing_url}/lol/match/v5/matches/by-puuid/{puuid}/ids?{params}"
-        )
+        result = self._get(f"{self.routing_url}/lol/match/v5/matches/by-puuid/{puuid}/ids?{params}")
         return _coerce_list(result, "get_match_ids")
 
     def get_match(self, match_id: str) -> dict | None:

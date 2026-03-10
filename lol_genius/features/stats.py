@@ -28,8 +28,7 @@ def normalize_api_match_row(puuid: str, match: dict) -> dict | None:
         "deaths": player.get("deaths", 0),
         "assists": player.get("assists", 0),
         "total_damage": player.get("totalDamageDealtToChampions", 0),
-        "cs": player.get("totalMinionsKilled", 0)
-        + player.get("neutralMinionsKilled", 0),
+        "cs": player.get("totalMinionsKilled", 0) + player.get("neutralMinionsKilled", 0),
         "vision_score": player.get("visionScore", 0),
         "game_duration": info.get("gameDuration", 1),
         "team_total_dmg": team_total_dmg,
@@ -81,12 +80,8 @@ def aggregate_recent_stats(puuid: str, rows: list[dict]) -> dict | None:
 
         player_total_dmg = r["total_damage"] or 0
         if player_total_dmg > 0:
-            total_magic_dmg_share += (
-                r["magic_damage_to_champions"] or 0
-            ) / player_total_dmg
-            total_phys_dmg_share += (
-                r["physical_damage_to_champions"] or 0
-            ) / player_total_dmg
+            total_magic_dmg_share += (r["magic_damage_to_champions"] or 0) / player_total_dmg
+            total_phys_dmg_share += (r["physical_damage_to_champions"] or 0) / player_total_dmg
 
         total_multikills += (
             (r["double_kills"] or 0)
@@ -96,8 +91,7 @@ def aggregate_recent_stats(puuid: str, rows: list[dict]) -> dict | None:
         )
 
     kda_per_game = [
-        ((r["kills"] or 0) + (r["assists"] or 0)) / max(r["deaths"] or 1, 1)
-        for r in rows
+        ((r["kills"] or 0) + (r["assists"] or 0)) / max(r["deaths"] or 1, 1) for r in rows
     ]
 
     return {
