@@ -17,8 +17,6 @@ const logger = log.scope("lcu-poller");
 
 export type LCUState = "disconnected" | "connected" | "champ_select" | "game_start";
 
-export function getGamePhase(): LCUState { return state; }
-
 const LOCKFILE_POLL_INTERVAL = 5_000;
 const GAMEFLOW_POLL_INTERVAL = 3_000;
 const CHAMP_SELECT_POLL_INTERVAL = 2_000;

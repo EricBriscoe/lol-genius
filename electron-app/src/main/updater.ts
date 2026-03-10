@@ -6,55 +6,20 @@ import { createWriteStream, mkdirSync, existsSync, readFileSync, writeFileSync, 
 import { join } from "path";
 import log from "./log";
 import { safeSend } from "./ipc";
-import { getGamePhase } from "./lcu-client/poller";
 import { clearTimer } from "./timers";
 
 const logger = log.scope("updater");
 
 const UPDATE_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
-const RESTART_POLL_INTERVAL = 30_000;
 let updateTimer: ReturnType<typeof setInterval> | null = null;
-let restartTimer: ReturnType<typeof setInterval> | null = null;
 const modelUpdateInProgress = new Set<string>();
-
-function isUserBusy(): boolean {
-  const phase = getGamePhase();
-  return phase === "champ_select" || phase === "game_start";
-}
-
-function scheduleRestart(win: BrowserWindow): void {
-  if (restartTimer) return;
-
-  const tryRestart = () => {
-    if (isUserBusy()) {
-      logger.info("Deferring auto-restart — user is in game");
-      safeSend(win, "app-update-status", { status: "update_ready" });
-      return;
-    }
-    restartTimer = clearTimer(restartTimer);
-    logger.info("Auto-restarting to install update");
-    safeSend(win, "app-update-status", { status: "restarting" });
-    setTimeout(() => {
-      if (isUserBusy()) {
-        restartTimer = setInterval(tryRestart, RESTART_POLL_INTERVAL);
-        return;
-      }
-      autoUpdater.quitAndInstall(true, true);
-    }, 2000);
-  };
-
-  tryRestart();
-  if (!restartTimer && isUserBusy()) {
-    restartTimer = setInterval(tryRestart, RESTART_POLL_INTERVAL);
-  }
-}
 
 export function setupAppUpdater(win: BrowserWindow): void {
   migrateOldModelLayout();
   cleanStaleStagingDirs();
 
   autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on("checking-for-update", () => {
     safeSend(win, "app-update-status", { status: "checking" });
@@ -73,7 +38,7 @@ export function setupAppUpdater(win: BrowserWindow): void {
   });
 
   autoUpdater.on("update-downloaded", () => {
-    scheduleRestart(win);
+    safeSend(win, "app-update-status", { status: "update_ready" });
   });
 
   autoUpdater.on("error", (err) => {
@@ -101,7 +66,6 @@ export function forceRestart(): void {
 
 export function stopAppUpdateTimer(): void {
   updateTimer = clearTimer(updateTimer);
-  restartTimer = clearTimer(restartTimer);
 }
 
 const MODEL_FILES = [
@@ -197,7 +161,7 @@ export async function checkForModelUpdate(modelType: "live" | "pregame" = "live"
 }
 
 async function doCheckForModelUpdate(modelType: "live" | "pregame"): Promise<boolean> {
-  const tagPattern = modelType === "pregame" ? "pregame" : "live";
+  const tagPattern = modelType;
 
   return new Promise((resolve) => {
     const options = {
