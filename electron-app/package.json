@@ -34,7 +34,7 @@
     "recharts": "^3.8"
   },
   "devDependencies": {
-    "@electron/rebuild": "^3.7",
+    "@electron/rebuild": "^4.0",
     "@types/better-sqlite3": "^7.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
