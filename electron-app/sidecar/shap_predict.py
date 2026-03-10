@@ -31,8 +31,12 @@ def main():
     explainer = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(df)
     sv = shap_values[0] if len(shap_values.shape) > 1 else shap_values
+    base = float(np.asarray(explainer.expected_value).flat[0])
 
-    result = {name: round(float(val), 4) for name, val in zip(feature_names, sv)}
+    result = {
+        "base_value": round(base, 6),
+        "shap_values": {name: round(float(val), 4) for name, val in zip(feature_names, sv)},
+    }
     print(json.dumps(result))
 
 

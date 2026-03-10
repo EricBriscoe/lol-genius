@@ -107,10 +107,10 @@ export default function ChampSelect({ data }: Props) {
         </div>
       </Card>
 
-      {data.top_factors && data.top_factors.length > 0 && (
+      {data.factor_analysis && data.factor_analysis.groups.length > 0 && (
         <Card>
           <h3 className="section-title">Key Factors</h3>
-          <KeyFactors factors={data.top_factors} />
+          <KeyFactors analysis={data.factor_analysis} />
         </Card>
       )}
 

@@ -180,7 +180,7 @@ function startChampSelectPolling(): void {
     }
 
     let probability: number | null = null;
-    let topFactors: { feature: string; impact: number }[] = [];
+    let factorAnalysis: import("../../renderer/types").FactorAnalysis | undefined;
 
     if (isModelLoaded("pregame")) {
       try {
@@ -190,13 +190,13 @@ function startChampSelectPolling(): void {
         lastPregameProb = probability;
         lastPregameSummary = getPregameSummaryFromFeatures(features);
 
-        topFactors = await computeTopFactors(getModelDir("pregame"), features, "pregame");
+        factorAnalysis = await computeTopFactors(getModelDir("pregame"), features, "pregame");
       } catch (e) {
         logger.error("Pregame prediction failed:", e);
       }
     }
 
-    send("champ-select-update", buildChampSelectUpdate(session, probability, topFactors));
+    send("champ-select-update", buildChampSelectUpdate(session, probability, factorAnalysis));
   };
 
   poll();
@@ -206,7 +206,7 @@ function startChampSelectPolling(): void {
 function buildChampSelectUpdate(
   session: ChampSelectSession,
   probability: number | null,
-  topFactors?: { feature: string; impact: number }[],
+  factorAnalysis?: import("../../renderer/types").FactorAnalysis,
 ) {
   const localTeam = session.myTeam[0]?.team ?? 1;
   const isBlue = localTeam === 1;
@@ -228,7 +228,7 @@ function buildChampSelectUpdate(
     is_blue_side: isBlue,
     timer_remaining: session.timer?.adjustedTimeLeftInPhase ?? 0,
     ddragon_version: ddragon.getChampionVersion(),
-    top_factors: topFactors ?? [],
+    factor_analysis: factorAnalysis,
     bans: {
       blue: isBlue ? (session.bans?.myTeamBans ?? []) : (session.bans?.theirTeamBans ?? []),
       red: isBlue ? (session.bans?.theirTeamBans ?? []) : (session.bans?.myTeamBans ?? []),

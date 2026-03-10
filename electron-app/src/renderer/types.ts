@@ -12,13 +12,18 @@ export interface LiveGameUpdate {
   game_ended?: boolean;
   status?: string;
   error?: string;
-  top_factors?: PredictFactor[];
+  factor_analysis?: FactorAnalysis;
   pregame_ready?: boolean;
 }
 
-export interface PredictFactor {
-  feature: string;
-  impact: number;
+export interface GroupedFactor {
+  category: string;
+  impactPct: number;
+}
+
+export interface FactorAnalysis {
+  groups: GroupedFactor[];
+  narrative: string;
 }
 
 export interface ModelInfo {
@@ -57,7 +62,7 @@ export interface ChampSelectUpdate {
   is_blue_side: boolean;
   timer_remaining: number;
   ddragon_version: string;
-  top_factors?: PredictFactor[];
+  factor_analysis?: FactorAnalysis;
   bans: { blue: number[]; red: number[] };
 }
 

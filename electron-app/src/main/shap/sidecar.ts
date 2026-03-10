@@ -6,6 +6,11 @@ import log from "../log";
 
 const logger = log.scope("shap");
 
+export interface ShapResult {
+  baseValue: number;
+  shapValues: Record<string, number>;
+}
+
 let sidecarPath: string | null = null;
 
 function findSidecar(): string | null {
@@ -30,7 +35,7 @@ function findSidecar(): string | null {
 export async function computeShap(
   modelDir: string,
   features: Record<string, number>,
-): Promise<Record<string, number> | null> {
+): Promise<ShapResult | null> {
   const binary = findSidecar();
   if (!binary) return null;
   logger.debug("Sidecar binary:", binary);
@@ -51,7 +56,12 @@ export async function computeShap(
           return;
         }
         try {
-          resolve(JSON.parse(stdout));
+          const parsed = JSON.parse(stdout);
+          if ("base_value" in parsed) {
+            resolve({ baseValue: parsed.base_value, shapValues: parsed.shap_values });
+          } else {
+            resolve({ baseValue: 0, shapValues: parsed });
+          }
         } catch (e) {
           logger.warn("SHAP invalid JSON:", e);
           resolve(null);

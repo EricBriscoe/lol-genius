@@ -300,6 +300,102 @@ POLL_INTERVAL = 15
 MAX_POLL_INTERVAL = 300
 NO_DATA_THRESHOLD = 3
 
+_LIVE_CATEGORY_MAP = {
+    "Draft Advantage": [
+        "scaling_score_diff", "stat_growth_diff",
+        "infinite_scaler_count_diff", "melee_count_diff",
+        "ad_ratio_diff", "avg_champ_wr_diff",
+    ],
+    "Player Skill Gap": [
+        "avg_rank_diff", "rank_spread_diff", "avg_winrate_diff", "avg_mastery_diff",
+        "total_games_diff", "hot_streak_count_diff", "veteran_count_diff",
+        "mastery_level7_count_diff",
+    ],
+    "Laning Phase": [
+        "kill_diff", "cs_diff", "avg_level_diff", "max_level_diff",
+        "blue_kills", "red_kills", "blue_cs", "red_cs", "first_blood_blue",
+        "top_cs_diff", "jg_cs_diff", "mid_cs_diff", "bot_cs_diff", "sup_cs_diff",
+        "top_level_diff", "jg_level_diff", "mid_level_diff", "bot_level_diff", "sup_level_diff",
+        "top_kill_diff", "jg_kill_diff", "mid_kill_diff", "bot_kill_diff", "sup_kill_diff",
+    ],
+    "Objectives": [
+        "dragon_diff", "tower_diff", "blue_barons", "red_barons",
+        "blue_heralds", "red_heralds", "inhibitor_diff", "elder_diff",
+        "first_tower_blue", "first_dragon_blue", "blue_towers", "red_towers",
+        "blue_dragons", "red_dragons", "blue_inhibitors", "red_inhibitors",
+        "blue_elder", "red_elder",
+        "blue_has_soul", "red_has_soul", "blue_soul_point", "red_soul_point",
+    ],
+    "Tempo & Momentum": [
+        "kill_diff_delta", "cs_diff_delta", "tower_diff_delta",
+        "kill_rate_diff", "cs_rate_diff", "dragon_rate_diff",
+        "kill_diff_accel", "recent_kill_share_diff",
+        "kill_lead_erosion", "tower_lead_erosion", "objective_density",
+    ],
+}
+
+_EXCLUDED_FEATURES = {"pregame_blue_win_prob", "game_time_seconds"}
+
+_LIVE_FEATURE_TO_CAT = {}
+for _cat, _feats in _LIVE_CATEGORY_MAP.items():
+    for _f in _feats:
+        _LIVE_FEATURE_TO_CAT[_f] = _cat
+
+
+def _sigmoid(x: float) -> float:
+    import math
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def _build_factor_analysis(
+    base_value: float, shap_dict: dict[str, float]
+) -> dict:
+    total_shap = sum(shap_dict.values())
+    total_log_odds = base_value + total_shap
+    total_prob = _sigmoid(total_log_odds)
+
+    cat_shap: dict[str, float] = {}
+    for feature, shap_val in shap_dict.items():
+        if feature in _EXCLUDED_FEATURES:
+            continue
+        cat = _LIVE_FEATURE_TO_CAT.get(feature)
+        if cat:
+            cat_shap[cat] = cat_shap.get(cat, 0.0) + shap_val
+
+    groups = []
+    for category, group_shap in cat_shap.items():
+        without = total_log_odds - group_shap
+        prob_without = _sigmoid(without)
+        impact_pct = round((total_prob - prob_without) * 100, 1)
+        if abs(impact_pct) >= 0.3:
+            groups.append({"category": category, "impactPct": impact_pct})
+
+    groups.sort(key=lambda g: abs(g["impactPct"]), reverse=True)
+    groups = groups[:5]
+
+    pregame_shap = shap_dict.get("pregame_blue_win_prob", 0)
+    displayed_total = sum(abs(g["impactPct"]) for g in groups)
+
+    if not groups and abs(pregame_shap) > 0.1:
+        narrative = "Prediction largely driven by pregame draft and skill analysis."
+    elif not groups:
+        narrative = "An evenly matched game with no dominant factors."
+    else:
+        top = groups[0]
+        direction = "Blue" if top["impactPct"] > 0 else "Red"
+        magnitude = abs(top["impactPct"])
+        strength = "strong" if magnitude >= 5 else "moderate" if magnitude >= 2 else "slight"
+        narrative = f"{direction} favored by a {strength} {top['category'].lower()} edge"
+        if len(groups) > 1 and abs(groups[1]["impactPct"]) >= 1:
+            second_dir = "blue" if groups[1]["impactPct"] > 0 else "red"
+            verb = "supported" if second_dir == direction.lower() else "offset"
+            narrative += f", {verb} by {groups[1]['category'].lower()}"
+        if displayed_total < abs(pregame_shap) * 15:
+            narrative += ", largely driven by pregame analysis"
+        narrative += "."
+
+    return {"groups": groups, "narrative": narrative}
+
 
 class LiveGamePoller:
     def __init__(
@@ -668,15 +764,12 @@ class LiveGamePoller:
             explainer = self._get_explainer(model)
             shap_values = explainer.shap_values(feat_df)
             sv = shap_values[0] if len(shap_values.shape) > 1 else shap_values
-            top_factors = [
-                {"feature": name, "impact": round(float(imp), 4)}
-                for name, imp in sorted(
-                    zip(feature_names, sv), key=lambda x: abs(x[1]), reverse=True
-                )[:8]
-            ]
+            base_value = float(np.asarray(explainer.expected_value).flat[0])
+            shap_dict = dict(zip(feature_names, (float(v) for v in sv)))
+            factor_analysis = _build_factor_analysis(base_value, shap_dict)
         except Exception:
             log.debug("SHAP computation failed", exc_info=True)
-            top_factors = []
+            factor_analysis = {"groups": [], "narrative": ""}
 
         update = {
             "status": "ok",
@@ -690,7 +783,7 @@ class LiveGamePoller:
             "inhibitor_diff": game_state.get("inhibitor_diff", 0),
             "elder_diff": game_state.get("elder_diff", 0),
             "game_reset": game_reset,
-            "top_factors": top_factors,
+            "factor_analysis": factor_analysis,
             "pregame_ready": pregame_summary is not None,
         }
         with self._lock:

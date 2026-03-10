@@ -1,43 +1,37 @@
-import type { PredictFactor } from "../types";
-import { titleCase } from "../utils";
+import type { FactorAnalysis } from "../types";
 
-const LABELS: Record<string, string> = {
-  kill_diff: "Kill Lead",
-  tower_diff: "Tower Lead",
-  dragon_diff: "Dragon Lead",
-  cs_diff: "CS Lead",
-  inhibitor_diff: "Inhibitor Lead",
-  elder_diff: "Elder Lead",
-  game_time_seconds: "Game Time",
-  avg_rank_diff: "Avg Rank",
-  avg_winrate_diff: "Winrate Adv.",
-  avg_mastery_diff: "Mastery Adv.",
-  avg_champ_wr_diff: "Champ WR Adv.",
-};
+export default function KeyFactors({ analysis }: { analysis: FactorAnalysis }) {
+  const { groups, narrative } = analysis;
+  if (groups.length === 0) return null;
 
-function featureLabel(name: string): string {
-  return LABELS[name] ?? titleCase(name);
-}
+  const maxPct = Math.max(...groups.map((g) => Math.abs(g.impactPct)), 1);
 
-export default function KeyFactors({ factors }: { factors: PredictFactor[] }) {
-  const maxImpact = Math.max(...factors.map((f) => Math.abs(f.impact)), 0.001);
   return (
     <div className="key-factors">
-      {factors.map((f) => {
-        const label = featureLabel(f.feature);
-        const pct = (Math.abs(f.impact) / maxImpact) * 100;
-        const positive = f.impact >= 0;
+      {narrative && <div className="key-factors__narrative">{narrative}</div>}
+      {groups.map((g) => {
+        const pct = (Math.abs(g.impactPct) / maxPct) * 45;
+        const positive = g.impactPct >= 0;
         return (
-          <div key={f.feature} className="key-factors__row">
-            <div className="key-factors__label">{label}</div>
+          <div key={g.category} className="key-factors__row">
+            <div className="key-factors__label">{g.category}</div>
             <div className="key-factors__bar-track">
+              <div className="key-factors__center-line" />
               <div
-                className={`key-factors__bar-fill key-factors__bar-fill--${positive ? "positive" : "negative"}`}
-                style={{ width: `${pct}%` }}
+                className={`key-factors__bar-fill key-factors__bar-fill--${positive ? "blue" : "red"}`}
+                style={{
+                  width: `${pct}%`,
+                  ...(positive
+                    ? { left: "50%" }
+                    : { right: "50%" }),
+                }}
               />
             </div>
-            <div className="key-factors__impact" style={{ color: positive ? "var(--accent)" : "var(--red)" }}>
-              {positive ? "+" : ""}{f.impact.toFixed(3)}
+            <div
+              className="key-factors__impact"
+              style={{ color: positive ? "var(--accent)" : "var(--red)" }}
+            >
+              {positive ? "+" : ""}{g.impactPct.toFixed(1)}%
             </div>
           </div>
         );

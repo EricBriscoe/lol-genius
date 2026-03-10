@@ -122,10 +122,10 @@ export default function App() {
             </>
           )}
 
-          {phase === "in_game" && current?.top_factors && current.top_factors.length > 0 && (
+          {phase === "in_game" && current?.factor_analysis && current.factor_analysis.groups.length > 0 && (
             <Card>
               <h3 className="section-title">Key Factors</h3>
-              <KeyFactors factors={current.top_factors} />
+              <KeyFactors analysis={current.factor_analysis} />
             </Card>
           )}
 

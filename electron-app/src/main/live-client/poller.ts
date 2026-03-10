@@ -134,7 +134,7 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
 
     logger.debug("Probability:", prob);
 
-    const topFactors = await computeTopFactors(modelDir, features, "live");
+    const factorAnalysis = await computeTopFactors(modelDir, features, "live");
 
     const update = {
       status: "ok",
@@ -148,7 +148,7 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
       inhibitor_diff: gameState.inhibitor_diff,
       elder_diff: gameState.elder_diff,
       game_reset: gameReset,
-      top_factors: topFactors,
+      factor_analysis: factorAnalysis,
     };
 
     lastUpdate = update;
