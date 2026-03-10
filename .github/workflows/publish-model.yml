@@ -46,6 +46,16 @@ jobs:
       - run: pip install -e ".[onnx]"
       - name: Export model
         run: lol-genius export-model --format onnx --type ${{ inputs.model_type }}
+      - name: Verify ONNX feature count
+        run: |
+          MODEL_DIR="data/models/${{ inputs.model_type }}"
+          python3 -c "
+          import onnxruntime as ort, json
+          with open('$MODEL_DIR/feature_names.json') as f: names = json.load(f)
+          dim = ort.InferenceSession('$MODEL_DIR/model.onnx').get_inputs()[0].shape[1]
+          assert dim == len(names), f'ONNX input dim ({dim}) != feature_names count ({len(names)})'
+          print(f'Verified: ONNX accepts {dim} features, feature_names has {len(names)}')
+          "
       - name: Generate checksums
         run: |
           MODEL_DIR="data/models/${{ inputs.model_type }}"

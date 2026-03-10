@@ -36,7 +36,8 @@ export function setLogWindow(win: BrowserWindow | null): void {
   logWindow = win;
 }
 
-log.hooks.push((message) => {
+log.hooks.push((message, _transport, transportName) => {
+  if (transportName !== "console") return message;
   if (devMode) {
     safeSend(logWindow, "dev-log", {
       timestamp: new Date().toISOString(),
