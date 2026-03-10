@@ -95,7 +95,7 @@ async def distributions(request: Request):
             match_age = {"oldest": oldest, "newest": newest}
 
         crawl_rate = [
-            {"hour": r["hour"].isoformat(), "count": r["count"]}
+            {"hour": r["hour"].replace(tzinfo=UTC).isoformat(), "count": r["count"]}
             for r in crawl_rate_raw
         ]
 

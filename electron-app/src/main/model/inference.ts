@@ -31,9 +31,19 @@ export async function loadModel(modelDir: string, modelType = "live", force = fa
   if (!existsSync(namesPath)) {
     throw new Error(`Feature names file not found at ${namesPath} — model directory may be incomplete`);
   }
-  const featureNames: string[] = JSON.parse(readFileSync(namesPath, "utf-8"));
+  let featureNames: string[] = JSON.parse(readFileSync(namesPath, "utf-8"));
   if (!Array.isArray(featureNames) || featureNames.length === 0) {
     throw new Error(`Feature names file is empty or invalid at ${namesPath}`);
+  }
+
+  const meta = session.inputMetadata?.[0];
+  if (meta && "shape" in meta && Array.isArray(meta.shape) && typeof meta.shape[1] === "number") {
+    const expectedDim = meta.shape[1] as number;
+    if (featureNames.length !== expectedDim) {
+      throw new Error(
+        `${modelType} model mismatch: feature_names.json has ${featureNames.length} features but model.onnx expects ${expectedDim}. The model release is invalid — please retrain or fix the release assets.`
+      );
+    }
   }
 
   const calPath = join(modelDir, "calibrator.json");

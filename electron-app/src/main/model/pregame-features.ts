@@ -511,11 +511,30 @@ function isPlayerLocal(
 export function getPregameSummaryFromFeatures(
   features: Record<string, number>,
 ): Record<string, number> {
+  const positions = ["top", "jg", "mid", "bot", "sup"] as const;
+  const posValues = (side: string, key: string) =>
+    positions.map((p) => features[`${side}_${p}_${key}`] ?? 0);
+  const mean = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / Math.max(arr.length, 1);
+  const count = (arr: number[], threshold = 0.5) => arr.filter((v) => v > threshold).length;
+
   return {
+    avg_rank_diff: (features.blue_avg_rank ?? 12) - (features.red_avg_rank ?? 12),
+    rank_spread_diff: (features.blue_rank_spread ?? 0) - (features.red_rank_spread ?? 0),
+    avg_winrate_diff: (features.blue_avg_team_winrate ?? 0.5) - (features.red_avg_team_winrate ?? 0.5),
+    avg_mastery_diff: (features.blue_avg_mastery ?? 0) - (features.red_avg_mastery ?? 0),
     melee_count_diff: (features.blue_melee_count ?? 0) - (features.red_melee_count ?? 0),
     ad_ratio_diff: (features.blue_ad_ratio ?? 0) - (features.red_ad_ratio ?? 0),
+    total_games_diff: mean(posValues("blue", "ranked_games")) - mean(posValues("red", "ranked_games")),
+    hot_streak_count_diff: (features.blue_hot_streak_count ?? 0) - (features.red_hot_streak_count ?? 0),
+    veteran_count_diff: count(posValues("blue", "veteran")) - count(posValues("red", "veteran")),
+    mastery_level7_count_diff:
+      posValues("blue", "mastery_level").filter((v) => v >= 7).length
+      - posValues("red", "mastery_level").filter((v) => v >= 7).length,
+    avg_champ_wr_diff: mean(posValues("blue", "champ_winrate")) - mean(posValues("red", "champ_winrate")),
     scaling_score_diff: 0,
-    avg_rank_diff: (features.blue_avg_rank ?? 12) - (features.red_avg_rank ?? 12),
-    avg_winrate_diff: (features.blue_avg_team_winrate ?? 0.5) - (features.red_avg_team_winrate ?? 0.5),
+    max_scaling_score_diff: 0,
+    stat_growth_diff: 0,
+    scaling_tier_diff: 0,
+    infinite_scaler_count_diff: 0,
   };
 }
