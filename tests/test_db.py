@@ -87,9 +87,7 @@ def _make_participant(
     }
 
 
-def _make_match(
-    match_id="NA1_123", blue_win=1, game_creation=1700000000000, game_duration=1800
-):
+def _make_match(match_id="NA1_123", blue_win=1, game_creation=1700000000000, game_duration=1800):
     return {
         "match_id": match_id,
         "game_version": "14.10.1",
@@ -107,9 +105,7 @@ def _make_match(
 def test_schema_tables_exist(test_dsn):
     conn = get_connection(test_dsn)
     cur = conn.cursor()
-    cur.execute(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
-    )
+    cur.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
     table_names = {t["table_name"] for t in cur.fetchall()}
     assert "matches" in table_names
     assert "participants" in table_names
@@ -169,9 +165,7 @@ def test_insert_match_with_bans_and_objectives(db):
         },
     ]
 
-    db.insert_match(
-        match, participants, bans=bans, objectives=objectives, raw_json='{"test": 1}'
-    )
+    db.insert_match(match, participants, bans=bans, objectives=objectives, raw_json='{"test": 1}')
 
     result_bans = db.get_match_bans("NA1_123")
     assert len(result_bans) == 3
@@ -320,12 +314,8 @@ def _insert_match_with_stats(
                 gold_spent=gold_spent if is_target else 10000,
                 time_ccing_others=time_ccing_others if is_target else 10,
                 total_heal=total_heal if is_target else 3000,
-                magic_damage_to_champions=magic_damage_to_champions
-                if is_target
-                else 4000,
-                physical_damage_to_champions=physical_damage_to_champions
-                if is_target
-                else 5000,
+                magic_damage_to_champions=magic_damage_to_champions if is_target else 4000,
+                physical_damage_to_champions=physical_damage_to_champions if is_target else 5000,
                 double_kills=double_kills if is_target else 0,
                 triple_kills=triple_kills if is_target else 0,
                 quadra_kills=quadra_kills if is_target else 0,
@@ -419,9 +409,7 @@ def test_compute_recent_stats_from_db(db):
     assert stats["avg_kills"] == pytest.approx((10 + 4 + 8) / 3)
     assert stats["avg_deaths"] == pytest.approx((2 + 6 + 4) / 3)
     assert stats["avg_assists"] == pytest.approx((8 + 10 + 6) / 3)
-    assert stats["avg_cs_per_min"] == pytest.approx(
-        (200 / 30 + 160 / 20 + 180 / 25) / 3
-    )
+    assert stats["avg_cs_per_min"] == pytest.approx((200 / 30 + 160 / 20 + 180 / 25) / 3)
     assert stats["avg_vision"] == pytest.approx((30 + 20 + 25) / 3)
     assert stats["avg_damage_share"] > 0
     assert stats["avg_wards_placed"] == pytest.approx((12 + 8 + 10) / 3)
@@ -477,15 +465,11 @@ def test_compute_recent_stats_start_time_filter(db):
 
 def test_raw_json_tables(db):
     db.insert_match_raw_json("NA1_999", '{"metadata": {}}')
-    row = db._execute(
-        "SELECT * FROM match_raw_json WHERE match_id = %s", ("NA1_999",)
-    ).fetchone()
+    row = db._execute("SELECT * FROM match_raw_json WHERE match_id = %s", ("NA1_999",)).fetchone()
     assert row["raw_json"] == {"metadata": {}}
 
     db.insert_league_raw_json("p1", '[{"tier": "GOLD"}]')
-    row = db._execute(
-        "SELECT * FROM league_raw_json WHERE puuid = %s", ("p1",)
-    ).fetchone()
+    row = db._execute("SELECT * FROM league_raw_json WHERE puuid = %s", ("p1",)).fetchone()
     assert row["raw_json"] == [{"tier": "GOLD"}]
 
     db.insert_mastery_raw_json("p1", 1, '{"championId": 1}')

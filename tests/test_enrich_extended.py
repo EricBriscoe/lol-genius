@@ -64,9 +64,7 @@ def _make_participant(match_id, i, puuid=None, team_id=None, win=None):
     }
 
 
-def _make_match(
-    match_id="NA1_123", blue_win=1, game_creation=1700000000000, game_duration=1800
-):
+def _make_match(match_id="NA1_123", blue_win=1, game_creation=1700000000000, game_duration=1800):
     return {
         "match_id": match_id,
         "game_version": "14.10.1",
@@ -216,16 +214,12 @@ class TestFetchRecentStatsViaApi:
         api.get_match_ids.return_value = []
 
         _fetch_recent_stats_via_api(api, "p1", start_time=1700000)
-        api.get_match_ids.assert_called_once_with(
-            "p1", count=20, queue=420, start_time=1700000
-        )
+        api.get_match_ids.assert_called_once_with("p1", count=20, queue=420, start_time=1700000)
 
     def test_collects_opportunistic_matches(self):
         api = MagicMock()
         api.get_match_ids.return_value = ["NA1_OPP1"]
-        api.get_match.return_value = _make_riot_match_response(
-            "NA1_OPP1", "opp_p", win=True
-        )
+        api.get_match.return_value = _make_riot_match_response("NA1_OPP1", "opp_p", win=True)
 
         result = _fetch_recent_stats_via_api(api, "opp_p")
 
@@ -237,9 +231,7 @@ class TestFetchRecentStatsViaApi:
     def test_damage_share_calculation(self):
         api = MagicMock()
         api.get_match_ids.return_value = ["NA1_DMG"]
-        api.get_match.return_value = _make_riot_match_response(
-            "NA1_DMG", "dmg_p", win=True
-        )
+        api.get_match.return_value = _make_riot_match_response("NA1_DMG", "dmg_p", win=True)
 
         result = _fetch_recent_stats_via_api(api, "dmg_p")
 
@@ -250,9 +242,7 @@ class TestFetchRecentStatsViaApi:
     def test_cs_per_min_calculation(self):
         api = MagicMock()
         api.get_match_ids.return_value = ["NA1_CS"]
-        api.get_match.return_value = _make_riot_match_response(
-            "NA1_CS", "cs_p", duration=600
-        )
+        api.get_match.return_value = _make_riot_match_response("NA1_CS", "cs_p", duration=600)
 
         result = _fetch_recent_stats_via_api(api, "cs_p")
 
@@ -321,9 +311,7 @@ class TestReEnrichStaleBatch:
     def test_recomputes_stats_from_db(self, db):
         match = _make_match("NA1_STALE")
         participants = [
-            _make_participant(
-                "NA1_STALE", i, puuid="stat_p" if i == 0 else f"filler_{i}"
-            )
+            _make_participant("NA1_STALE", i, puuid="stat_p" if i == 0 else f"filler_{i}")
             for i in range(10)
         ]
         db.insert_match(match, participants)

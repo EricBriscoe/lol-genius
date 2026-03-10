@@ -33,9 +33,7 @@ class TestPuuidKeyMapping:
 
     def test_get_match_ids_stores_puuid_key(self):
         client = ProxyClient("http://localhost:8080")
-        client.client = _FakeHTTPClient(
-            [_mock_response(["NA1_1", "NA1_2"], key_index=1)]
-        )
+        client.client = _FakeHTTPClient([_mock_response(["NA1_1", "NA1_2"], key_index=1)])
         client.get_match_ids("some-puuid")
 
         assert client._puuid_keys["some-puuid"] == 1
@@ -156,9 +154,7 @@ class TestPuuidKeyMapping:
 class TestErrorHandling:
     def test_503_raises_api_key_expired(self):
         client = ProxyClient("http://localhost:8080")
-        client.client = _FakeHTTPClient(
-            [httpx.Response(503, json={"error": "expired"})]
-        )
+        client.client = _FakeHTTPClient([httpx.Response(503, json={"error": "expired"})])
         with pytest.raises(APIKeyExpiredError):
             client.get_summoner_by_puuid("aaa")
 

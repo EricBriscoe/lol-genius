@@ -220,9 +220,12 @@ class TestObjectiveDensity:
     def test_basic(self):
         state = _make_game_state(
             game_time=600.0,
-            blue_dragons=1, red_dragons=0,
-            blue_barons=0, red_barons=0,
-            blue_heralds=1, red_heralds=0,
+            blue_dragons=1,
+            red_dragons=0,
+            blue_barons=0,
+            red_barons=0,
+            blue_heralds=1,
+            red_heralds=0,
         )
         features = build_live_features(state)
         assert features["objective_density"] == pytest.approx(2.0 / 10.0)
@@ -230,9 +233,12 @@ class TestObjectiveDensity:
     def test_many_objectives(self):
         state = _make_game_state(
             game_time=1800.0,
-            blue_dragons=3, red_dragons=2,
-            blue_barons=1, red_barons=0,
-            blue_heralds=1, red_heralds=1,
+            blue_dragons=3,
+            red_dragons=2,
+            blue_barons=1,
+            red_barons=0,
+            blue_heralds=1,
+            red_heralds=1,
         )
         features = build_live_features(state)
         total = 3 + 2 + 1 + 0 + 1 + 1
@@ -280,6 +286,7 @@ class TestItemGoldEstimation:
         assert result["red_estimated_gold"] == 0
         assert result["estimated_gold_diff"] == 0
 
+
 class TestLevelFeatures:
     def test_parse_extracts_levels(self):
         data = _make_live_client_data(blue_level=8, red_level=6)
@@ -300,8 +307,10 @@ class TestLevelFeatures:
 
     def test_level_diff_features(self):
         state = _make_game_state(
-            blue_avg_level=9.0, red_avg_level=7.0,
-            blue_max_level=11, red_max_level=9,
+            blue_avg_level=9.0,
+            red_avg_level=7.0,
+            blue_max_level=11,
+            red_max_level=9,
         )
         features = build_live_features(state)
         assert features["avg_level_diff"] == pytest.approx(2.0)
@@ -335,11 +344,20 @@ class TestChampionScalingTiers:
 
     def test_pregame_diff_stats(self):
         result = compute_pregame_diff_stats(
-            [14.0], [14.0], [0.5], [0.5], [0.0], [0.0], 0, 0, 0, 0,
+            [14.0],
+            [14.0],
+            [0.5],
+            [0.5],
+            [0.0],
+            [0.0],
+            0,
+            0,
+            0,
+            0,
             blue_scaling_tiers=[5, 5, 3, 3, 1],
             red_scaling_tiers=[3, 3, 3, 3, 3],
             blue_infinite_scalers=2,
             red_infinite_scalers=0,
         )
-        assert result["scaling_tier_diff"] == pytest.approx((5+5+3+3+1)/5 - 3.0)
+        assert result["scaling_tier_diff"] == pytest.approx((5 + 5 + 3 + 3 + 1) / 5 - 3.0)
         assert result["infinite_scaler_count_diff"] == pytest.approx(2.0)

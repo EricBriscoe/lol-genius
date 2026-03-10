@@ -173,9 +173,7 @@ class TestRiotHTTPClientGet:
             request=httpx.Request("GET", "https://example.com"),
         )
         with pytest.raises(BadRequestError, match="400 Bad Request"):
-            client.get(
-                "https://na1.api.riotgames.com/lol/league/v4/entries/by-puuid/stale"
-            )
+            client.get("https://na1.api.riotgames.com/lol/league/v4/entries/by-puuid/stale")
 
     def test_400_records_rate_limit(self):
         client = self._make_client()
