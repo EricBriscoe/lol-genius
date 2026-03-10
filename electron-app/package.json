@@ -54,7 +54,11 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "assets/icon.ico"
+      "icon": "assets/icon.ico",
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v6/linux/**",
+        "!node_modules/onnxruntime-node/bin/napi-v6/darwin/**"
+      ]
     },
     "mac": {
       "target": [
@@ -63,7 +67,11 @@
       ],
       "icon": "assets/icon.png",
       "category": "public.app-category.games",
-      "notarize": true
+      "notarize": true,
+      "files": [
+        "!node_modules/onnxruntime-node/bin/napi-v6/linux/**",
+        "!node_modules/onnxruntime-node/bin/napi-v6/win32/**"
+      ]
     },
     "nsis": {
       "oneClick": false,

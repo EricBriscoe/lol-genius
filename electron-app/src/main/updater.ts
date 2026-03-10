@@ -235,19 +235,19 @@ async function doCheckForModelUpdate(modelType: "live" | "pregame"): Promise<boo
           logger.debug(`Found ${modelType} model release:`, modelRelease.tag_name, "assets:", assets.length);
           const checksumAsset = assets.find((a) => a.name === "checksums.sha256");
 
-          let downloaded = 0;
-          try {
-            for (const file of MODEL_FILES) {
-              const asset = assets.find((a) => a.name === file);
-              if (!asset) continue;
-              logger.debug("Downloading:", file);
-              await downloadFile(asset.browser_download_url, join(stagingDir, file));
-              downloaded++;
-            }
+          const modelDownloads = MODEL_FILES.flatMap((file) => {
+            const asset = assets.find((a) => a.name === file);
+            if (!asset) return [];
+            logger.debug("Downloading:", file);
+            return [downloadFile(asset.browser_download_url, join(stagingDir, file))];
+          });
 
-            if (checksumAsset) {
-              await downloadFile(checksumAsset.browser_download_url, join(stagingDir, "checksums.sha256"));
-            }
+          const downloaded = modelDownloads.length;
+          if (checksumAsset) {
+            modelDownloads.push(downloadFile(checksumAsset.browser_download_url, join(stagingDir, "checksums.sha256")));
+          }
+          try {
+            await Promise.all(modelDownloads);
           } catch (e) {
             logger.error(`Download failed for ${modelType} model, cleaning up staging:`, e);
             rmSync(stagingDir, { recursive: true, force: true });
