@@ -66,6 +66,24 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Fetch Data Dragon champion data
+        run: |
+          python -c "
+          import urllib.request, json, os
+          versions = json.loads(urllib.request.urlopen('https://ddragon.leagueoflegends.com/api/versions.json').read())
+          ver = versions[0]
+          raw = json.loads(urllib.request.urlopen(f'https://ddragon.leagueoflegends.com/cdn/{ver}/data/en_US/champion.json').read())['data']
+          champs = {}
+          for c in raw.values():
+              key = int(c['key'])
+              champs[str(key)] = {'id': c['id'], 'name': c['name'], 'key': key, 'tags': c.get('tags', []), 'stats': c.get('stats', {}), 'info': c.get('info', {})}
+          os.makedirs('../data/ddragon', exist_ok=True)
+          with open(f'../data/ddragon/champions_{ver}.json', 'w') as f:
+              json.dump(champs, f)
+          print(f'Saved {len(champs)} champions for patch {ver}')
+          "
+        shell: bash
+
       - name: Build SHAP sidecar
         run: |
           pip install pyinstaller xgboost shap numpy pandas

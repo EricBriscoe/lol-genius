@@ -8,7 +8,7 @@ import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
 import { initPlayerData, shutdownPlayerData } from "./player-data/index";
 import { setupAppUpdater, getModelDir, getModelVersion, invalidateModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer, forceRestart } from "./updater";
 import { safeSend } from "./ipc";
-import { loadChampionData, getChampionVersion } from "./model/ddragon";
+import { loadChampionData, isLoaded as isDdragonLoaded, downloadChampionData, getChampionVersion } from "./model/ddragon";
 import log, { setDevMode, isDevMode, setLogWindow } from "./log";
 import { clearTimer } from "./timers";
 
@@ -145,6 +145,8 @@ app.whenReady().then(async () => {
     : join(app.getAppPath(), "..", "data");
   try {
     loadChampionData(resourcesPath);
+    if (!isDdragonLoaded()) loadChampionData(app.getPath("userData"));
+    if (!isDdragonLoaded()) await downloadChampionData(join(app.getPath("userData"), "ddragon"));
   } catch (e) {
     logger.error("Failed to load champion data:", e);
     safeSend(mainWindow, "connection-status", "ddragon_error");
