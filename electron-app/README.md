@@ -58,8 +58,7 @@ npm run test:watch  # Watch mode
 ```bash
 # Build the SHAP sidecar
 pip install pyinstaller xgboost shap numpy pandas
-pyinstaller --onefile --name shap_predict sidecar/shap_predict.py
-mkdir -p sidecar/dist && cp dist/shap_predict* sidecar/dist/
+pyinstaller --onefile --collect-binaries xgboost --distpath sidecar/dist --name shap_predict sidecar/shap_predict.py
 
 # Build the Electron app
 npx electron-builder --win   # Windows

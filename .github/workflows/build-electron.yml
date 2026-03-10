@@ -69,7 +69,7 @@ jobs:
       - name: Build SHAP sidecar
         run: |
           pip install pyinstaller xgboost shap numpy pandas
-          pyinstaller --onefile --distpath sidecar/dist --name shap_predict sidecar/shap_predict.py
+          pyinstaller --onefile --collect-binaries xgboost --distpath sidecar/dist --name shap_predict sidecar/shap_predict.py
         shell: bash
 
       - name: Build Electron app
