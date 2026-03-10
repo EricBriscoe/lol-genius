@@ -29,6 +29,15 @@ def _get_player_team(all_players: list[dict], name: str) -> str:
     return ""
 
 
+_POSITION_ABBREV = {
+    "TOP": "top",
+    "JUNGLE": "jg",
+    "MIDDLE": "mid",
+    "BOTTOM": "bot",
+    "UTILITY": "sup",
+}
+
+
 def parse_live_client_data(data: dict) -> dict:
     all_players = data.get("allPlayers", [])
     events = data.get("events", {}).get("Events", [])
@@ -36,9 +45,9 @@ def parse_live_client_data(data: dict) -> dict:
 
     blue_kills = red_kills = 0
     blue_cs = red_cs = 0
-    blue_gold = red_gold = 0
     blue_levels: list[int] = []
     red_levels: list[int] = []
+    per_role: dict[str, int | float] = {}
 
     for player in all_players:
         team = player.get("team", "")
@@ -46,17 +55,21 @@ def parse_live_client_data(data: dict) -> dict:
         kills = scores.get("kills", 0)
         cs = scores.get("creepScore", scores.get("cs", 0))
         level = player.get("level", 1)
-        item_gold = sum(item.get("price", 0) for item in player.get("items", []))
+        pos_raw = player.get("position", "")
+        pos = _POSITION_ABBREV.get(pos_raw)
+        side = "blue" if team == "ORDER" else "red"
         if team == "ORDER":
             blue_kills += kills
             blue_cs += cs
-            blue_gold += item_gold
             blue_levels.append(level)
         else:
             red_kills += kills
             red_cs += cs
-            red_gold += item_gold
             red_levels.append(level)
+        if pos:
+            per_role[f"{side}_{pos}_cs"] = cs
+            per_role[f"{side}_{pos}_level"] = level
+            per_role[f"{side}_{pos}_kills"] = kills
 
     blue_dragons = red_dragons = 0
     blue_barons = red_barons = 0
@@ -138,9 +151,6 @@ def parse_live_client_data(data: dict) -> dict:
         "blue_cs": blue_cs,
         "red_cs": red_cs,
         "cs_diff": blue_cs - red_cs,
-        "blue_estimated_gold": blue_gold,
-        "red_estimated_gold": red_gold,
-        "estimated_gold_diff": blue_gold - red_gold,
         "blue_avg_level": sum(blue_levels) / len(blue_levels) if blue_levels else 1.0,
         "red_avg_level": sum(red_levels) / len(red_levels) if red_levels else 1.0,
         "blue_max_level": max(blue_levels) if blue_levels else 1,
@@ -165,6 +175,7 @@ def parse_live_client_data(data: dict) -> dict:
         "first_blood_blue": first_blood_blue,
         "first_tower_blue": first_tower_blue,
         "first_dragon_blue": first_dragon_blue,
+        **per_role,
     }
 
 
@@ -174,12 +185,8 @@ def _snap_to_snapshot(game_time: float) -> int:
     return min(SNAPSHOT_SECONDS, key=lambda t: abs(t - game_time))
 
 
-_NEUTRAL_DEFAULTS = {"pregame_blue_win_prob": 0.5}
-
-
 def build_live_features(
     game_state: dict,
-    pregame_win_prob: float | None = None,
     pregame_summary: dict | None = None,
     *,
     prev_diffs: dict | None = None,
@@ -188,22 +195,16 @@ def build_live_features(
     kill_diff_accel: float = 0.0,
     recent_kill_share_diff: float = 0.0,
 ) -> dict:
-    from lol_genius.features.timeline import (
-        _EARLY_GAME_WINDOW_SECONDS,
-        _LATE_GAME_SECONDS,
-        LIVE_FEATURE_NAMES,
-    )
+    from lol_genius.features.timeline import LIVE_FEATURE_NAMES
 
     summary = pregame_summary or {}
     raw_game_time = game_state.get("game_time", 0)
-    snapped_game_time = _snap_to_snapshot(raw_game_time)
     kill_diff = game_state.get("kill_diff", 0)
     cs_diff = game_state.get("cs_diff", 0)
     tower_diff = game_state.get("tower_diff", 0)
     dragon_diff = game_state.get("dragon_diff", 0)
 
     prev = prev_diffs or {}
-    scaling_score_diff = summary.get("scaling_score_diff", 0.0)
     raw_game_minutes = max(raw_game_time / 60.0, 1.0)
 
     blue_dragons = game_state.get("blue_dragons", 0)
@@ -221,7 +222,7 @@ def build_live_features(
     )
 
     mapping = {
-        "game_time_seconds": snapped_game_time,
+        "game_time_seconds": raw_game_time,
         "blue_kills": game_state.get("blue_kills", 0),
         "red_kills": game_state.get("red_kills", 0),
         "kill_diff": kill_diff,
@@ -247,7 +248,6 @@ def build_live_features(
         "first_blood_blue": game_state.get("first_blood_blue", 0),
         "first_tower_blue": game_state.get("first_tower_blue", 0),
         "first_dragon_blue": game_state.get("first_dragon_blue", 0),
-        "pregame_blue_win_prob": pregame_win_prob if pregame_win_prob is not None else 0.5,
         "avg_rank_diff": summary.get("avg_rank_diff", 0.0),
         "rank_spread_diff": summary.get("rank_spread_diff", 0.0),
         "avg_winrate_diff": summary.get("avg_winrate_diff", 0.0),
@@ -259,12 +259,9 @@ def build_live_features(
         "veteran_count_diff": summary.get("veteran_count_diff", 0.0),
         "mastery_level7_count_diff": summary.get("mastery_level7_count_diff", 0.0),
         "avg_champ_wr_diff": summary.get("avg_champ_wr_diff", 0.0),
-        "scaling_score_diff": scaling_score_diff,
-        "max_scaling_score_diff": summary.get("max_scaling_score_diff", 0.0),
+        "scaling_score_diff": summary.get("scaling_score_diff", 0.0),
         "stat_growth_diff": summary.get("stat_growth_diff", 0.0),
-        "scaling_advantage_realized": scaling_score_diff * (raw_game_time / _LATE_GAME_SECONDS),
-        "early_game_window_closing": scaling_score_diff
-        * max(0.0, 1.0 - raw_game_time / _EARLY_GAME_WINDOW_SECONDS),
+        "infinite_scaler_count_diff": summary.get("infinite_scaler_count_diff", 0.0),
         "kill_diff_delta": kill_diff - prev.get("kill_diff", kill_diff),
         "cs_diff_delta": cs_diff - prev.get("cs_diff", cs_diff),
         "tower_diff_delta": tower_diff - prev.get("tower_diff", tower_diff),
@@ -275,22 +272,28 @@ def build_live_features(
         "dragon_rate_diff": dragon_diff / raw_game_minutes,
         "kill_diff_accel": kill_diff_accel,
         "recent_kill_share_diff": recent_kill_share_diff,
-        "game_phase_early": 1.0 if raw_game_time <= 900 else 0.0,
-        "game_phase_mid": 1.0 if 900 < raw_game_time <= 1500 else 0.0,
-        "game_phase_late": 1.0 if raw_game_time > 1500 else 0.0,
         "objective_density": total_objectives / raw_game_minutes,
-        "blue_estimated_gold": game_state.get("blue_estimated_gold", 0),
-        "red_estimated_gold": game_state.get("red_estimated_gold", 0),
-        "estimated_gold_diff": game_state.get("estimated_gold_diff", 0),
         "avg_level_diff": game_state.get("blue_avg_level", 1.0)
         - game_state.get("red_avg_level", 1.0),
         "max_level_diff": game_state.get("blue_max_level", 1) - game_state.get("red_max_level", 1),
-        "scaling_tier_x_time": summary.get("scaling_tier_diff", 0.0)
-        * (raw_game_time / _LATE_GAME_SECONDS),
-        "infinite_scaler_x_time": summary.get("infinite_scaler_count_diff", 0.0)
-        * (raw_game_time / _LATE_GAME_SECONDS),
+        "blue_has_soul": 1.0 if blue_dragons >= 4 else 0.0,
+        "red_has_soul": 1.0 if red_dragons >= 4 else 0.0,
+        "blue_soul_point": 1.0 if blue_dragons >= 3 else 0.0,
+        "red_soul_point": 1.0 if red_dragons >= 3 else 0.0,
     }
-    return {col: mapping.get(col, _NEUTRAL_DEFAULTS.get(col, 0)) for col in LIVE_FEATURE_NAMES}
+
+    for pos in ("top", "jg", "mid", "bot", "sup"):
+        mapping[f"{pos}_cs_diff"] = float(
+            game_state.get(f"blue_{pos}_cs", 0) - game_state.get(f"red_{pos}_cs", 0)
+        )
+        mapping[f"{pos}_level_diff"] = float(
+            game_state.get(f"blue_{pos}_level", 1) - game_state.get(f"red_{pos}_level", 1)
+        )
+        mapping[f"{pos}_kill_diff"] = float(
+            game_state.get(f"blue_{pos}_kills", 0) - game_state.get(f"red_{pos}_kills", 0)
+        )
+
+    return {col: mapping.get(col, 0) for col in LIVE_FEATURE_NAMES}
 
 
 POLL_INTERVAL = 15
@@ -305,7 +308,6 @@ class LiveGamePoller:
         port: int,
         model_dir: str,
         push_sse_fn,
-        pregame_win_prob: float | None = None,
         dsn: str | None = None,
         proxy_url: str | None = None,
         ddragon_cache: str | None = None,
@@ -314,7 +316,6 @@ class LiveGamePoller:
         self.port = port
         self.model_dir = model_dir
         self._push_sse = push_sse_fn
-        self._pregame_win_prob = pregame_win_prob
         self._dsn = dsn
         self._proxy_url = proxy_url
         self._ddragon_cache = ddragon_cache
@@ -362,7 +363,6 @@ class LiveGamePoller:
                 "current": self.current,
                 "history": list(self.history),
                 "status": self.status,
-                "pregame_win_prob": self._pregame_win_prob,
             }
 
     def _enrich_pregame(self, all_players: list[dict]) -> None:
@@ -602,7 +602,6 @@ class LiveGamePoller:
             pregame_summary = self._pregame_summary
         features = build_live_features(
             game_state,
-            self._pregame_win_prob,
             pregame_summary,
             prev_diffs=self._prev_diffs,
             peak_kill_diff=peak_kill_diff,
@@ -648,7 +647,7 @@ class LiveGamePoller:
             else:
                 log.warning("Missing %d features: %s", len(missing), missing[:5])
             for col in missing:
-                feat_df[col] = _NEUTRAL_DEFAULTS.get(col, 0.0)
+                feat_df[col] = 0.0
         feat_df = feat_df[feature_names]
 
         dmat = xgb.DMatrix(feat_df, feature_names=feature_names)
@@ -659,6 +658,9 @@ class LiveGamePoller:
         cal = load_calibrator(self.model_dir, "live")
         if cal is None:
             log.warning("No live calibrator found — predictions are uncalibrated")
+        elif cal.get("method") == "platt":
+            a, b = cal["a"], cal["b"]
+            prob = float(1.0 / (1.0 + np.exp(-(a * prob + b))))
         else:
             prob = float(np.interp(prob, cal["x_thresholds"], cal["y_thresholds"]))
 

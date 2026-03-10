@@ -1,4 +1,4 @@
-import { SNAPSHOT_SECONDS, LIVE_FEATURE_NAMES, LATE_GAME_SECONDS, EARLY_GAME_WINDOW_SECONDS } from "./constants";
+import { SNAPSHOT_SECONDS, LIVE_FEATURE_NAMES } from "./constants";
 
 interface AllGameData {
   allPlayers?: Player[];
@@ -18,6 +18,7 @@ interface Player {
   scores?: { kills?: number; creepScore?: number; cs?: number };
   items?: ItemData[];
   level?: number;
+  position?: string;
 }
 
 interface GameEvent {
@@ -54,13 +55,11 @@ export interface GameState {
   first_blood_blue: number;
   first_tower_blue: number;
   first_dragon_blue: number;
-  blue_estimated_gold: number;
-  red_estimated_gold: number;
-  estimated_gold_diff: number;
   blue_avg_level: number;
   red_avg_level: number;
   blue_max_level: number;
   red_max_level: number;
+  [key: `${"blue" | "red"}_${"top" | "jg" | "mid" | "bot" | "sup"}_${"cs" | "level" | "kills"}`]: number;
 }
 
 function getPlayerTeam(allPlayers: Player[], name: string): string {
@@ -77,10 +76,14 @@ export function parseLiveClientData(data: AllGameData): GameState {
   const events = data.events?.Events ?? [];
   const gameTime = data.gameData?.gameTime ?? 0;
 
+  const POSITION_ABBREV: Record<string, string> = {
+    TOP: "top", JUNGLE: "jg", MIDDLE: "mid", BOTTOM: "bot", UTILITY: "sup",
+  };
+
   let blueKills = 0, redKills = 0, blueCs = 0, redCs = 0;
-  let blueGold = 0, redGold = 0;
   const blueLevels: number[] = [];
   const redLevels: number[] = [];
+  const perRole: Record<string, number> = {};
 
   for (const player of allPlayers) {
     const team = player.team ?? "";
@@ -88,17 +91,21 @@ export function parseLiveClientData(data: AllGameData): GameState {
     const kills = scores.kills ?? 0;
     const cs = scores.creepScore ?? scores.cs ?? 0;
     const level = player.level ?? 1;
-    const itemGold = (player.items ?? []).reduce((sum, item) => sum + (item.price ?? 0), 0);
+    const side = team === "ORDER" ? "blue" : "red";
+    const pos = POSITION_ABBREV[player.position ?? ""];
     if (team === "ORDER") {
       blueKills += kills;
       blueCs += cs;
-      blueGold += itemGold;
       blueLevels.push(level);
     } else {
       redKills += kills;
       redCs += cs;
-      redGold += itemGold;
       redLevels.push(level);
+    }
+    if (pos) {
+      perRole[`${side}_${pos}_cs`] = cs;
+      perRole[`${side}_${pos}_level`] = level;
+      perRole[`${side}_${pos}_kills`] = kills;
     }
   }
 
@@ -171,14 +178,12 @@ export function parseLiveClientData(data: AllGameData): GameState {
     first_blood_blue: firstBloodBlue,
     first_tower_blue: firstTowerBlue,
     first_dragon_blue: firstDragonBlue,
-    blue_estimated_gold: blueGold,
-    red_estimated_gold: redGold,
-    estimated_gold_diff: blueGold - redGold,
     blue_avg_level: blueAvgLevel,
     red_avg_level: redAvgLevel,
     blue_max_level: blueMaxLevel,
     red_max_level: redMaxLevel,
-  };
+    ...perRole,
+  } as GameState;
 }
 
 export function snapToSnapshot(gameTime: number): number {
@@ -202,21 +207,17 @@ export interface MomentumState {
 export function buildLiveFeatures(
   gameState: GameState,
   momentum: MomentumState,
-  pregameProb = 0.5,
   pregameSummary?: Record<string, number>,
 ): Record<string, number> {
   const rawGameTime = gameState.game_time;
-  const gameTime = snapToSnapshot(rawGameTime);
   const killDiff = gameState.kill_diff;
   const csDiff = gameState.cs_diff;
   const towerDiff = gameState.tower_diff;
   const dragonDiff = gameState.dragon_diff;
   const gameMinutes = Math.max(rawGameTime / 60, 1);
-  const timeNorm = rawGameTime / LATE_GAME_SECONDS;
-  const scalingScoreDiff = pregameSummary?.scaling_score_diff ?? 0;
 
   const mapping: Record<string, number> = {
-    game_time_seconds: gameTime,
+    game_time_seconds: rawGameTime,
     blue_kills: gameState.blue_kills,
     red_kills: gameState.red_kills,
     kill_diff: killDiff,
@@ -242,7 +243,6 @@ export function buildLiveFeatures(
     first_blood_blue: gameState.first_blood_blue,
     first_tower_blue: gameState.first_tower_blue,
     first_dragon_blue: gameState.first_dragon_blue,
-    pregame_blue_win_prob: pregameProb,
     avg_rank_diff: pregameSummary?.avg_rank_diff ?? 0,
     rank_spread_diff: pregameSummary?.rank_spread_diff ?? 0,
     avg_winrate_diff: pregameSummary?.avg_winrate_diff ?? 0,
@@ -254,13 +254,9 @@ export function buildLiveFeatures(
     veteran_count_diff: pregameSummary?.veteran_count_diff ?? 0,
     mastery_level7_count_diff: pregameSummary?.mastery_level7_count_diff ?? 0,
     avg_champ_wr_diff: pregameSummary?.avg_champ_wr_diff ?? 0,
-    scaling_score_diff: scalingScoreDiff,
-    max_scaling_score_diff: pregameSummary?.max_scaling_score_diff ?? 0,
+    scaling_score_diff: pregameSummary?.scaling_score_diff ?? 0,
     stat_growth_diff: pregameSummary?.stat_growth_diff ?? 0,
-    scaling_tier_diff: pregameSummary?.scaling_tier_diff ?? 0,
     infinite_scaler_count_diff: pregameSummary?.infinite_scaler_count_diff ?? 0,
-    scaling_advantage_realized: scalingScoreDiff * timeNorm,
-    early_game_window_closing: scalingScoreDiff * Math.max(0, 1 - rawGameTime / EARLY_GAME_WINDOW_SECONDS),
     kill_diff_delta: momentum.prevDiffs
       ? killDiff - momentum.prevDiffs.kill_diff : 0,
     cs_diff_delta: momentum.prevDiffs
@@ -274,20 +270,23 @@ export function buildLiveFeatures(
     dragon_rate_diff: dragonDiff / gameMinutes,
     kill_diff_accel: momentum.killDiffAccel,
     recent_kill_share_diff: momentum.recentKillShareDiff,
-    game_phase_early: rawGameTime <= 900 ? 1.0 : 0.0,
-    game_phase_mid: rawGameTime > 900 && rawGameTime <= 1500 ? 1.0 : 0.0,
-    game_phase_late: rawGameTime > 1500 ? 1.0 : 0.0,
     objective_density: (gameState.blue_dragons + gameState.red_dragons
       + gameState.blue_barons + gameState.red_barons
       + gameState.blue_heralds + gameState.red_heralds) / gameMinutes,
-    blue_estimated_gold: gameState.blue_estimated_gold,
-    red_estimated_gold: gameState.red_estimated_gold,
-    estimated_gold_diff: gameState.estimated_gold_diff,
     avg_level_diff: gameState.blue_avg_level - gameState.red_avg_level,
     max_level_diff: gameState.blue_max_level - gameState.red_max_level,
-    scaling_tier_x_time: (pregameSummary?.scaling_tier_diff ?? 0) * timeNorm,
-    infinite_scaler_x_time: (pregameSummary?.infinite_scaler_count_diff ?? 0) * timeNorm,
+    blue_has_soul: gameState.blue_dragons >= 4 ? 1.0 : 0.0,
+    red_has_soul: gameState.red_dragons >= 4 ? 1.0 : 0.0,
+    blue_soul_point: gameState.blue_dragons >= 3 ? 1.0 : 0.0,
+    red_soul_point: gameState.red_dragons >= 3 ? 1.0 : 0.0,
   };
+
+  for (const pos of ["top", "jg", "mid", "bot", "sup"]) {
+    const gs = gameState as Record<string, number>;
+    mapping[`${pos}_cs_diff`] = (gs[`blue_${pos}_cs`] ?? 0) - (gs[`red_${pos}_cs`] ?? 0);
+    mapping[`${pos}_level_diff`] = (gs[`blue_${pos}_level`] ?? 1) - (gs[`red_${pos}_level`] ?? 1);
+    mapping[`${pos}_kill_diff`] = (gs[`blue_${pos}_kills`] ?? 0) - (gs[`red_${pos}_kills`] ?? 0);
+  }
 
   const result: Record<string, number> = {};
   for (const col of LIVE_FEATURE_NAMES) {

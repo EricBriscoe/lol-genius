@@ -1,8 +1,5 @@
 export const SNAPSHOT_SECONDS = [300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 3000];
 
-export const LATE_GAME_SECONDS = 1800.0;
-export const EARLY_GAME_WINDOW_SECONDS = 1500.0;
-
 export const TIMELINE_FEATURE_NAMES = [
   "game_time_seconds",
   "blue_kills",
@@ -45,15 +42,8 @@ const PREGAME_SUMMARY_COLS = [
   "mastery_level7_count_diff",
   "avg_champ_wr_diff",
   "scaling_score_diff",
-  "max_scaling_score_diff",
   "stat_growth_diff",
-  "scaling_tier_diff",
   "infinite_scaler_count_diff",
-];
-
-const SCALING_INTERACTION_COLS = [
-  "scaling_advantage_realized",
-  "early_game_window_closing",
 ];
 
 const MOMENTUM_COLS = [
@@ -70,16 +60,7 @@ const TEMPORAL_COLS = [
   "dragon_rate_diff",
   "kill_diff_accel",
   "recent_kill_share_diff",
-  "game_phase_early",
-  "game_phase_mid",
-  "game_phase_late",
   "objective_density",
-];
-
-const GOLD_ESTIMATION_COLS = [
-  "blue_estimated_gold",
-  "red_estimated_gold",
-  "estimated_gold_diff",
 ];
 
 const LEVEL_COLS = [
@@ -87,19 +68,25 @@ const LEVEL_COLS = [
   "max_level_diff",
 ];
 
-const CHAMPION_SCALING_COLS = [
-  "scaling_tier_x_time",
-  "infinite_scaler_x_time",
+const DRAGON_SOUL_COLS = [
+  "blue_has_soul",
+  "red_has_soul",
+  "blue_soul_point",
+  "red_soul_point",
 ];
+
+const POSITIONS = ["top", "jg", "mid", "bot", "sup"] as const;
+const STATS = ["cs", "level", "kill"] as const;
+const PER_ROLE_COLS = POSITIONS.flatMap(
+  (pos) => STATS.map((stat) => `${pos}_${stat}_diff`),
+);
 
 export const LIVE_FEATURE_NAMES = [
   ...TIMELINE_FEATURE_NAMES,
-  "pregame_blue_win_prob",
   ...PREGAME_SUMMARY_COLS,
-  ...SCALING_INTERACTION_COLS,
   ...MOMENTUM_COLS,
   ...TEMPORAL_COLS,
-  ...GOLD_ESTIMATION_COLS,
   ...LEVEL_COLS,
-  ...CHAMPION_SCALING_COLS,
+  ...DRAGON_SOUL_COLS,
+  ...PER_ROLE_COLS,
 ];

@@ -53,7 +53,6 @@ const FEATURE_LABEL_OVERRIDES: Record<string, string> = {
   cs_diff: "CS Lead",
   inhibitor_diff: "Inhibitor Lead",
   elder_diff: "Elder Lead",
-  pregame_blue_win_prob: "Pregame Prediction",
   game_time_seconds: "Game Time",
   avg_rank_diff: "Avg Rank",
   avg_winrate_diff: "Winrate Adv.",

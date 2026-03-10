@@ -8,7 +8,6 @@ describe("snapToSnapshot", () => {
   });
 
   it("snaps to nearest when between two snapshots", () => {
-    // 450 is exactly between 300 and 600 — iterates forward, dist=150 ties with 300 but doesn't beat it
     expect(snapToSnapshot(450)).toBe(300);
     expect(snapToSnapshot(451)).toBe(600);
   });
@@ -122,7 +121,6 @@ describe("buildLiveFeatures", () => {
     blue_inhibitors: 0, red_inhibitors: 0, inhibitor_diff: 0,
     blue_elder: 0, red_elder: 0, elder_diff: 0,
     first_blood_blue: 1, first_tower_blue: 1, first_dragon_blue: 1,
-    blue_estimated_gold: 5000, red_estimated_gold: 4500, estimated_gold_diff: 500,
     blue_avg_level: 6.0, red_avg_level: 5.0, blue_max_level: 7, red_max_level: 6,
   };
 
@@ -159,27 +157,39 @@ describe("buildLiveFeatures", () => {
   it("guards against division by zero with small game time", () => {
     const earlyState: GameState = { ...baseState, game_time: 0 };
     const features = buildLiveFeatures(earlyState, momentum);
-    // game_time=0, gameMinutes = max(0/60, 1) = 1, kill_rate_diff = 3/1
     expect(features.kill_rate_diff).toBeCloseTo(3.0);
   });
 
   it("computes derived momentum values correctly", () => {
     const features = buildLiveFeatures(baseState, momentum);
-    expect(features.kill_diff_delta).toBe(1); // 3 - 2
-    expect(features.cs_diff_delta).toBe(5); // 20 - 15
-    expect(features.tower_diff_delta).toBe(1); // 1 - 0
-    expect(features.kill_lead_erosion).toBe(1); // max(4, 3) - 3
-    expect(features.tower_lead_erosion).toBe(0); // max(1, 1) - 1
+    expect(features.kill_diff_delta).toBe(1);
+    expect(features.cs_diff_delta).toBe(5);
+    expect(features.tower_diff_delta).toBe(1);
+    expect(features.kill_lead_erosion).toBe(1);
+    expect(features.tower_lead_erosion).toBe(0);
     expect(features.kill_diff_accel).toBe(0.5);
     expect(features.recent_kill_share_diff).toBe(0.2);
-    // kill_rate_diff = 3 / (900/60) = 3 / 15 = 0.2
     expect(features.kill_rate_diff).toBeCloseTo(0.2);
+  });
+
+  it("uses raw game time not snapped", () => {
+    const features = buildLiveFeatures(baseState, momentum);
+    expect(features.game_time_seconds).toBe(900);
+  });
+
+  it("computes dragon soul features", () => {
+    const soulState: GameState = { ...baseState, blue_dragons: 4, red_dragons: 3 };
+    const features = buildLiveFeatures(soulState, momentum);
+    expect(features.blue_has_soul).toBe(1.0);
+    expect(features.red_has_soul).toBe(0.0);
+    expect(features.blue_soul_point).toBe(1.0);
+    expect(features.red_soul_point).toBe(1.0);
   });
 });
 
 describe("constants sanity", () => {
   it("LIVE_FEATURE_NAMES has expected count", () => {
-    expect(LIVE_FEATURE_NAMES.length).toBe(66);
+    expect(LIVE_FEATURE_NAMES.length).toBe(72);
   });
 
   it("SNAPSHOT_SECONDS is sorted ascending", () => {

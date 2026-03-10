@@ -334,13 +334,17 @@ def train(ctx, tune, live, notes):
 
     from lol_genius.model.train import train_model, tune_hyperparameters
 
+    patch_decay = 0.85
     if tune:
         click.echo("Running hyperparameter tuning...")
-        best_params = tune_hyperparameters(X, y)
+        best_params = tune_hyperparameters(X, y, patches=patches)
+        if "patch_decay" in best_params:
+            patch_decay = best_params.pop("patch_decay")
         click.echo(f"Best params: {best_params}")
 
     train_kwargs = dict(
         patches=patches,
+        patch_decay=patch_decay,
         timestamps=timestamps,
         database_url=config.database_url,
         model_type=model_type,

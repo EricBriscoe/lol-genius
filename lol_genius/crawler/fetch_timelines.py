@@ -10,12 +10,36 @@ log = logging.getLogger(__name__)
 BLUE_TEAM_ID = 100
 RED_TEAM_ID = 200
 
+_POSITION_ABBREV = {
+    "TOP": "top",
+    "JUNGLE": "jg",
+    "MIDDLE": "mid",
+    "BOTTOM": "bot",
+    "UTILITY": "sup",
+}
+
+_POSITIONS = list(_POSITION_ABBREV.values())
+_SIDES = ["blue", "red"]
+
 
 def _participant_team(participant_id: int) -> int:
     return BLUE_TEAM_ID if participant_id <= 5 else RED_TEAM_ID
 
 
-def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
+def _empty_per_role() -> dict:
+    out = {}
+    for side in _SIDES:
+        for pos in _POSITIONS:
+            out[f"{side}_{pos}_cs"] = 0
+            out[f"{side}_{pos}_level"] = 1
+            out[f"{side}_{pos}_kills"] = 0
+    return out
+
+
+def extract_timeline_snapshots(
+    timeline_data: dict,
+    position_map: dict[int, tuple[str, str]] | None = None,
+) -> list[dict]:
     frames = timeline_data.get("info", {}).get("frames", [])
     if not frames:
         return []
@@ -43,6 +67,8 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
         blue_cs = red_cs = 0
         blue_levels: list[int] = []
         red_levels: list[int] = []
+        per_role = _empty_per_role()
+
         for pid_str, pframe in snap_frame.get("participantFrames", {}).items():
             pid = int(pid_str)
             gold = pframe.get("totalGold", 0)
@@ -57,6 +83,11 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
                 red_cs += cs
                 red_levels.append(level)
 
+            if position_map and pid in position_map:
+                side, pos = position_map[pid]
+                per_role[f"{side}_{pos}_cs"] = cs
+                per_role[f"{side}_{pos}_level"] = level
+
         blue_kills = red_kills = 0
         blue_towers = red_towers = 0
         blue_dragons = red_dragons = 0
@@ -66,6 +97,7 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
         blue_elder = red_elder = 0
         first_blood_blue = first_tower_blue = first_dragon_blue = 0
         first_blood_set = first_tower_set = first_dragon_set = False
+        kills_by_pid: dict[int, int] = {}
 
         for event in all_events:
             if event["timestamp"] > snap_ms:
@@ -76,6 +108,7 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
             if etype == "CHAMPION_KILL":
                 killer_id = event.get("killerId", 0)
                 if killer_id > 0:
+                    kills_by_pid[killer_id] = kills_by_pid.get(killer_id, 0) + 1
                     if _participant_team(killer_id) == 100:
                         blue_kills += 1
                     else:
@@ -141,6 +174,12 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
                     else:
                         red_heralds += 1
 
+        if position_map:
+            for pid, k in kills_by_pid.items():
+                if pid in position_map:
+                    side, pos = position_map[pid]
+                    per_role[f"{side}_{pos}_kills"] = k
+
         snapshots.append(
             {
                 "snapshot_seconds": snap_sec,
@@ -169,14 +208,45 @@ def extract_timeline_snapshots(timeline_data: dict) -> list[dict]:
                 "first_blood_blue": first_blood_blue,
                 "first_tower_blue": first_tower_blue,
                 "first_dragon_blue": first_dragon_blue,
+                **per_role,
             }
         )
 
     return snapshots
 
 
+def _build_position_map(
+    db, match_id: str, timeline_data: dict
+) -> dict[int, tuple[str, str]] | None:
+    tl_participants = timeline_data.get("info", {}).get("participants", [])
+    if not tl_participants:
+        return None
+    puuid_to_pid = {p["puuid"]: p["participantId"] for p in tl_participants if "puuid" in p}
+    if not puuid_to_pid:
+        return None
+
+    db_rows = db.get_participants_for_match(match_id)
+    if not db_rows:
+        return None
+
+    pid_map: dict[int, tuple[str, str]] = {}
+    for row in db_rows:
+        puuid = row.get("puuid")
+        pos_raw = row.get("team_position", "")
+        pos = _POSITION_ABBREV.get(pos_raw)
+        if not puuid or pos is None:
+            continue
+        pid = puuid_to_pid.get(puuid)
+        if pid is None:
+            continue
+        side = "blue" if pid <= 5 else "red"
+        pid_map[pid] = (side, pos)
+    return pid_map if pid_map else None
+
+
 def _process_timeline(db, match_id: str, timeline: dict) -> bool:
-    snapshots = extract_timeline_snapshots(timeline)
+    position_map = _build_position_map(db, match_id, timeline)
+    snapshots = extract_timeline_snapshots(timeline, position_map)
     if not snapshots:
         return False
     db.save_timeline_snapshots(match_id, snapshots)
