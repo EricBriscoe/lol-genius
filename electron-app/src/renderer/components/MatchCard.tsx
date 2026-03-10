@@ -100,7 +100,7 @@ export default function MatchCard({ match, ddragonVersion }: { match: MatchRow; 
         <div className="match-card__items">
           {items.map((id, i) => (
             <div key={i} className="match-card__item-slot">
-              {id != null && id > 0 && (
+              {id != null && id > 0 && ddragonVersion && (
                 <img src={itemIconUrl(id, ddragonVersion)} alt="" onError={hideOnImgError} />
               )}
             </div>
