@@ -1,6 +1,6 @@
 import log from "electron-log/main";
 import { app } from "electron";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { writeFileSync } from "fs";
 import { join } from "path";
 import { safeSend } from "./ipc";
 import type { BrowserWindow } from "electron";
@@ -14,18 +14,6 @@ let logWindow: BrowserWindow | null = null;
 
 function getPrefsPath(): string {
   return join(app.getPath("userData"), "dev-mode.json");
-}
-
-export function loadDevModePreference(): boolean {
-  try {
-    const p = getPrefsPath();
-    if (existsSync(p)) {
-      return JSON.parse(readFileSync(p, "utf-8")).enabled === true;
-    }
-  } catch (e) {
-    log.warn("Failed to read dev-mode preference:", e);
-  }
-  return false;
 }
 
 export function setDevMode(enabled: boolean): void {

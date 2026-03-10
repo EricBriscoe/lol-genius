@@ -8,7 +8,7 @@ import { initPlayerData, shutdownPlayerData } from "./player-data/index";
 import { setupAppUpdater, getModelDir, getModelVersion, invalidateModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer, forceRestart } from "./updater";
 import { safeSend } from "./ipc";
 import { loadChampionData, getChampionVersion } from "./model/ddragon";
-import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
+import log, { setDevMode, isDevMode, setLogWindow } from "./log";
 import { clearTimer } from "./timers";
 
 const logger = log.scope("main");
@@ -137,11 +137,6 @@ app.whenReady().then(async () => {
   if (mainWindow) {
     setLogWindow(mainWindow);
     setupAppUpdater(mainWindow);
-
-    if (loadDevModePreference()) {
-      setDevMode(true);
-      mainWindow.webContents.openDevTools();
-    }
   }
 
   const resourcesPath = app.isPackaged
