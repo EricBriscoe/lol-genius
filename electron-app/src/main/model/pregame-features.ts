@@ -532,9 +532,7 @@ export function getPregameSummaryFromFeatures(
       - posValues("red", "mastery_level").filter((v) => v >= 7).length,
     avg_champ_wr_diff: mean(posValues("blue", "champ_winrate")) - mean(posValues("red", "champ_winrate")),
     scaling_score_diff: 0,
-    max_scaling_score_diff: 0,
     stat_growth_diff: 0,
-    scaling_tier_diff: 0,
     infinite_scaler_count_diff: 0,
   };
 }

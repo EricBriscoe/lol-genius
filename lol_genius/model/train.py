@@ -32,12 +32,8 @@ DEFAULT_PARAMS = {
 
 LIVE_DEFAULT_PARAMS = {
     **DEFAULT_PARAMS,
-    "max_depth": 5,
     "subsample": 0.8,
     "colsample_bytree": 0.7,
-    "min_child_weight": 5,
-    "gamma": 0.2,
-    "reg_lambda": 1.0,
 }
 
 PARAM_PRESETS = {
@@ -154,6 +150,14 @@ def train_model(
     sample_weights = None
     if patches is not None and len(patches) > 0 and patches.nunique() > 1:
         sample_weights = _compute_patch_weights(patches, patch_decay)
+
+    if match_ids is not None and len(match_ids) > 0:
+        snapshot_counts = match_ids.map(match_ids.value_counts())
+        match_weights = 1.0 / snapshot_counts.values
+        if sample_weights is not None:
+            sample_weights = sample_weights * match_weights
+        else:
+            sample_weights = match_weights
 
     if match_ids is not None and len(match_ids) > 0 and game_creations is not None:
         import pandas as _pd
@@ -317,6 +321,7 @@ def _cv_single_combo(params: dict) -> tuple[float, dict, int]:
 def tune_hyperparameters(
     X: pd.DataFrame,
     y: pd.Series,
+    patches: pd.Series | None = None,
 ) -> dict:
     import multiprocessing
     import os
@@ -380,6 +385,31 @@ def tune_hyperparameters(
 
     best_params["best_num_round"] = best_round
     log.info(f"Best params: {best_params} (score: {best_score:.4f})")
+
+    if patches is not None and len(patches) > 0 and patches.nunique() > 1:
+        log.info("Tuning patch decay...")
+        best_decay = 0.85
+        best_decay_score = float("inf")
+        for decay in [0.5, 0.7, 0.85, 1.0]:
+            weights = _compute_patch_weights(patches, decay)
+            dtrain = xgb.DMatrix(X_np, label=y_np, weight=weights)
+            cv_results = xgb.cv(
+                best_params,
+                dtrain,
+                num_boost_round=best_round,
+                nfold=5,
+                early_stopping_rounds=30,
+                verbose_eval=False,
+                stratified=True,
+            )
+            score = cv_results["test-logloss-mean"].min()
+            log.info(f"  patch_decay={decay}: {score:.4f}")
+            if score < best_decay_score:
+                best_decay_score = score
+                best_decay = decay
+        best_params["patch_decay"] = best_decay
+        log.info(f"Best patch_decay: {best_decay}")
+
     return best_params
 
 

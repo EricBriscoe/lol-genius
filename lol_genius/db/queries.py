@@ -963,7 +963,17 @@ class MatchDB:
                     blue_barons, red_barons, blue_heralds, red_heralds,
                     blue_inhibitors, red_inhibitors, blue_elder, red_elder,
                     first_blood_blue, first_tower_blue, first_dragon_blue,
-                    blue_avg_level, red_avg_level, blue_max_level, red_max_level)
+                    blue_avg_level, red_avg_level, blue_max_level, red_max_level,
+                    blue_top_cs, blue_top_level, blue_top_kills,
+                    blue_jg_cs, blue_jg_level, blue_jg_kills,
+                    blue_mid_cs, blue_mid_level, blue_mid_kills,
+                    blue_bot_cs, blue_bot_level, blue_bot_kills,
+                    blue_sup_cs, blue_sup_level, blue_sup_kills,
+                    red_top_cs, red_top_level, red_top_kills,
+                    red_jg_cs, red_jg_level, red_jg_kills,
+                    red_mid_cs, red_mid_level, red_mid_kills,
+                    red_bot_cs, red_bot_level, red_bot_kills,
+                    red_sup_cs, red_sup_level, red_sup_kills)
                    VALUES (%(match_id)s, %(snapshot_seconds)s, %(blue_gold)s, %(red_gold)s,
                            %(blue_cs)s, %(red_cs)s, %(blue_kills)s, %(red_kills)s,
                            %(blue_towers)s, %(red_towers)s, %(blue_dragons)s, %(red_dragons)s,
@@ -971,7 +981,17 @@ class MatchDB:
                            %(blue_inhibitors)s, %(red_inhibitors)s, %(blue_elder)s, %(red_elder)s,
                            %(first_blood_blue)s, %(first_tower_blue)s, %(first_dragon_blue)s,
                            %(blue_avg_level)s, %(red_avg_level)s,
-                           %(blue_max_level)s, %(red_max_level)s)
+                           %(blue_max_level)s, %(red_max_level)s,
+                           %(blue_top_cs)s, %(blue_top_level)s, %(blue_top_kills)s,
+                           %(blue_jg_cs)s, %(blue_jg_level)s, %(blue_jg_kills)s,
+                           %(blue_mid_cs)s, %(blue_mid_level)s, %(blue_mid_kills)s,
+                           %(blue_bot_cs)s, %(blue_bot_level)s, %(blue_bot_kills)s,
+                           %(blue_sup_cs)s, %(blue_sup_level)s, %(blue_sup_kills)s,
+                           %(red_top_cs)s, %(red_top_level)s, %(red_top_kills)s,
+                           %(red_jg_cs)s, %(red_jg_level)s, %(red_jg_kills)s,
+                           %(red_mid_cs)s, %(red_mid_level)s, %(red_mid_kills)s,
+                           %(red_bot_cs)s, %(red_bot_level)s, %(red_bot_kills)s,
+                           %(red_sup_cs)s, %(red_sup_level)s, %(red_sup_kills)s)
                    ON CONFLICT (match_id, snapshot_seconds) DO NOTHING""",
                 {"match_id": match_id, **s},
             )
@@ -1023,7 +1043,17 @@ class MatchDB:
                       mt.first_blood_blue, mt.first_tower_blue, mt.first_dragon_blue,
                       mt.blue_avg_level, mt.red_avg_level,
                       mt.blue_max_level, mt.red_max_level,
-                      m.blue_win, m.pregame_blue_win_prob
+                      mt.blue_top_cs, mt.blue_top_level, mt.blue_top_kills,
+                      mt.blue_jg_cs, mt.blue_jg_level, mt.blue_jg_kills,
+                      mt.blue_mid_cs, mt.blue_mid_level, mt.blue_mid_kills,
+                      mt.blue_bot_cs, mt.blue_bot_level, mt.blue_bot_kills,
+                      mt.blue_sup_cs, mt.blue_sup_level, mt.blue_sup_kills,
+                      mt.red_top_cs, mt.red_top_level, mt.red_top_kills,
+                      mt.red_jg_cs, mt.red_jg_level, mt.red_jg_kills,
+                      mt.red_mid_cs, mt.red_mid_level, mt.red_mid_kills,
+                      mt.red_bot_cs, mt.red_bot_level, mt.red_bot_kills,
+                      mt.red_sup_cs, mt.red_sup_level, mt.red_sup_kills,
+                      m.blue_win
                FROM match_timelines mt
                JOIN matches m ON mt.match_id = m.match_id
                WHERE mt.snapshot_seconds IN ({placeholders})

@@ -30,7 +30,6 @@ let gameflowTimer: ReturnType<typeof setInterval> | null = null;
 let champSelectTimer: ReturnType<typeof setInterval> | null = null;
 let stopLockfileWatch: (() => void) | null = null;
 let win: BrowserWindow | null = null;
-let lastPregameProb: number | null = null;
 let lastPregameSummary: Record<string, number> | null = null;
 let cachedRankedStats: RankedStats | null = null;
 
@@ -115,17 +114,15 @@ function startGameflowPolling(): void {
     } else if (phase === "InProgress" || phase === "GameStart") {
       if (state !== "game_start") {
         setState("game_start");
-        setPregameData(lastPregameProb, lastPregameSummary);
+        setPregameData(lastPregameSummary);
         send("game-phase-change", {
           phase: "in_game",
-          pregameProb: lastPregameProb,
           pregameSummary: lastPregameSummary,
         });
         stopChampSelectPolling();
       }
     } else {
       if (state === "champ_select" || state === "game_start") {
-        lastPregameProb = null;
         lastPregameSummary = null;
         send("game-phase-change", { phase: "none" });
       }
@@ -165,7 +162,6 @@ function startChampSelectPolling(): void {
         const featureNamesList = getFeatureNames("pregame");
         const features = buildPregameFeatures(session, cachedRankedStats, featureNamesList);
         probability = await predict(features, "pregame");
-        lastPregameProb = probability;
         lastPregameSummary = getPregameSummaryFromFeatures(features);
 
         topFactors = await computeTopFactors(getModelDir("pregame"), features, "pregame");
@@ -225,7 +221,6 @@ function isPlayerLocalByCell(
 export function startLCUPolling(window: BrowserWindow): void {
   stopLCUPolling();
   win = window;
-  lastPregameProb = null;
   lastPregameSummary = null;
 
   stopLockfileWatch = watchLockfile((exists, creds) => {

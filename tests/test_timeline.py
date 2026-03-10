@@ -22,20 +22,15 @@ def _make_live_client_data(
     blue_cs: int = 120,
     red_cs: int = 100,
     events: list | None = None,
-    blue_items: list | None = None,
-    red_items: list | None = None,
     blue_level: int = 6,
     red_level: int = 5,
 ) -> dict:
-    b_items = [{"itemID": 1001, "price": 300}] if blue_items is None else blue_items
-    r_items = [{"itemID": 1001, "price": 300}] if red_items is None else red_items
     players = [
         {
             "summonerName": f"Blue{i}",
             "riotId": f"Blue{i}#NA1",
             "team": "ORDER",
             "scores": {"kills": blue_kills // 5, "creepScore": blue_cs // 5},
-            "items": b_items,
             "level": blue_level,
         }
         for i in range(5)
@@ -45,7 +40,6 @@ def _make_live_client_data(
             "riotId": f"Red{i}#NA1",
             "team": "CHAOS",
             "scores": {"kills": red_kills // 5, "creepScore": red_cs // 5},
-            "items": r_items,
             "level": red_level,
         }
         for i in range(5)
@@ -86,9 +80,6 @@ def _make_game_state(**overrides) -> dict:
         "first_blood_blue": 1,
         "first_tower_blue": 1,
         "first_dragon_blue": 1,
-        "blue_estimated_gold": 5000,
-        "red_estimated_gold": 4500,
-        "estimated_gold_diff": 500,
         "blue_avg_level": 6.0,
         "red_avg_level": 5.0,
         "blue_max_level": 7,
@@ -129,28 +120,10 @@ class TestBuildLiveFeatures:
         assert set(features.keys()) == set(LIVE_FEATURE_NAMES)
         assert len(features) == len(LIVE_FEATURE_NAMES)
 
-    def test_defaults(self):
-        state = _make_game_state()
-        features = build_live_features(state)
-        assert features["pregame_blue_win_prob"] == 0.5
-
-    def test_pregame_prob_passed(self):
-        state = _make_game_state()
-        features = build_live_features(state, pregame_win_prob=0.65)
-        assert features["pregame_blue_win_prob"] == 0.65
-
-    def test_scaling_interaction(self):
-        state = _make_game_state(game_time=900.0)
-        summary = {"scaling_score_diff": 2.0}
-        features = build_live_features(state, pregame_summary=summary)
-        assert features["scaling_advantage_realized"] == pytest.approx(2.0 * (900.0 / 1800.0))
-        expected = 2.0 * max(0.0, 1.0 - 900.0 / 1500.0)
-        assert features["early_game_window_closing"] == pytest.approx(expected)
-
-    def test_snapshot_uses_raw_time_for_rates(self):
+    def test_snapshot_uses_raw_time(self):
         state = _make_game_state(game_time=750.0, kill_diff=6)
         features = build_live_features(state)
-        assert features["game_time_seconds"] == _snap_to_snapshot(750.0)
+        assert features["game_time_seconds"] == 750.0
         assert features["kill_rate_diff"] == pytest.approx(6 / (750.0 / 60.0))
 
     def test_momentum_deltas_with_prev_diffs(self):
@@ -179,41 +152,6 @@ class TestLeadErosionSymmetric:
         state = _make_game_state(kill_diff=-5)
         features = build_live_features(state, peak_kill_diff=5.0)
         assert features["kill_lead_erosion"] == pytest.approx(0.0)
-
-
-class TestGamePhaseIndicators:
-    def test_early_phase(self):
-        state = _make_game_state(game_time=600.0)
-        features = build_live_features(state)
-        assert features["game_phase_early"] == 1.0
-        assert features["game_phase_mid"] == 0.0
-        assert features["game_phase_late"] == 0.0
-
-    def test_early_boundary(self):
-        state = _make_game_state(game_time=900.0)
-        features = build_live_features(state)
-        assert features["game_phase_early"] == 1.0
-        assert features["game_phase_mid"] == 0.0
-
-    def test_mid_phase(self):
-        state = _make_game_state(game_time=1200.0)
-        features = build_live_features(state)
-        assert features["game_phase_early"] == 0.0
-        assert features["game_phase_mid"] == 1.0
-        assert features["game_phase_late"] == 0.0
-
-    def test_late_phase(self):
-        state = _make_game_state(game_time=2000.0)
-        features = build_live_features(state)
-        assert features["game_phase_early"] == 0.0
-        assert features["game_phase_mid"] == 0.0
-        assert features["game_phase_late"] == 1.0
-
-    def test_mid_boundary(self):
-        state = _make_game_state(game_time=1500.0)
-        features = build_live_features(state)
-        assert features["game_phase_mid"] == 1.0
-        assert features["game_phase_late"] == 0.0
 
 
 class TestObjectiveDensity:
@@ -245,6 +183,32 @@ class TestObjectiveDensity:
         assert features["objective_density"] == pytest.approx(total / 30.0)
 
 
+class TestDragonSoulFeatures:
+    def test_soul_at_four(self):
+        state = _make_game_state(blue_dragons=4, red_dragons=2)
+        features = build_live_features(state)
+        assert features["blue_has_soul"] == 1.0
+        assert features["red_has_soul"] == 0.0
+        assert features["blue_soul_point"] == 1.0
+        assert features["red_soul_point"] == 0.0
+
+    def test_soul_point_at_three(self):
+        state = _make_game_state(blue_dragons=3, red_dragons=3)
+        features = build_live_features(state)
+        assert features["blue_has_soul"] == 0.0
+        assert features["red_has_soul"] == 0.0
+        assert features["blue_soul_point"] == 1.0
+        assert features["red_soul_point"] == 1.0
+
+    def test_neither_at_fewer(self):
+        state = _make_game_state(blue_dragons=2, red_dragons=1)
+        features = build_live_features(state)
+        assert features["blue_has_soul"] == 0.0
+        assert features["red_has_soul"] == 0.0
+        assert features["blue_soul_point"] == 0.0
+        assert features["red_soul_point"] == 0.0
+
+
 class TestExtractTimelineSnapshots:
     def test_basic_mock(self):
         frames = [{"timestamp": s * 1000} for s in range(0, 3001, 60)]
@@ -266,25 +230,6 @@ class TestSnapToSnapshot:
 
     def test_near_next(self):
         assert _snap_to_snapshot(890) == 900
-
-
-class TestItemGoldEstimation:
-    def test_parse_extracts_item_gold(self):
-        data = _make_live_client_data(
-            blue_items=[{"itemID": 1, "price": 500}, {"itemID": 2, "price": 300}],
-            red_items=[{"itemID": 3, "price": 200}],
-        )
-        result = parse_live_client_data(data)
-        assert result["blue_estimated_gold"] == 5 * (500 + 300)
-        assert result["red_estimated_gold"] == 5 * 200
-        assert result["estimated_gold_diff"] == 5 * 800 - 5 * 200
-
-    def test_empty_items(self):
-        data = _make_live_client_data(blue_items=[], red_items=[])
-        result = parse_live_client_data(data)
-        assert result["blue_estimated_gold"] == 0
-        assert result["red_estimated_gold"] == 0
-        assert result["estimated_gold_diff"] == 0
 
 
 class TestLevelFeatures:
@@ -328,20 +273,6 @@ class TestChampionScalingTiers:
         assert "Veigar" in INFINITE_SCALERS
         assert "Jinx" not in INFINITE_SCALERS
 
-    def test_time_interaction_features(self):
-        state = _make_game_state(game_time=1800.0)
-        summary = {"scaling_tier_diff": 2.0, "infinite_scaler_count_diff": 1.0}
-        features = build_live_features(state, pregame_summary=summary)
-        assert features["scaling_tier_x_time"] == pytest.approx(2.0)
-        assert features["infinite_scaler_x_time"] == pytest.approx(1.0)
-
-    def test_time_interaction_early(self):
-        state = _make_game_state(game_time=900.0)
-        summary = {"scaling_tier_diff": 2.0, "infinite_scaler_count_diff": 1.0}
-        features = build_live_features(state, pregame_summary=summary)
-        assert features["scaling_tier_x_time"] == pytest.approx(2.0 * (900.0 / 1800.0))
-        assert features["infinite_scaler_x_time"] == pytest.approx(1.0 * (900.0 / 1800.0))
-
     def test_pregame_diff_stats(self):
         result = compute_pregame_diff_stats(
             [14.0],
@@ -359,5 +290,4 @@ class TestChampionScalingTiers:
             blue_infinite_scalers=2,
             red_infinite_scalers=0,
         )
-        assert result["scaling_tier_diff"] == pytest.approx((5 + 5 + 3 + 3 + 1) / 5 - 3.0)
         assert result["infinite_scaler_count_diff"] == pytest.approx(2.0)

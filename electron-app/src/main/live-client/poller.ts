@@ -1,6 +1,6 @@
 import { BrowserWindow } from "electron";
 import { fetchLiveGameData } from "./api";
-import { parseLiveClientData, buildLiveFeatures, type MomentumState } from "../model/features";
+import { parseLiveClientData, buildLiveFeatures, snapToSnapshot, type MomentumState } from "../model/features";
 import { predict } from "../model/inference";
 import { computeTopFactors } from "../model/shap-factors";
 import { safeSend } from "../ipc";
@@ -20,7 +20,7 @@ let peakTowerDiff = 0;
 let prevKillDiffDelta = 0;
 let prevBlueKills = 0;
 let prevRedKills = 0;
-let pregameProb = 0.5;
+let lastSnapshot: number | null = null;
 let pregameSummary: Record<string, number> | null = null;
 
 function resetState(): void {
@@ -32,6 +32,7 @@ function resetState(): void {
   prevKillDiffDelta = 0;
   prevBlueKills = 0;
   prevRedKills = 0;
+  lastSnapshot = null;
 }
 
 const send = safeSend;
@@ -65,16 +66,21 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
     const killDiff = gameState.kill_diff;
     const towerDiff = gameState.tower_diff;
 
+    const currentSnapshot = snapToSnapshot(currentGameTime);
+    const snapshotChanged = lastSnapshot === null || currentSnapshot !== lastSnapshot;
+
     let killDiffDelta = 0;
     let recentKillShareDiff = 0;
 
-    if (prevDiffs) {
+    if (snapshotChanged && prevDiffs) {
       killDiffDelta = killDiff - prevDiffs.kill_diff;
       const blueRecent = gameState.blue_kills - prevBlueKills;
       const redRecent = gameState.red_kills - prevRedKills;
       recentKillShareDiff =
         blueRecent / Math.max(gameState.blue_kills, 1) -
         redRecent / Math.max(gameState.red_kills, 1);
+    } else if (prevDiffs) {
+      killDiffDelta = prevKillDiffDelta;
     }
 
     const killDiffAccel = killDiffDelta - prevKillDiffDelta;
@@ -89,14 +95,17 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
       recentKillShareDiff,
     };
 
-    const features = buildLiveFeatures(gameState, momentum, pregameProb, pregameSummary ?? undefined);
+    const features = buildLiveFeatures(gameState, momentum, pregameSummary ?? undefined);
     logger.debug("Feature vector:", JSON.stringify(features));
     logger.debug("Momentum:", JSON.stringify(momentum));
 
-    prevDiffs = { kill_diff: killDiff, cs_diff: gameState.cs_diff, tower_diff: towerDiff };
-    prevKillDiffDelta = killDiffDelta;
-    prevBlueKills = gameState.blue_kills;
-    prevRedKills = gameState.red_kills;
+    if (snapshotChanged) {
+      prevDiffs = { kill_diff: killDiff, cs_diff: gameState.cs_diff, tower_diff: towerDiff };
+      prevKillDiffDelta = killDiffDelta;
+      prevBlueKills = gameState.blue_kills;
+      prevRedKills = gameState.red_kills;
+      lastSnapshot = currentSnapshot;
+    }
 
     let prob: number;
     try {
@@ -133,8 +142,7 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
   }
 }
 
-export function setPregameData(prob: number | null, summary: Record<string, number> | null): void {
-  pregameProb = prob ?? 0.5;
+export function setPregameData(summary: Record<string, number> | null): void {
   pregameSummary = summary;
 }
 

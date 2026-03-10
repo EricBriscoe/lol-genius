@@ -120,12 +120,14 @@ def _save_calibrator(y_test: pd.Series, y_proba: np.ndarray, model_dir: str) -> 
     import json
 
     try:
-        from sklearn.isotonic import IsotonicRegression
+        from sklearn.linear_model import LogisticRegression
 
-        cal = IsotonicRegression(out_of_bounds="clip").fit(y_proba, y_test)
+        lr = LogisticRegression()
+        lr.fit(y_proba.reshape(-1, 1), y_test)
         calibrator_data = {
-            "x_thresholds": cal.X_thresholds_.tolist(),
-            "y_thresholds": cal.y_thresholds_.tolist(),
+            "method": "platt",
+            "a": float(lr.coef_[0][0]),
+            "b": float(lr.intercept_[0]),
         }
         path = Path(model_dir) / "calibrator.json"
         path.write_text(json.dumps(calibrator_data))

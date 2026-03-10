@@ -295,7 +295,7 @@ def _run_training_pipeline(
 
             from lol_genius.model.train import tune_hyperparameters
 
-            tuned = tune_hyperparameters(X, y)
+            tuned = tune_hyperparameters(X, y, patches=patches)
             tuned_num_round = tuned.pop("best_num_round", 1000)
             train_params = tuned
         elif isinstance(resolved_params, dict):
@@ -310,8 +310,13 @@ def _run_training_pipeline(
             }
         )
 
+        tuned_patch_decay = 0.85
+        if train_params and "patch_decay" in train_params:
+            tuned_patch_decay = train_params.pop("patch_decay")
+
         train_kwargs = dict(
             patches=patches,
+            patch_decay=tuned_patch_decay,
             timestamps=timestamps,
             database_url=dsn,
             params=train_params,
@@ -598,9 +603,6 @@ async def live_game_start(request: Request):
         return JSONResponse({"error": "port must be an integer"}, status_code=400)
     if not (1024 <= port <= 65535):
         return JSONResponse({"error": "port must be between 1024 and 65535"}, status_code=400)
-    pregame_win_prob = body.get("pregame_win_prob")
-    if pregame_win_prob is not None:
-        pregame_win_prob = float(pregame_win_prob)
     model_dir = request.app.state.model_dir
     dsn = request.app.state.dsn
     proxy_url = request.app.state.proxy_url
@@ -616,7 +618,6 @@ async def live_game_start(request: Request):
             port,
             model_dir,
             _push_sse,
-            pregame_win_prob=pregame_win_prob,
             dsn=dsn,
             proxy_url=proxy_url,
             ddragon_cache=ddragon_cache,
