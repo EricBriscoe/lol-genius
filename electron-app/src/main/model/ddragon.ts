@@ -1,5 +1,6 @@
-import { readdirSync, readFileSync } from "fs";
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join } from "path";
+import https from "https";
 import log from "../log";
 
 const logger = log.scope("ddragon");
@@ -19,8 +20,12 @@ export interface ChampionData {
 let champions: Record<number, ChampionData> = {};
 let loadedVersion = "";
 
+export function isLoaded(): boolean {
+  return Object.keys(champions).length > 0;
+}
+
 export function loadChampionData(resourcesPath: string): Record<number, ChampionData> {
-  if (Object.keys(champions).length > 0) return champions;
+  if (isLoaded()) return champions;
 
   const ddragonDir = join(resourcesPath, "ddragon");
   let files: string[];
@@ -47,6 +52,64 @@ export function loadChampionData(resourcesPath: string): Record<number, Champion
   }
   logger.debug("Loaded", Object.keys(champions).length, "champions from", latest);
   return champions;
+}
+
+function httpsGetJson(url: string, maxRedirects = 5): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    if (maxRedirects <= 0) { reject(new Error("Too many redirects")); return; }
+    https.get(url, { headers: { "User-Agent": "lol-genius-electron" }, timeout: 15_000 }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        httpsGetJson(res.headers.location, maxRedirects - 1).then(resolve, reject);
+        return;
+      }
+      if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+        res.resume();
+        reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+        return;
+      }
+      let body = "";
+      res.on("data", (chunk: Buffer) => { body += chunk.toString(); });
+      res.on("end", () => {
+        try { resolve(JSON.parse(body)); }
+        catch (e) { reject(e); }
+      });
+      res.on("error", reject);
+    }).on("error", reject);
+  });
+}
+
+export async function downloadChampionData(saveDir: string): Promise<void> {
+  logger.info("Downloading champion data from CDN...");
+
+  const versions = await httpsGetJson("https://ddragon.leagueoflegends.com/api/versions.json") as string[];
+  const ver = versions[0];
+
+  const raw = await httpsGetJson(`https://ddragon.leagueoflegends.com/cdn/${ver}/data/en_US/champion.json`) as { data: Record<string, Record<string, unknown>> };
+
+  const result: Record<string, ChampionData> = {};
+  for (const champ of Object.values(raw.data)) {
+    const key = parseInt(champ.key as string, 10);
+    result[String(key)] = {
+      id: champ.id as string,
+      name: champ.name as string,
+      key,
+      tags: (champ.tags ?? []) as string[],
+      stats: (champ.stats ?? {}) as Record<string, number>,
+      info: (champ.info ?? {}) as Record<string, number>,
+    };
+  }
+
+  mkdirSync(saveDir, { recursive: true });
+  const outPath = join(saveDir, `champions_${ver}.json`);
+  writeFileSync(outPath, JSON.stringify(result));
+  logger.info(`Saved ${Object.keys(result).length} champions for patch ${ver}`);
+
+  champions = {};
+  for (const [k, v] of Object.entries(result)) {
+    champions[parseInt(k, 10)] = v;
+  }
+  loadedVersion = ver;
 }
 
 export function getChampionVersion(): string {
