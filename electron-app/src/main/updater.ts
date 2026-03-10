@@ -157,6 +157,15 @@ export function getModelVersion(modelType: "live" | "pregame" = "live"): string 
   return null;
 }
 
+export function invalidateModelVersion(modelType: "live" | "pregame" = "live"): void {
+  const dir = getUserModelDir(modelType);
+  const versionFile = join(dir, "version.txt");
+  if (existsSync(versionFile)) {
+    logger.info(`Invalidating ${modelType} model version to force re-download`);
+    unlinkSync(versionFile);
+  }
+}
+
 function cleanStaleStagingDirs(): void {
   const modelsRoot = join(app.getPath("userData"), "models");
   if (!existsSync(modelsRoot)) return;

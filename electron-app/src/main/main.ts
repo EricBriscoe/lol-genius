@@ -5,7 +5,7 @@ import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling } from "./live-client/poller";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
 import { initPlayerData, shutdownPlayerData } from "./player-data/index";
-import { setupAppUpdater, getModelDir, getModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer, forceRestart } from "./updater";
+import { setupAppUpdater, getModelDir, getModelVersion, invalidateModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer, forceRestart } from "./updater";
 import { safeSend } from "./ipc";
 import { loadChampionData, getChampionVersion } from "./model/ddragon";
 import log, { setDevMode, isDevMode, loadDevModePreference, setLogWindow } from "./log";
@@ -75,14 +75,17 @@ async function updateAllModels(): Promise<boolean> {
 }
 
 async function loadAndUpdateModel(modelType: "live" | "pregame"): Promise<boolean> {
+  let loadFailed = false;
   try {
     await loadModel(getModelDir(modelType), modelType);
   } catch (e) {
+    loadFailed = true;
     logger.warn(`${modelType} model not loaded:`, e);
+    invalidateModelVersion(modelType);
   }
 
   const updated = await checkForModelUpdate(modelType);
-  if (updated) {
+  if (updated || loadFailed) {
     try { await loadModel(getModelDir(modelType), modelType, true); }
     catch (e) { logger.error(`${modelType} model reload failed:`, e); }
   }
