@@ -81,7 +81,6 @@ export async function predict(features: Record<string, number>, modelType = "liv
     values[i] = features[model.featureNames[i]] ?? 0.0;
   }
 
-  logger.debug(`${modelType} inference:`, model.featureNames.length, "features");
   const tensor = new ort.Tensor("float32", values, [1, model.featureNames.length]);
   const inputName = model.session.inputNames[0];
   const results = await model.session.run({ [inputName]: tensor });
