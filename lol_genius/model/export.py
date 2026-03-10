@@ -32,7 +32,16 @@ def export_onnx(model_dir: str, model_type: str = "pregame") -> Path:
     with open(out_path, "wb") as f:
         f.write(onnx_model.SerializeToString())
 
-    log.info("Exported ONNX model to %s", out_path)
+    import onnxruntime as ort
+
+    sess = ort.InferenceSession(str(out_path))
+    onnx_dim = sess.get_inputs()[0].shape[1]
+    if onnx_dim != len(feature_names):
+        raise ValueError(
+            f"ONNX input dim ({onnx_dim}) != feature count ({len(feature_names)})"
+        )
+
+    log.info("Exported ONNX model to %s (%d features verified)", out_path, onnx_dim)
 
     names_path = type_dir / "feature_names.json"
     names_path.write_text(json.dumps(feature_names, indent=2))
