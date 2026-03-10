@@ -40,6 +40,22 @@ export interface CurrentSummoner {
   displayName: string;
 }
 
+export interface GameflowPlayer {
+  championId: number;
+  selectedPosition: string;
+  summonerId: number;
+  spell1Id: number;
+  spell2Id: number;
+  team: number;
+}
+
+export interface GameflowSession {
+  gameData: {
+    teamOne: GameflowPlayer[];
+    teamTwo: GameflowPlayer[];
+  };
+}
+
 export interface LCUMatchHistoryResponse {
   games: {
     games: LCUGame[];

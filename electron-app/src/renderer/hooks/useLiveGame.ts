@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { LiveGameUpdate, ModelInfo, DevLogEntry, AppUpdateEvent } from "../types";
+import type { LiveGameUpdate, ModelInfo, DevLogEntry, AppUpdateEvent, GamePhaseChange } from "../types";
 
 const MAX_LOGS = 200;
 
@@ -54,7 +54,21 @@ export function useLiveGame() {
       setAppUpdateStatus(data);
     });
 
-    return () => { unsub1(); unsub2(); unsub3(); };
+    const unsub4 = window.lolGenius.onGamePhaseChange((data: GamePhaseChange) => {
+      if (data.phase === "in_game" && data.pregameProb != null) {
+        setCurrent({
+          game_time: 0, blue_win_probability: data.pregameProb,
+          kill_diff: 0, dragon_diff: 0, tower_diff: 0, baron_diff: 0,
+          cs_diff: 0, inhibitor_diff: 0, elder_diff: 0,
+        });
+        setHistory([{ game_time: 0, probability: Math.round(data.pregameProb * 1000) / 10 }]);
+      } else if (data.phase === "none") {
+        setCurrent(null);
+        setHistory([]);
+      }
+    });
+
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
   }, []);
 
   useEffect(() => {

@@ -3,6 +3,7 @@ import { join } from "path";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { loadModel, getFeatureNames } from "./model/inference";
 import { startPolling, stopPolling, isPolling } from "./live-client/poller";
+import { fetchLiveGameData } from "./live-client/api";
 import { startLCUPolling, stopLCUPolling } from "./lcu-client/poller";
 import { initPlayerData, shutdownPlayerData } from "./player-data/index";
 import { setupAppUpdater, getModelDir, getModelVersion, invalidateModelVersion, checkForModelUpdate, checkForAppUpdates, stopAppUpdateTimer, forceRestart } from "./updater";
@@ -159,12 +160,13 @@ app.whenReady().then(async () => {
 
   if (mainWindow) {
     initPlayerData(mainWindow);
+    startLCUPolling(mainWindow, getModelDir("live"));
 
-    if (!isPolling()) {
-      startPolling(mainWindow, getModelDir("live"));
-    }
-
-    startLCUPolling(mainWindow);
+    fetchLiveGameData().then((data) => {
+      if (data && mainWindow && !isPolling()) {
+        startPolling(mainWindow, getModelDir("live"));
+      }
+    });
   }
 });
 

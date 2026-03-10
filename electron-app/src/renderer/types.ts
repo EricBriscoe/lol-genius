@@ -9,6 +9,7 @@ export interface LiveGameUpdate {
   inhibitor_diff: number;
   elder_diff: number;
   game_reset?: boolean;
+  game_ended?: boolean;
   status?: string;
   error?: string;
   top_factors?: PredictFactor[];

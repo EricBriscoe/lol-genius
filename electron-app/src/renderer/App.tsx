@@ -37,10 +37,10 @@ export default function App() {
     await window.lolGenius.setAlwaysOnTop(next);
     setAlwaysOnTop(next);
   };
-  const { champSelectData, isInChampSelect } = useChampSelect();
+  const { champSelectData, isInChampSelect, gamePhase } = useChampSelect();
 
   const blueProb = toBlueProb(current?.blue_win_probability);
-  const isInGame = connectionStatus === "ok" || connectionStatus === "connected";
+  const isInGame = connectionStatus === "ok" || connectionStatus === "connected" || gamePhase === "in_game";
   const phase = isInChampSelect ? "champ_select" : isInGame ? "in_game" : "idle";
 
   useEffect(() => {
@@ -111,6 +111,9 @@ export default function App() {
           {phase === "in_game" && current && current.blue_win_probability != null && (
             <>
               <Card>
+                {current.game_ended && (
+                  <div className="game-over-label">Game Over</div>
+                )}
                 <h3 className="section-title">Win Probability</h3>
                 <WinProbBar blueProb={blueProb} />
               </Card>
@@ -142,20 +145,20 @@ export default function App() {
             </Card>
           )}
 
-          {phase === "idle" && connectionStatus !== "model_missing" && (
-            <Card variant="warning">
-              <div className="alert-message alert-message--warning">
-                <AlertTriangle size={16} />
-                No game detected. Open League client or start a match to see predictions.
-              </div>
-            </Card>
-          )}
-
-          {!current && phase === "idle" && connectionStatus === "connecting" && (
+          {phase === "idle" && connectionStatus === "connecting" && !current && (
             <Card>
               <div className="waiting-state">
                 <div className="waiting-state__title">Waiting for game...</div>
                 <div className="waiting-state__subtitle">Monitoring League client and live game</div>
+              </div>
+            </Card>
+          )}
+
+          {phase === "idle" && connectionStatus !== "model_missing" && connectionStatus !== "connecting" && (
+            <Card variant="warning">
+              <div className="alert-message alert-message--warning">
+                <AlertTriangle size={16} />
+                No game detected. Open League client or start a match to see predictions.
               </div>
             </Card>
           )}

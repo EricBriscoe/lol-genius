@@ -22,6 +22,10 @@ let prevBlueKills = 0;
 let prevRedKills = 0;
 let lastSnapshot: number | null = null;
 let pregameSummary: Record<string, number> | null = null;
+let lastUpdate: Record<string, unknown> | null = null;
+let gameEndedAt: number | null = null;
+
+const GRACE_PERIOD = 30_000;
 
 function resetState(): void {
   gameId = null;
@@ -33,6 +37,8 @@ function resetState(): void {
   prevBlueKills = 0;
   prevRedKills = 0;
   lastSnapshot = null;
+  lastUpdate = null;
+  gameEndedAt = null;
 }
 
 const send = safeSend;
@@ -40,10 +46,20 @@ const send = safeSend;
 async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
   const data = await fetchLiveGameData();
   if (!data) {
+    if (gameId !== null && lastUpdate) {
+      if (gameEndedAt === null) gameEndedAt = Date.now();
+      if (Date.now() - gameEndedAt < GRACE_PERIOD) {
+        send(win, "prediction-update", { ...lastUpdate, game_ended: true });
+        send(win, "connection-status", "connected");
+        return;
+      }
+    }
     send(win, "connection-status", "no_data");
+    resetState();
     return;
   }
 
+  gameEndedAt = null;
   send(win, "connection-status", "connected");
 
   try {
@@ -135,6 +151,7 @@ async function poll(win: BrowserWindow, modelDir: string): Promise<void> {
       top_factors: topFactors,
     };
 
+    lastUpdate = update;
     send(win, "prediction-update", update);
   } catch (e) {
     logger.error("Poll processing failed:", e);

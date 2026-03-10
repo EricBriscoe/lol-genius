@@ -1,13 +1,13 @@
 import { BrowserWindow } from "electron";
 import { findLockfile, readLockfile, watchLockfile } from "./lockfile";
 import { createLCUClient, type LCUClient } from "./api";
-import type { LCUCredentials, ChampSelectSession, RankedStats } from "./types";
+import type { LCUCredentials, ChampSelectSession, ChampSelectPlayer, RankedStats, GameflowSession } from "./types";
 import { buildPregameFeatures, getPregameSummaryFromFeatures } from "../model/pregame-features";
 import { predict, isModelLoaded, getFeatureNames } from "../model/inference";
 import { computeTopFactors } from "../model/shap-factors";
 import { getModelDir } from "../updater";
 import { safeSend } from "../ipc";
-import { setPregameData } from "../live-client/poller";
+import { setPregameData, startPolling as startLivePolling, stopPolling as stopLivePolling } from "../live-client/poller";
 import { onLCUConnected, onLCUDisconnected } from "../player-data/index";
 import * as ddragon from "../model/ddragon";
 import log from "../log";
@@ -30,7 +30,9 @@ let gameflowTimer: ReturnType<typeof setInterval> | null = null;
 let champSelectTimer: ReturnType<typeof setInterval> | null = null;
 let stopLockfileWatch: (() => void) | null = null;
 let win: BrowserWindow | null = null;
+let liveModelDir: string | null = null;
 let lastPregameSummary: Record<string, number> | null = null;
+let lastPregameProb: number | null = null;
 let cachedRankedStats: RankedStats | null = null;
 
 function send(channel: string, data: unknown): void {
@@ -114,16 +116,39 @@ function startGameflowPolling(): void {
     } else if (phase === "InProgress" || phase === "GameStart") {
       if (state !== "game_start") {
         setState("game_start");
+        stopChampSelectPolling();
+
+        if (lastPregameSummary === null && client && isModelLoaded("pregame")) {
+          try {
+            const gfSession = await client.getGameflowSession();
+            if (gfSession) {
+              const champSession = gameflowToChampSelect(gfSession);
+              const featureNamesList = getFeatureNames("pregame");
+              const features = buildPregameFeatures(champSession, null, featureNamesList);
+              lastPregameProb = await predict(features, "pregame");
+              lastPregameSummary = getPregameSummaryFromFeatures(features);
+            }
+          } catch (e) {
+            logger.error("Mid-game pregame prediction failed:", e);
+          }
+        }
+
         setPregameData(lastPregameSummary);
         send("game-phase-change", {
           phase: "in_game",
+          pregameProb: lastPregameProb,
           pregameSummary: lastPregameSummary,
         });
-        stopChampSelectPolling();
+
+        if (win && liveModelDir) {
+          startLivePolling(win, liveModelDir);
+        }
       }
     } else {
       if (state === "champ_select" || state === "game_start") {
+        if (state === "game_start") stopLivePolling();
         lastPregameSummary = null;
+        lastPregameProb = null;
         send("game-phase-change", { phase: "none" });
       }
       setState("connected");
@@ -162,6 +187,7 @@ function startChampSelectPolling(): void {
         const featureNamesList = getFeatureNames("pregame");
         const features = buildPregameFeatures(session, cachedRankedStats, featureNamesList);
         probability = await predict(features, "pregame");
+        lastPregameProb = probability;
         lastPregameSummary = getPregameSummaryFromFeatures(features);
 
         topFactors = await computeTopFactors(getModelDir("pregame"), features, "pregame");
@@ -218,10 +244,32 @@ function isPlayerLocalByCell(
   return all.indexOf(player) === session.localPlayerCellId;
 }
 
-export function startLCUPolling(window: BrowserWindow): void {
+function gameflowToChampSelect(gf: GameflowSession): ChampSelectSession {
+  const map = (players: GameflowSession["gameData"]["teamOne"]): ChampSelectPlayer[] =>
+    players.map((p) => ({
+      summonerId: p.summonerId,
+      championId: p.championId,
+      assignedPosition: p.selectedPosition,
+      spell1Id: p.spell1Id,
+      spell2Id: p.spell2Id,
+      team: p.team,
+    }));
+
+  return {
+    myTeam: map(gf.gameData.teamOne),
+    theirTeam: map(gf.gameData.teamTwo),
+    bans: { myTeamBans: [], theirTeamBans: [] },
+    timer: { phase: "GAME_STARTING", adjustedTimeLeftInPhase: 0 },
+    localPlayerCellId: -1,
+  };
+}
+
+export function startLCUPolling(window: BrowserWindow, modelDir: string): void {
   stopLCUPolling();
   win = window;
+  liveModelDir = modelDir;
   lastPregameSummary = null;
+  lastPregameProb = null;
 
   stopLockfileWatch = watchLockfile((exists, creds) => {
     if (exists && creds) onConnected(creds);

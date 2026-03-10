@@ -1,5 +1,5 @@
 import https from "https";
-import type { LCUCredentials, ChampSelectSession, RankedStats, CurrentSummoner, LCUMatchHistoryResponse } from "./types";
+import type { LCUCredentials, ChampSelectSession, RankedStats, CurrentSummoner, LCUMatchHistoryResponse, GameflowSession } from "./types";
 import log from "../log";
 
 const logger = log.scope("lcu-client");
@@ -40,6 +40,7 @@ export function createLCUClient(creds: LCUCredentials) {
     getChampSelectSession: () => get<ChampSelectSession>("/lol-champ-select/v1/session"),
     getCurrentRankedStats: () => get<RankedStats>("/lol-ranked/v1/current-ranked-stats"),
     getCurrentSummoner: () => get<CurrentSummoner>("/lol-summoner/v1/current-summoner"),
+    getGameflowSession: () => get<GameflowSession>("/lol-gameflow/v1/session"),
     getMatchHistory: (puuid: string, begIndex: number, endIndex: number) =>
       get<LCUMatchHistoryResponse>(`/lol-match-history/v1/products/lol/${puuid}/matches?begIndex=${begIndex}&endIndex=${endIndex}`),
   };
