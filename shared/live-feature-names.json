@@ -1,0 +1,78 @@
+{
+  "snapshot_seconds": [300, 600, 900, 1200, 1500, 1800, 2100, 2400, 2700, 3000],
+  "timeline_feature_names": [
+    "game_time_seconds",
+    "blue_gold",
+    "red_gold",
+    "gold_diff",
+    "blue_kills",
+    "red_kills",
+    "kill_diff",
+    "blue_towers",
+    "red_towers",
+    "tower_diff",
+    "blue_dragons",
+    "red_dragons",
+    "dragon_diff",
+    "blue_barons",
+    "red_barons",
+    "blue_heralds",
+    "red_heralds",
+    "blue_inhibitors",
+    "red_inhibitors",
+    "blue_elder",
+    "red_elder",
+    "blue_cs",
+    "red_cs",
+    "cs_diff",
+    "inhibitor_diff",
+    "elder_diff",
+    "first_blood_blue",
+    "first_tower_blue",
+    "first_dragon_blue"
+  ],
+  "gold_cols": ["blue_gold", "red_gold", "gold_diff"],
+  "pregame_summary_cols": [
+    "avg_rank_diff",
+    "rank_spread_diff",
+    "avg_winrate_diff",
+    "avg_mastery_diff",
+    "melee_count_diff",
+    "ad_ratio_diff",
+    "total_games_diff",
+    "hot_streak_count_diff",
+    "veteran_count_diff",
+    "mastery_level7_count_diff",
+    "avg_champ_wr_diff",
+    "scaling_score_diff",
+    "stat_growth_diff",
+    "infinite_scaler_count_diff"
+  ],
+  "momentum_cols": [
+    "kill_diff_delta",
+    "cs_diff_delta",
+    "tower_diff_delta"
+  ],
+  "temporal_cols": [
+    "kill_lead_erosion",
+    "tower_lead_erosion",
+    "kill_rate_diff",
+    "cs_rate_diff",
+    "dragon_rate_diff",
+    "kill_diff_accel",
+    "recent_kill_share_diff",
+    "objective_density"
+  ],
+  "level_cols": [
+    "avg_level_diff",
+    "max_level_diff"
+  ],
+  "dragon_soul_cols": [
+    "blue_has_soul",
+    "red_has_soul",
+    "blue_soul_point",
+    "red_soul_point"
+  ],
+  "positions": ["top", "jg", "mid", "bot", "sup"],
+  "per_role_stats": ["cs", "level", "kill"]
+}

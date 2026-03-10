@@ -1,91 +1,16 @@
 import type { GroupedFactor, FactorAnalysis } from "../../renderer/types";
+import shapConfig from "@shared/shap-categories.json";
 
-const LIVE_CATEGORY_MAP: Record<string, string[]> = {
-  "Draft Advantage": [
-    "scaling_score_diff", "stat_growth_diff",
-    "infinite_scaler_count_diff", "melee_count_diff",
-    "ad_ratio_diff", "avg_champ_wr_diff",
-  ],
-  "Player Skill Gap": [
-    "avg_rank_diff", "rank_spread_diff", "avg_winrate_diff", "avg_mastery_diff",
-    "total_games_diff", "hot_streak_count_diff", "veteran_count_diff",
-    "mastery_level7_count_diff",
-  ],
-  "Laning Phase": [
-    "kill_diff", "cs_diff", "avg_level_diff", "max_level_diff",
-    "blue_kills", "red_kills", "blue_cs", "red_cs", "first_blood_blue",
-    "top_cs_diff", "jg_cs_diff", "mid_cs_diff", "bot_cs_diff", "sup_cs_diff",
-    "top_level_diff", "jg_level_diff", "mid_level_diff", "bot_level_diff", "sup_level_diff",
-    "top_kill_diff", "jg_kill_diff", "mid_kill_diff", "bot_kill_diff", "sup_kill_diff",
-  ],
-  "Objectives": [
-    "dragon_diff", "tower_diff", "blue_barons", "red_barons",
-    "blue_heralds", "red_heralds", "inhibitor_diff", "elder_diff",
-    "first_tower_blue", "first_dragon_blue", "blue_towers", "red_towers",
-    "blue_dragons", "red_dragons", "blue_inhibitors", "red_inhibitors",
-    "blue_elder", "red_elder",
-    "blue_has_soul", "red_has_soul", "blue_soul_point", "red_soul_point",
-  ],
-  "Tempo & Momentum": [
-    "kill_diff_delta", "cs_diff_delta", "tower_diff_delta",
-    "kill_rate_diff", "cs_rate_diff", "dragon_rate_diff",
-    "kill_diff_accel", "recent_kill_share_diff",
-    "kill_lead_erosion", "tower_lead_erosion", "objective_density",
-  ],
-};
+const LIVE_CATEGORY_MAP: Record<string, string[]> = shapConfig.live_category_map;
 
-const PREGAME_SUFFIX_RULES: [string, string[]][] = [
-  ["Player Skill", [
-    "rank_numeric", "league_points", "ranked_winrate", "ranked_games",
-    "hot_streak", "fresh_blood", "veteran",
-  ]],
-  ["Champion Proficiency", [
-    "champ_winrate", "champ_games", "mastery_points", "champ_global_wr",
-  ]],
-  ["Recent Form", [
-    "recent_winrate", "recent_games", "avg_kda", "avg_cs_per_min",
-    "avg_vision", "avg_damage_share", "avg_wards_placed", "avg_wards_killed",
-    "avg_damage_taken", "avg_gold_spent", "avg_cc_score", "avg_heal_total",
-    "avg_magic_dmg_share", "avg_phys_dmg_share", "avg_multikill_rate",
-    "kda_variance", "kda_skewness",
-  ]],
-  ["Draft & Composition", [
-    "champ_hp_base", "champ_ad_base", "champ_armor_base", "champ_mr_base",
-    "champ_attack_range", "champ_hp_per_level", "champ_ad_per_level",
-    "is_ap_champ", "is_mixed_champ", "is_melee",
-    "champ_attack_score", "champ_defense_score", "champ_magic_score",
-    "champ_difficulty", "tag_fighter", "tag_mage", "tag_assassin",
-    "tag_tank", "tag_marksman", "tag_support",
-    "ad_ratio", "ap_ratio", "melee_count", "tank_count", "assassin_count",
-    "mage_count", "marksman_count", "support_count", "damage_diversity",
-    "total_attack_score", "total_defense_score", "total_magic_score",
-    "avg_difficulty", "avg_summoner_level",
-    "team_ap_diff", "team_ad_diff", "team_damage_diversity_diff",
-    "team_armor_vs_ap", "frontline_diff", "engage_diff",
-    "backline_diff", "poke_diff", "peel_diff", "dive_diff",
-  ]],
-  ["Lane Matchups", [
-    "rank_diff", "mastery_diff", "wr_diff", "champ_wr_diff",
-    "summoner_level_diff", "wr_residual_diff",
-    "tag_advantage", "range_diff", "melee_vs_ranged",
-  ]],
-  ["Bans", [
-    "bans_count", "target_banned",
-  ]],
-];
+const PREGAME_SUFFIX_RULES: [string, string[]][] = shapConfig.pregame_suffix_rules as [string, string[]][];
 
-const PREGAME_EXACT: Record<string, string> = {
-  avg_rank: "Player Skill",
-  rank_spread: "Player Skill",
-  avg_team_winrate: "Player Skill",
-  avg_mastery: "Champion Proficiency",
-  hot_streak_count: "Player Skill",
-  avg_wards_placed: "Recent Form",
-  avg_cc_score: "Recent Form",
-  autofill_count: "Player Skill",
-};
+const PREGAME_EXACT: Record<string, string> = shapConfig.pregame_exact;
 
-const EXCLUDED = new Set(["pregame_blue_win_prob", "game_time_seconds"]);
+const EXCLUDED = new Set(shapConfig.excluded_features);
+const IMPACT_THRESHOLD = shapConfig.impact_threshold;
+const MAX_GROUPS = shapConfig.max_groups;
+const NARR = shapConfig.narrative_config;
 
 function sigmoid(x: number): number {
   return 1 / (1 + Math.exp(-x));
@@ -143,14 +68,14 @@ export function computeGroupedFactors(
     const withoutGroup = totalLogOdds - groupShap;
     const probWithout = sigmoid(withoutGroup);
     const impactPct = Math.round((totalProb - probWithout) * 1000) / 10;
-    if (Math.abs(impactPct) >= 0.3) {
+    if (Math.abs(impactPct) >= IMPACT_THRESHOLD) {
       groups.push({ category, impactPct });
     }
   }
 
   return groups
     .sort((a, b) => Math.abs(b.impactPct) - Math.abs(a.impactPct))
-    .slice(0, 5);
+    .slice(0, MAX_GROUPS);
 }
 
 export function generateNarrative(
@@ -172,18 +97,18 @@ export function generateNarrative(
   const magnitude = Math.abs(top.impactPct);
 
   let strength = "slight";
-  if (magnitude >= 5) strength = "strong";
-  else if (magnitude >= 2) strength = "moderate";
+  if (magnitude >= NARR.strong_threshold) strength = "strong";
+  else if (magnitude >= NARR.moderate_threshold) strength = "moderate";
 
   let sentence = `${direction} favored by a ${strength} ${top.category.toLowerCase()} edge`;
 
-  if (groups.length > 1 && Math.abs(groups[1].impactPct) >= 1) {
+  if (groups.length > 1 && Math.abs(groups[1].impactPct) >= NARR.second_factor_threshold) {
     const secondDir = groups[1].impactPct > 0 ? "blue" : "red";
     const verb = secondDir === direction.toLowerCase() ? "supported" : "offset";
     sentence += `, ${verb} by ${groups[1].category.toLowerCase()}`;
   }
 
-  if (displayedTotal < Math.abs(pregameShap) * 15) {
+  if (displayedTotal < Math.abs(pregameShap) * NARR.pregame_dominance_multiplier) {
     sentence += " — largely driven by pregame analysis";
   }
 

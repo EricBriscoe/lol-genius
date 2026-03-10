@@ -1,8 +1,12 @@
+import { resolve } from "path";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 
+const sharedAlias = { "@shared": resolve(__dirname, "../shared") };
+
 export default defineConfig({
   main: {
+    resolve: { alias: sharedAlias },
     build: {
       outDir: "dist/main",
       rollupOptions: {
@@ -20,6 +24,7 @@ export default defineConfig({
   },
   renderer: {
     plugins: [react()],
+    resolve: { alias: sharedAlias },
     build: {
       outDir: "dist/renderer",
     },

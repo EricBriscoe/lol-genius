@@ -767,9 +767,42 @@ class MatchDB:
         )
         self._maybe_commit()
 
-    def get_all_timeline_raw_json(self) -> list[tuple[str, dict]]:
-        rows = self._fetchall("SELECT match_id, raw_json FROM timeline_raw_json")
+    def get_timeline_raw_json_ids(self) -> list[str]:
+        rows = self._fetchall("SELECT match_id FROM timeline_raw_json")
+        return [r["match_id"] for r in rows]
+
+    def get_timeline_raw_json(self, match_id: str) -> dict | None:
+        row = self._fetchone(
+            "SELECT raw_json FROM timeline_raw_json WHERE match_id = %s",
+            (match_id,),
+        )
+        return row["raw_json"] if row else None
+
+    def get_timeline_raw_json_batch(self, match_ids: list[str]) -> list[tuple[str, dict]]:
+        if not match_ids:
+            return []
+        placeholders = ",".join(["%s"] * len(match_ids))
+        rows = self._fetchall(
+            f"SELECT match_id, raw_json FROM timeline_raw_json WHERE match_id IN ({placeholders})",
+            tuple(match_ids),
+        )
         return [(r["match_id"], r["raw_json"]) for r in rows]
+
+    def get_participants_for_matches(self, match_ids: list[str]) -> list[dict]:
+        if not match_ids:
+            return []
+        CHUNK = 5000
+        results = []
+        for i in range(0, len(match_ids), CHUNK):
+            chunk = match_ids[i : i + CHUNK]
+            placeholders = ",".join(["%s"] * len(chunk))
+            rows = self._fetchall(
+                "SELECT match_id, puuid, team_position "
+                f"FROM participants WHERE match_id IN ({placeholders})",
+                tuple(chunk),
+            )
+            results.extend(dict(r) for r in rows)
+        return results
 
     def get_match_bans(self, match_id: str) -> list[dict]:
         rows = self._fetchall("SELECT * FROM match_bans WHERE match_id = %s", (match_id,))

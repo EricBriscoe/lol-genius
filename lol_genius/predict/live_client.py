@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import json
 import logging
+import math
 import threading
+from pathlib import Path
 
 from lol_genius.utils import exponential_backoff
 
 log = logging.getLogger(__name__)
+
+_SHARED_DIR = Path(__file__).resolve().parents[2] / "shared"
+
+with open(_SHARED_DIR / "shap-categories.json") as _f:
+    _SHAP_JSON = json.load(_f)
 
 
 def fetch_live_game_data(host: str, port: int) -> dict | None:
@@ -300,56 +308,23 @@ POLL_INTERVAL = 15
 MAX_POLL_INTERVAL = 300
 NO_DATA_THRESHOLD = 3
 
-_LIVE_CATEGORY_MAP = {
-    "Draft Advantage": [
-        "scaling_score_diff", "stat_growth_diff",
-        "infinite_scaler_count_diff", "melee_count_diff",
-        "ad_ratio_diff", "avg_champ_wr_diff",
-    ],
-    "Player Skill Gap": [
-        "avg_rank_diff", "rank_spread_diff", "avg_winrate_diff", "avg_mastery_diff",
-        "total_games_diff", "hot_streak_count_diff", "veteran_count_diff",
-        "mastery_level7_count_diff",
-    ],
-    "Laning Phase": [
-        "kill_diff", "cs_diff", "avg_level_diff", "max_level_diff",
-        "blue_kills", "red_kills", "blue_cs", "red_cs", "first_blood_blue",
-        "top_cs_diff", "jg_cs_diff", "mid_cs_diff", "bot_cs_diff", "sup_cs_diff",
-        "top_level_diff", "jg_level_diff", "mid_level_diff", "bot_level_diff", "sup_level_diff",
-        "top_kill_diff", "jg_kill_diff", "mid_kill_diff", "bot_kill_diff", "sup_kill_diff",
-    ],
-    "Objectives": [
-        "dragon_diff", "tower_diff", "blue_barons", "red_barons",
-        "blue_heralds", "red_heralds", "inhibitor_diff", "elder_diff",
-        "first_tower_blue", "first_dragon_blue", "blue_towers", "red_towers",
-        "blue_dragons", "red_dragons", "blue_inhibitors", "red_inhibitors",
-        "blue_elder", "red_elder",
-        "blue_has_soul", "red_has_soul", "blue_soul_point", "red_soul_point",
-    ],
-    "Tempo & Momentum": [
-        "kill_diff_delta", "cs_diff_delta", "tower_diff_delta",
-        "kill_rate_diff", "cs_rate_diff", "dragon_rate_diff",
-        "kill_diff_accel", "recent_kill_share_diff",
-        "kill_lead_erosion", "tower_lead_erosion", "objective_density",
-    ],
-}
+_LIVE_CATEGORY_MAP = _SHAP_JSON["live_category_map"]
 
-_EXCLUDED_FEATURES = {"pregame_blue_win_prob", "game_time_seconds"}
+_EXCLUDED_FEATURES = set(_SHAP_JSON["excluded_features"])
 
-_LIVE_FEATURE_TO_CAT = {}
-for _cat, _feats in _LIVE_CATEGORY_MAP.items():
-    for _f in _feats:
-        _LIVE_FEATURE_TO_CAT[_f] = _cat
+_LIVE_FEATURE_TO_CAT = {feat: cat for cat, feats in _LIVE_CATEGORY_MAP.items() for feat in feats}
 
 
 def _sigmoid(x: float) -> float:
-    import math
     return 1.0 / (1.0 + math.exp(-x))
 
 
-def _build_factor_analysis(
-    base_value: float, shap_dict: dict[str, float]
-) -> dict:
+_IMPACT_THRESHOLD = _SHAP_JSON["impact_threshold"]
+_MAX_GROUPS = _SHAP_JSON["max_groups"]
+_NARR = _SHAP_JSON["narrative_config"]
+
+
+def _build_factor_analysis(base_value: float, shap_dict: dict[str, float]) -> dict:
     total_shap = sum(shap_dict.values())
     total_log_odds = base_value + total_shap
     total_prob = _sigmoid(total_log_odds)
@@ -367,11 +342,11 @@ def _build_factor_analysis(
         without = total_log_odds - group_shap
         prob_without = _sigmoid(without)
         impact_pct = round((total_prob - prob_without) * 100, 1)
-        if abs(impact_pct) >= 0.3:
+        if abs(impact_pct) >= _IMPACT_THRESHOLD:
             groups.append({"category": category, "impactPct": impact_pct})
 
     groups.sort(key=lambda g: abs(g["impactPct"]), reverse=True)
-    groups = groups[:5]
+    groups = groups[:_MAX_GROUPS]
 
     pregame_shap = shap_dict.get("pregame_blue_win_prob", 0)
     displayed_total = sum(abs(g["impactPct"]) for g in groups)
@@ -384,13 +359,18 @@ def _build_factor_analysis(
         top = groups[0]
         direction = "Blue" if top["impactPct"] > 0 else "Red"
         magnitude = abs(top["impactPct"])
-        strength = "strong" if magnitude >= 5 else "moderate" if magnitude >= 2 else "slight"
+        if magnitude >= _NARR["strong_threshold"]:
+            strength = "strong"
+        elif magnitude >= _NARR["moderate_threshold"]:
+            strength = "moderate"
+        else:
+            strength = "slight"
         narrative = f"{direction} favored by a {strength} {top['category'].lower()} edge"
-        if len(groups) > 1 and abs(groups[1]["impactPct"]) >= 1:
+        if len(groups) > 1 and abs(groups[1]["impactPct"]) >= _NARR["second_factor_threshold"]:
             second_dir = "blue" if groups[1]["impactPct"] > 0 else "red"
             verb = "supported" if second_dir == direction.lower() else "offset"
             narrative += f", {verb} by {groups[1]['category'].lower()}"
-        if displayed_total < abs(pregame_shap) * 15:
+        if displayed_total < abs(pregame_shap) * _NARR["pregame_dominance_multiplier"]:
             narrative += " — largely driven by pregame analysis"
         narrative += "."
 

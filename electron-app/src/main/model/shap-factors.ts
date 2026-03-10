@@ -8,8 +8,11 @@ export async function computeTopFactors(
   modelType = "live",
 ): Promise<FactorAnalysis> {
   if (modelDir) {
-    const result = await computeShap(modelDir, features);
+    const result = await computeShap(modelDir, features, modelType);
     if (result) {
+      if (result.factorAnalysis) {
+        return result.factorAnalysis;
+      }
       return buildFactorAnalysis(result.baseValue, result.shapValues, modelType);
     }
   }
