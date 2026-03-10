@@ -24,8 +24,6 @@ contextBridge.exposeInMainWorld("lolGenius", {
   setDevMode: (enabled: boolean) => ipcRenderer.invoke("set-dev-mode", enabled),
   getDevMode: () => ipcRenderer.invoke("get-dev-mode"),
   getAppVersion: () => ipcRenderer.invoke("get-app-version"),
-  setAlwaysOnTop: (enabled: boolean) => ipcRenderer.invoke("set-always-on-top", enabled),
-  getAlwaysOnTop: () => ipcRenderer.invoke("get-always-on-top"),
   getDdragonVersion: () => ipcRenderer.invoke("get-ddragon-version"),
   forceRestart: () => ipcRenderer.invoke("force-restart"),
   getPlayerIdentity: () => ipcRenderer.invoke("get-player-identity"),

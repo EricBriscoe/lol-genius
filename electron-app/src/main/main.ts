@@ -230,5 +230,3 @@ ipcMain.handle("get-dev-mode", () => isDevMode());
 ipcMain.handle("get-app-version", () => app.getVersion());
 ipcMain.handle("get-ddragon-version", () => getChampionVersion());
 ipcMain.handle("force-restart", () => forceRestart());
-ipcMain.handle("set-always-on-top", (_, enabled: boolean) => mainWindow?.setAlwaysOnTop(enabled));
-ipcMain.handle("get-always-on-top", () => mainWindow?.isAlwaysOnTop() ?? false);

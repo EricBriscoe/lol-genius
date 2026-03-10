@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Monitor, MonitorOff, AlertTriangle, RefreshCw, Bug, Swords, Gamepad2, Pin, User } from "lucide-react";
+import { Monitor, MonitorOff, AlertTriangle, RefreshCw, Bug, Swords, Gamepad2, User } from "lucide-react";
 import Card from "./components/Card";
 import WinProbBar from "./components/WinProbBar";
 import StatGrid from "./components/StatGrid";
@@ -18,25 +18,18 @@ type TabId = "game" | "player_info";
 export default function App() {
   const { connectionStatus, current, history, modelInfo, devMode, toggleDevMode, devLogs, clearDevLogs, appUpdateStatus } = useLiveGame();
   const [appVersion, setAppVersion] = useState<string | null>(null);
-  const [alwaysOnTop, setAlwaysOnTop] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>(() =>
     (localStorage.getItem("activeTab") as TabId) || "game"
   );
 
   useEffect(() => {
     window.lolGenius.getAppVersion().then(setAppVersion);
-    window.lolGenius.getAlwaysOnTop().then(setAlwaysOnTop);
   }, []);
 
   useEffect(() => {
     localStorage.setItem("activeTab", activeTab);
   }, [activeTab]);
 
-  const toggleAlwaysOnTop = async () => {
-    const next = !alwaysOnTop;
-    await window.lolGenius.setAlwaysOnTop(next);
-    setAlwaysOnTop(next);
-  };
   const { champSelectData, isInChampSelect, gamePhase } = useChampSelect();
 
   const blueProb = toBlueProb(current?.blue_win_probability);
@@ -69,13 +62,6 @@ export default function App() {
             title="Check for updates"
           >
             <RefreshCw size={14} />
-          </button>
-          <button
-            onClick={toggleAlwaysOnTop}
-            className={`icon-btn${alwaysOnTop ? " icon-btn--active" : ""}`}
-            title={alwaysOnTop ? "Unpin window" : "Pin window on top"}
-          >
-            <Pin size={14} />
           </button>
           <button
             onClick={toggleDevMode}
