@@ -67,8 +67,10 @@ function saveWindowState(win: BrowserWindow): void {
 }
 
 async function updateAllModels(): Promise<boolean> {
-  const live = await loadAndUpdateModel("live");
-  const pregame = await loadAndUpdateModel("pregame");
+  const [live, pregame] = await Promise.all([
+    loadAndUpdateModel("live"),
+    loadAndUpdateModel("pregame"),
+  ]);
   return live || pregame;
 }
 
