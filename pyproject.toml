@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=82.0.1", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -11,25 +11,25 @@ license = "MIT"
 requires-python = ">=3.11"
 authors = [{ name = "Eric Briscoe" }]
 dependencies = [
-    "psycopg2-binary>=2.9",
-    "httpx>=0.28",
+    "psycopg2-binary>=2.9.11",
+    "httpx>=0.28.1",
     "xgboost>=3.2",
     "shap>=0.51",
     "scikit-learn>=1.8",
-    "pandas>=3.0",
-    "numpy>=2.0",
-    "click>=8.1",
-    "pyyaml>=6.0",
-    "matplotlib>=3.10",
-    "tqdm>=4.66",
-    "python-dotenv>=1.0",
-    "fastapi>=0.135",
-    "uvicorn[standard]>=0.34",
+    "pandas>=3.0.2",
+    "numpy>=2.4.4",
+    "click>=8.3.2",
+    "pyyaml>=6.0.3",
+    "matplotlib>=3.10.8",
+    "tqdm>=4.67.3",
+    "python-dotenv>=1.2.2",
+    "fastapi>=0.135.3",
+    "uvicorn[standard]>=0.44.0",
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0", "pytest-cov>=7.0"]
-dashboard = ["sse-starlette>=3.0", "pyarrow>=23.0"]
+test = ["pytest>=9.0.3", "pytest-cov>=7.1.0"]
+dashboard = ["sse-starlette>=3.3.4", "pyarrow>=23.0.1"]
 proxy = []
 onnx = ["onnxmltools>=1.16", "skl2onnx>=1.20"]
 
