@@ -329,7 +329,7 @@ export default function LiveGame({ latestUpdate }: Props) {
                 <Tooltip
                   contentStyle={tooltipStyle}
                   formatter={(v) => [`${v ?? 0}%`, "Blue Win %"]}
-                  labelFormatter={(v) => `Time: ${fmtTime(v)}`}
+                  labelFormatter={(v) => `Time: ${fmtTime(Number(v))}`}
                 />
                 <ReferenceLine y={50} stroke="var(--text-muted)" strokeDasharray="4 4" />
                 <Line

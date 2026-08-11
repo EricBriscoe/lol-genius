@@ -28,7 +28,7 @@ export default function ProbChart({ data }: Props) {
           <Tooltip
             contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 6, fontSize: 12 }}
             formatter={(v) => [`${v ?? 0}%`, "Blue Win %"]}
-            labelFormatter={fmtTime}
+            labelFormatter={(v) => fmtTime(Number(v))}
           />
           <ReferenceLine y={50} stroke="var(--text-muted)" strokeDasharray="4 4" />
           <Line
