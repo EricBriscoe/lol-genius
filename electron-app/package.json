@@ -47,7 +47,7 @@
     "vitest": "^4.0"
   },
   "overrides": {
-    "adm-zip": "^0.6.0"
+    "adm-zip": "^0.6.1"
   },
   "build": {
     "appId": "com.ericbriscoe.lol-genius",
